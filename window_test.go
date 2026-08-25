@@ -49,6 +49,62 @@ func TestWindow(t *testing.T) {
 	}
 }
 
+// TestPerDraw reports what each correction for a comment's length costs and
+// buys, on the same held-out rows read one sentence at a time and three to a
+// comment. It is how perDraw was chosen.
+func TestPerDraw(t *testing.T) {
+	skipWithoutRuntime(t)
+	texts, want := heldOut()
+
+	var contract []string
+	var positives [][]string
+	for i, text := range texts {
+		if want[i] == "" {
+			contract = append(contract, text)
+			continue
+		}
+		positives = append(positives, []string{text})
+	}
+	// A positive padded with contract prose is the case the correction has to
+	// survive: the comment is still one that should be nudged, and it now
+	// arrives with two innocent neighbours.
+	padded := make([][]string, len(positives))
+	for i := range positives {
+		padded[i] = []string{positives[i][0], contract[i%len(contract)], contract[(i+7)%len(contract)]}
+	}
+	var docs [][]string
+	for at := 0; at+3 <= len(contract); at += 3 {
+		docs = append(docs, contract[at:at+3])
+	}
+
+	for _, step := range []float64{0.0, 0.005, 0.01, 0.02, 0.04} {
+		perDrawOverride = step
+		left := 0
+		for _, v := range judge(docs, biasFor(docs)) {
+			if v.reason == "" {
+				left++
+			}
+		}
+		caught := 0
+		for _, v := range judge(padded, biasFor(padded)) {
+			if v.reason != "" {
+				caught++
+			}
+		}
+		t.Logf("perDraw %.3f  contract three-to-a-comment %d/%d  positives padded to three %d/%d",
+			step, left, len(docs), caught, len(padded))
+	}
+	perDrawOverride = -1
+}
+
+func biasFor[T any](of []T) []float64 {
+	out := make([]float64, len(of))
+	for i := range out {
+		out[i] = buriedBias
+	}
+	return out
+}
+
 // fires returns the class a vector fires, or -1, under the rule the binary
 // runs.
 func fires(vector []float32, h head) int {

@@ -46,7 +46,7 @@ func judge(comments [][]string, bias []float64) []verdict {
 		// likelier to clear it for no better reason than length. Each extra
 		// draw raises the bar the others have to clear.
 		draws := float64(len(comments[owner[j]]) - 1)
-		found[j] = nearest(vectors[j], bias[owner[j]]-draws*perDraw)
+		found[j] = nearest(vectors[j], bias[owner[j]]-draws*step())
 	}
 	out := make([]verdict, len(comments))
 	for j, v := range found {
@@ -90,20 +90,33 @@ func nearest(vector []float32, bias float64) verdict {
 //
 // The case that prompted it — a stock chart header clearing by 0.003 — is now
 // answered structurally, by requiring a restatement to share a word with the
-// line it restates. What is left is the noise floor, and the classes have very
-// different bands: measured held out, 0.02 costs restatement two true positives
-// of fifteen and buys one fewer false positive of seventy-five, while
-// self-justification does not notice it until 0.04. It sits just above the
-// evidence rather than four times it.
+// line it restates. What is left is the noise floor. Measured held out, 0.02
+// cost restatement two true positives of fifteen to buy one fewer false
+// positive of seventy-five, so this sits just above the evidence rather than
+// four times it.
 const clear = 0.005
 
 // perDraw is how much each additional sentence in a comment raises the bar for
-// all of them. Read one sentence at a time, the tool leaves 75 of 75 held-out
-// contract comments alone; read three to a comment, as a real doc comment
-// arrives, it left 23 of 25 without this and 24 of 25 with it — the same
-// threshold met three times over. It costs nothing on the one-line comments
+// all of them, since the verdict is the best of them and a longer comment
+// otherwise clears the same threshold for no better reason than length.
+//
+// Measured by the sweep in window_test.go, on held-out contract rows read three
+// to a comment and on held-out positives padded with two innocent neighbours:
+// 0.005 is what buys the last false positive, and every larger step costs true
+// positives and buys nothing. It costs nothing at all on the one-line comments
 // most findings come from.
-const perDraw = 0.02
+const perDraw = 0.005
+
+// perDrawOverride lets the sweep in window_test.go fit this constant the way
+// the others are fitted. Negative means the constant stands.
+var perDrawOverride = -1.0
+
+func step() float64 {
+	if perDrawOverride >= 0 {
+		return perDrawOverride
+	}
+	return perDraw
+}
 
 // fitted is the head this process decides with, and fittedErr is why there is
 // none. The error is kept beside it rather than only returned from the first

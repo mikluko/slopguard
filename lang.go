@@ -55,6 +55,13 @@ func lookup(path string) *language {
 	if lang := byName[name]; lang != nil {
 		return lang
 	}
+	// A named file keeps its language when it is qualified: Dockerfile.dev and
+	// api.Dockerfile are both Dockerfiles, and Makefile.local is a Makefile.
+	for named, lang := range byName {
+		if strings.HasPrefix(name, named+".") || strings.HasSuffix(name, "."+named) {
+			return lang
+		}
+	}
 	if extension := strings.ToLower(filepath.Ext(name)); extension != "" {
 		return byExtension[extension]
 	}

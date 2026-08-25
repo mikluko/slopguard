@@ -294,6 +294,41 @@ replicas: 2
 `,
 	},
 	{
+		name: "a commented shape under an empty key documents it",
+		lang: yaml,
+		src: `podSecurityContext: {}
+  # fsGroup: 2000
+  # runAsNonRoot: true
+
+replicaCount: 1
+`,
+	},
+	{
+		name: "the same shape under a key that is not empty is residue",
+		lang: yaml,
+		src: `podSecurityContext:
+  runAsNonRoot: true
+  # fsGroup: 2000
+  # runAsUser: 1000
+
+replicaCount: 1
+`,
+		want: "commented-out",
+	},
+	{
+		name: "an empty key does not excuse a block beside it",
+		lang: yaml,
+		src: `podSecurityContext: {}
+
+# resources:
+#   limits:
+#     cpu: 100m
+
+replicaCount: 1
+`,
+		want: "commented-out",
+	},
+	{
 		name: "yaml prose that parses as a mapping",
 		lang: yaml,
 		src: `# Ref: https://runbooks.example.com/scale-up

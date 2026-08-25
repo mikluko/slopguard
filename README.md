@@ -55,7 +55,7 @@ projects further along the fitted direction in nineteen. But framing moves a
 sentence about a quarter as far as its subject does, so averaging a class of
 comments about unrelated subjects cancels the framing and leaves the topic:
 directions fitted from two disjoint halves of real comments agree at cos +0.32
-for this class, against +0.58 for self-justification and +0.65 for restatement.
+for this class, against +0.59 for self-justification and +0.69 for restatement.
 An L2 logistic head over the same vectors reaches the same +0.32 and no
 held-out threshold at even 0.70 precision. Exemplars rewritten in the register
 real comments use get to 0.70 recall at 0.64 precision, and every false positive
@@ -114,12 +114,16 @@ a perfectly good `COPY`.
 
 ## Install
 
+Not published yet, so build it:
+
 ```sh
-brew install mikluko/tap/slopguard
+git clone <this repo> && cd slopguard && go build .
+brew install onnxruntime
 ```
 
-The formula depends on `onnxruntime`. `go install
-github.com/mikluko/slopguard@latest` works too; either way the binary dlopens
+The formula in `mikluko/homebrew-tap` is written and waiting on the first
+release tag; when that lands, `brew install mikluko/tap/slopguard` is the
+install and it depends on `onnxruntime` for you. Either way the binary dlopens
 the library at run time, looking in Homebrew's prefix on both architectures,
 Linuxbrew's, and the two places a Linux package manager puts it.
 

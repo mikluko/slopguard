@@ -114,7 +114,7 @@ func review(in payload) []finding {
 	if len(added) == 0 {
 		return nil
 	}
-	findings := keep(scan(src, lang, added), in.ToolInput.FilePath)
+	findings := scan(src, lang, added)
 	said, before, remember := spoken(in.SessionID, in.ToolInput.FilePath)
 	repeat = before
 	kept := findings[:0]
@@ -129,36 +129,6 @@ func review(in payload) []finding {
 	}
 	remember(findings)
 	return findings
-}
-
-// keep drops the findings a file's own conventions rule out.
-//
-// A chart's values.yaml documents its optional settings by commenting them out
-// — `podSecurityContext: {}` above `# fsGroup: 2000` is what `helm create`
-// scaffolds — so commented-out config there is the documentation rather than
-// something left behind. Both of that rule's instructions are wrong for it:
-// deleting the block deletes the documentation, and making it real changes what
-// the chart deploys. Everything else in the file is still read.
-func keep(findings []finding, path string) []finding {
-	if !documents(path) {
-		return findings
-	}
-	out := findings[:0]
-	for _, f := range findings {
-		if f.class != "leftover" {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-// documents reports whether a file's commented-out config is its documentation.
-func documents(path string) bool {
-	switch filepath.Base(path) {
-	case "values.yaml", "values.yml":
-		return true
-	}
-	return false
 }
 
 // readable returns the contents of a file worth judging: a regular file, small
@@ -217,7 +187,7 @@ func sweepFiles(paths []string) {
 		if err != nil {
 			continue
 		}
-		for _, f := range keep(scan(src, lang, []span{{start: 0, end: uint(len(src))}}), path) {
+		for _, f := range scan(src, lang, []span{{start: 0, end: uint(len(src))}}) {
 			fmt.Printf("%s:%d\t%s\t%.3f\t%s\n", path, f.line, f.class, f.score, f.reason)
 		}
 	}

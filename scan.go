@@ -65,6 +65,9 @@ type comment struct {
 	// buried marks a comment inside a function body, where prose is harder to
 	// justify and the thresholds are lower.
 	buried bool
+	// root is the tree the comment came from, for the rules that need to look
+	// at what surrounds it.
+	root *tree_sitter.Node
 }
 
 // scan parses src and reports the comments inside added that the
@@ -217,9 +220,63 @@ func leftover(c comment, lang *language, src []byte) bool {
 		return false
 	}
 	if lang.evidence != nil {
-		return lang.evidence(root, []byte(body), len(c.nodes))
+		return lang.evidence(root, []byte(body), len(c.nodes)) && !documented(c, src)
 	}
 	return root.NamedChildCount() > 0
+}
+
+// documented reports whether a commented-out block is showing what could go in
+// a key rather than leaving behind what used to.
+//
+// The tell is the key above it. A chart documents an optional setting by giving
+// it an empty collection and commenting the shape underneath:
+//
+//	podSecurityContext: {}
+//	  # fsGroup: 2000
+//
+// which is what `helm create` scaffolds, and where both of this rule's
+// instructions are wrong: deleting the block deletes the documentation, and
+// making it real changes what the chart deploys. A block with no such key above
+// it introduces settings that appear nowhere else in the file, and that is a
+// leftover wherever the file happens to be named.
+func documented(c comment, src []byte) bool {
+	above := opened(c.root, c.nodes[0], src)
+	if above == nil {
+		return false
+	}
+	value := above.ChildByFieldName("value")
+	if value == nil {
+		return false
+	}
+	// The grammar wraps a flow collection in a flow_node, so the shape being
+	// looked for is one level down from the value.
+	if value.Kind() == "flow_node" && value.NamedChildCount() == 1 {
+		value = value.NamedChild(0)
+	}
+	if !hollow[value.Kind()] || value.NamedChildCount() > 0 {
+		return false
+	}
+	return c.nodes[0].StartPosition().Column > above.StartPosition().Column
+}
+
+// hollow are the collections a key is given when it is documented but unset.
+var hollow = map[string]bool{"flow_mapping": true, "flow_sequence": true}
+
+// opened returns the mapping pair a comment sits under, found by walking back
+// over whitespace the way [annotated] walks forward.
+func opened(root, node *tree_sitter.Node, src []byte) *tree_sitter.Node {
+	at := int(node.StartByte()) - 1
+	for at >= 0 && (src[at] == ' ' || src[at] == '\t' || src[at] == '\n' || src[at] == '\r') {
+		at--
+	}
+	if at < 0 || root == nil {
+		return nil
+	}
+	found := root.NamedDescendantForByteRange(uint(at), uint(at))
+	for found != nil && found.Kind() != "block_mapping_pair" {
+		found = found.Parent()
+	}
+	return found
 }
 
 // yamlConfig separates configuration somebody commented out from a sentence
@@ -338,8 +395,6 @@ func holds(node *tree_sitter.Node, kinds map[string]bool) bool {
 	return false
 }
 
-// buried reports whether a node sits inside a function body, where the rules
-// allow no prose at all.
 // found is a comment node together with what the walk down to it already knew:
 // whether anything above it was a function.
 //
@@ -388,6 +443,7 @@ func group(root *tree_sitter.Node, nodes []found, src []byte) []comment {
 			annotates: annotated(root, f.node, src),
 			doc:       docstring(f.node),
 			buried:    f.buried,
+			root:      root,
 		})
 	}
 	return out

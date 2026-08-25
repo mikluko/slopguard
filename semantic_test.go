@@ -1,0 +1,98 @@
+package main
+
+import (
+	"os"
+	"testing"
+)
+
+// The semantic table is the specification for what the model is asked to
+// recognise: the comment as it would be written, and the class it belongs to,
+// or "" for prose that states a contract and must be left alone.
+var readings = []struct {
+	text  string
+	class string
+}{
+	{"previously this pointed at the docker hub mirror", "history"},
+	{"we swapped the map for a slice here", "history"},
+	{"this used to allocate on every call", "history"},
+	{"dropped the retry loop, the client handles it", "history"},
+	{"added to fix the flaky test on CI", "history"},
+	{"bumped the deadline because CI is slower than a laptop", "history"},
+	{"multiply it by two", "tautology"},
+	{"close the connection", "tautology"},
+	{"kept for backwards compatibility", "compat"},
+	{"left here so that v1 clients keep working", "compat"},
+	{"legacy field, new code should use spec instead", "compat"},
+	{"we walk the tree, collect the comments, and then score each one", "narrative"},
+	{"this function first validates the input and then writes it to disk", "narrative"},
+
+	{"verdict returns the reason to deny the command, or an empty string to allow it", ""},
+	{"Replicas is the number of pods to run", ""},
+	{"the caller must hold the lock", ""},
+	{"requests are per replica", ""},
+	{"ingress is off by default", ""},
+	{"Timeout bounds how long a request may take", ""},
+	{"default values for the api chart", ""},
+	{"image pull secret for the private registry", ""},
+	{"double returns v twice over", ""},
+	{"order is significant: callers index by position", ""},
+	{"Put zeroes the buffer, so it is safe to reuse", ""},
+	{"a command that does not parse is allowed", ""},
+	{"raising this above four needs a node pool change", ""},
+	{"the zero value is ready to use", ""},
+	{"cpu limits are per container, not per pod", ""},
+	{"returns every durable the observer no longer runs", ""},
+	{"these fields are enforced by the operator and stay unset here", ""},
+	{"the caller has already bounded v, so this cannot overflow", ""},
+}
+
+func TestJudge(t *testing.T) {
+	skipWithoutRuntime(t)
+	texts := make([]string, len(readings))
+	for i, r := range readings {
+		texts[i] = r.text
+	}
+	comments := make([][]string, len(texts))
+	for i, text := range texts {
+		comments[i] = split(text)
+	}
+	reasons := judge(comments, make([]float64, len(texts)))
+	for i, r := range readings {
+		want := ""
+		for _, c := range classes {
+			if c.name == r.class {
+				want = c.reason
+			}
+		}
+		if reasons[i].reason != want {
+			t.Errorf("%q\n got: %q\nwant: %q", r.text, reasons[i].reason, want)
+		}
+	}
+}
+
+// The phrase lists carry the common wording when the model is unavailable.
+func TestLiteralFallback(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		want bool
+	}{
+		{"previously this pointed at the docker hub mirror", true},
+		{"kept for backwards compatibility", true},
+		{"Replicas is the number of pods to run", false},
+	} {
+		if got := literal(c.text) != ""; got != c.want {
+			t.Errorf("literal(%q) = %v, want %v", c.text, got, c.want)
+		}
+	}
+}
+
+func skipWithoutRuntime(t *testing.T) {
+	t.Helper()
+	path := libraryPath
+	if override := os.Getenv(libraryPathEnv); override != "" {
+		path = override
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Skip("no ONNX Runtime at " + path)
+	}
+}

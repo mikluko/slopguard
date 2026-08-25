@@ -1,0 +1,271 @@
+package main
+
+import "strings"
+
+// strip removes a comment's markers from one raw line, leaving the prose.
+func strip(line string) string {
+	line = strings.TrimSpace(line)
+	for _, marker := range []string{"///", "//!", "//", "/*", "#!", "#", "--", "*"} {
+		if strings.HasPrefix(line, marker) {
+			line = strings.TrimPrefix(line, marker)
+			break
+		}
+	}
+	line = strings.TrimSuffix(strings.TrimSpace(line), "*/")
+	return strings.TrimSpace(line)
+}
+
+// indented removes a comment's marker from one raw line and keeps the
+// indentation that follows it, so that a commented-out block still parses.
+func indented(line string) string {
+	line = strings.TrimLeft(line, " \t")
+	for _, marker := range []string{"///", "//!", "//", "/*", "#!", "#", "--", "*"} {
+		if strings.HasPrefix(line, marker) {
+			line = strings.TrimPrefix(strings.TrimPrefix(line, marker), " ")
+			break
+		}
+	}
+	return strings.TrimSuffix(strings.TrimRight(line, " \t"), "*/")
+}
+
+// dedent removes the indentation shared by every line of text.
+func dedent(text string) string {
+	lines := strings.Split(text, "\n")
+	shared := -1
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		width := len(line) - len(strings.TrimLeft(line, " \t"))
+		if shared < 0 || width < shared {
+			shared = width
+		}
+	}
+	if shared <= 0 {
+		return text
+	}
+	for i, line := range lines {
+		if len(line) >= shared {
+			lines[i] = line[shared:]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// directive reports whether a raw comment line is machine-readable rather than
+// prose: a shebang, a build constraint, a linter pragma, a Deprecated: note.
+func directive(line string) bool {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "#!") {
+		return true
+	}
+	line = strings.ToLower(strings.TrimLeft(line, "/*#-! \t"))
+	for _, prefix := range directives {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+var directives = []string{
+	"go:", "+build", "export", "cgo", "nolint", "deprecated:", "lint:", "revive:",
+	"staticcheck", "gocyclo", "golangci", "eslint-", "@ts-", "ts-ignore",
+	"ts-expect-error", "prettier-", "biome-ignore", "oxlint-", "istanbul", "c8 ",
+	"coverage:", "noqa", "type:", "pylint:", "pyright:", "mypy:", "fmt:",
+	"shellcheck", "spell-checker", "codegen", "sourcery", "clang-format",
+	"nosec", "gosec", "safety:", "checkov:", "tflint-",
+}
+
+// literal is the degraded reading of a comment, used where ONNX Runtime is
+// missing and the semantic pass cannot run. It matches phrases rather than
+// meaning, so it catches the common wording of a change-event comment and
+// nothing beyond it.
+func literal(text string) string {
+	if history(text) != "" {
+		return reasonFor("history")
+	}
+	if compat(text) {
+		return reasonFor("compat")
+	}
+	return ""
+}
+
+// history returns the change-event phrase a comment carries, or "" when it
+// carries none. Bare "new", "old", and "now" are not markers: ordinary contract
+// prose uses all three.
+func history(text string) string {
+	haystack := normalize(text)
+	for _, phrase := range historyMarkers {
+		if strings.Contains(haystack, " "+phrase+" ") {
+			return phrase
+		}
+	}
+	return ""
+}
+
+var historyMarkers = []string{
+	"previously", "formerly", "refactored", "renamed",
+	"no longer", "used to", "instead of", "changed from", "switched from",
+	"moved from", "was replaced", "replaces the", "this fixes", "fixes the",
+	"fix for", "we now", "it now", "now uses", "now returns", "now takes",
+	"now handles", "before this change", "after the refactor", "as of this change",
+	"the old implementation", "the new implementation", "for now",
+}
+
+// compat reports whether a comment justifies a symbol by its own history rather
+// than by its contract.
+func compat(text string) bool {
+	haystack := normalize(text)
+	for _, phrase := range []string{
+		"backwards compatibility", "backward compatibility", "for compatibility",
+		"kept for", "left for", "legacy callers", "old callers",
+	} {
+		if strings.Contains(haystack, " "+phrase+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+// normalize lowercases text and reduces everything that is not a letter or
+// digit to a single space, padded so that a phrase match is a word match.
+func normalize(text string) string {
+	var b strings.Builder
+	b.WriteByte(' ')
+	space := true
+	for _, r := range strings.ToLower(text) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			space = false
+		case !space:
+			b.WriteByte(' ')
+			space = true
+		}
+	}
+	if !space {
+		b.WriteByte(' ')
+	}
+	return b.String()
+}
+
+// sentences counts the sentences in a comment's prose.
+func sentences(text string) int {
+	fields := strings.Fields(text)
+	count := 0
+	for i := range fields {
+		if terminates(fields, i) {
+			count++
+		}
+	}
+	return count
+}
+
+// split cuts a comment's prose into sentences, the unit the semantic pass
+// reads. A doc embedded whole averages its claims together, and the one
+// sentence that has to move is exactly what the average loses.
+func split(text string) []string {
+	fields := strings.Fields(text)
+	var out []string
+	start := 0
+	for i := range fields {
+		if !terminates(fields, i) {
+			continue
+		}
+		out = append(out, strings.Join(fields[start:i+1], " "))
+		start = i + 1
+	}
+	if start < len(fields) {
+		out = append(out, strings.Join(fields[start:], " "))
+	}
+	return out
+}
+
+// opening returns the sentences a comment is judged on. A doc states its
+// contract first and elaborates after, so the tail carries little and costs a
+// forward pass each; length itself is already the length rule's business.
+func opening(sentences []string) []string {
+	const read = 3
+	if len(sentences) > read {
+		return sentences[:read]
+	}
+	return sentences
+}
+
+// terminates reports whether the field at i ends a sentence rather than an
+// abbreviation, an initial, or a version number.
+func terminates(fields []string, i int) bool {
+	word := strings.TrimRight(fields[i], "\"')]`")
+	if !strings.HasSuffix(word, ".") && !strings.HasSuffix(word, "!") && !strings.HasSuffix(word, "?") {
+		return false
+	}
+	word = strings.TrimRight(word, ".!?")
+	if initial(word) || abbreviations[strings.ToLower(word)] || numeric(word) {
+		return false
+	}
+	return i+1 >= len(fields) || !lowerStart(fields[i+1])
+}
+
+var abbreviations = map[string]bool{
+	"e.g": true, "i.e": true, "etc": true, "cf": true, "vs": true, "resp": true,
+	"approx": true, "no": true, "fig": true, "eq": true, "al": true, "mr": true,
+	"dr": true, "st": true, "ca": true, "viz": true,
+}
+
+// code reports whether a comment's prose is shaped like source rather than like
+// a sentence, which is the cheap half of the commented-out-code rule.
+func code(text string) bool {
+	if strings.ContainsAny(text, "={};") {
+		return true
+	}
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return false
+	}
+	return keywords[strings.Trim(strings.ToLower(fields[0]), "(:")]
+}
+
+var keywords = map[string]bool{
+	"if": true, "else": true, "elif": true, "for": true, "while": true, "switch": true,
+	"case": true, "return": true, "yield": true, "break": true, "continue": true,
+	"func": true, "function": true, "fn": true, "def": true, "class": true, "struct": true,
+	"impl": true, "trait": true, "interface": true, "enum": true, "type": true,
+	"import": true, "export": true, "from": true, "package": true, "use": true,
+	"require": true, "include": true, "module": true, "const": true, "let": true,
+	"var": true, "val": true, "static": true, "public": true, "private": true,
+	"protected": true, "print": true, "println": true, "console.log": true,
+	"throw": true, "try": true, "catch": true, "finally": true, "panic": true,
+	"defer": true, "go": true, "await": true, "async": true, "with": true, "pass": true,
+	"echo": true, "printf": true, "fmt.println": true, "fmt.printf": true,
+}
+
+// initial reports whether a word is a single capital letter, which ends a name
+// rather than a sentence.
+func initial(word string) bool {
+	runes := []rune(word)
+	return len(runes) == 1 && runes[0] >= 'A' && runes[0] <= 'Z'
+}
+
+// numeric reports whether a word is a number or a version, whose trailing dot
+// is a decimal point rather than a full stop. A bare "v" is neither.
+func numeric(word string) bool {
+	digits := false
+	for _, r := range word {
+		switch {
+		case r >= '0' && r <= '9':
+			digits = true
+		case r == '.' || r == 'v' || r == 'V':
+		default:
+			return false
+		}
+	}
+	return digits
+}
+
+func lowerStart(word string) bool {
+	for _, r := range word {
+		return r >= 'a' && r <= 'z'
+	}
+	return false
+}

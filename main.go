@@ -1,10 +1,10 @@
-// Command slopguard is a PostToolUse hook for the Write and Edit tools. It
-// parses the file the agent has just written, finds the comments in the new
-// text that the explanation-placement rules turn away, and hands them back as
-// context so the agent reconsiders them before moving on.
+// Command slopguard is a PostToolUse hook for the Write and Edit tools: it
+// objects to comments in the text a write just added whose claim belongs
+// somewhere else.
 //
 // It reads the hook payload on stdin and writes a PostToolUse result on stdout.
-// A write it does not object to produces no output at all.
+// A write it does not object to produces no output at all. Given file paths as
+// arguments instead, it judges those files and prints what it finds.
 package main
 
 import (

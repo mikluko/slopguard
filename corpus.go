@@ -1,33 +1,13 @@
 package main
 
-// The corpus is the specification of taste. The classes were distilled from
-// comments an agent wrote into working repositories, preferring the ones a
-// human deleted within weeks; the contract set was distilled from the Go
-// standard library, the DOOM sources, and Django, whose comments have aged
-// well, and from the infrastructure register the classes kept misreading.
+// The corpus is the specification of taste: the classes come from comments an
+// agent wrote into working repositories, preferring the ones a human deleted
+// within weeks, and the contract set from the Go standard library, the DOOM
+// sources, Django, and the infrastructure register the classes kept misreading.
 //
-// A fifth class was tried and dropped, and its absence is measured rather than
-// an oversight. A change-event explanation — "we now use the pooled client",
-// "this fixes the nil panic" — belongs in the commit message, and recognising
-// one was the original point of this tool. It cannot be done this way. The
-// distinction is in the embedding: across twenty pairs writing one claim first
-// as contract and then as change event, the change-event member projects
-// further along the fitted direction in nineteen. But framing moves a sentence
-// about a quarter as far as its subject does, so averaging a class of comments
-// about different subjects cancels the framing and leaves the topic. Directions
-// fitted from two disjoint halves of real comments agree at cos +0.32 for that
-// class, against +0.58 for compat and +0.65 for tautology: it converges on
-// nothing. An L2 logistic head over the same vectors reaches the same +0.32 and
-// no held-out threshold at 0.70 precision, so the method was not the limit, and
-// exemplars rewritten in the register real comments use reach 0.70 recall at
-// 0.64 precision, failing on contracts about state that changes over time —
-// what the direction learns is "is about change", not "its truth condition is
-// in the past".
-//
-// A phrase list is worse than nothing here. "The consumer no longer runs these
-// durables" is a contract that spells a marker, and across 33 files of a
-// production service all seven change-event findings a phrase list produced
-// were of that shape.
+// A change-event class was tried and deleted. Its absence is measured rather
+// than an oversight, and the measurements are in the README under "What it does
+// not catch, and why".
 
 var classes = []class{
 	{

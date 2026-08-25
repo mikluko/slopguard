@@ -436,10 +436,9 @@ func TestHeldOut(t *testing.T) {
 			want, got, m.score, m.floor, m.contract, m.score-m.contract, m.text)
 	}
 
-	// Only the false-positive rate is asserted. A missed change-event comment
-	// costs a nudge nobody sees; prose wrongly nudged costs the agent an edit
-	// against documentation that was already right, which is the failure this
-	// tool cannot afford. The rest is reported and left to a human to read.
+	// Only the false-positive rate is asserted: prose wrongly nudged costs an
+	// edit against documentation that was already right, and a missed comment
+	// costs a nudge nobody sees.
 	contract, left := 0, 0
 	for i, r := range heldout {
 		if r.class != "" {

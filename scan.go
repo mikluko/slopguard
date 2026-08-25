@@ -222,7 +222,7 @@ func leftover(c comment, lang *language, src []byte) bool {
 		return false
 	}
 	if lang.evidence != nil {
-		return lang.evidence(root, []byte(body), len(c.nodes)) && !documented(c, src)
+		return lang.evidence(c, root, []byte(body), src)
 	}
 	return root.NamedChildCount() > 0
 }
@@ -286,8 +286,8 @@ func opened(root, node *tree_sitter.Node, src []byte) *tree_sitter.Node {
 // elsewhere: configuration nests, or repeats, or carries a value with no prose
 // in it, while `# Note: this cluster is shared` carries a sentence and a
 // capital.
-func yamlConfig(root *tree_sitter.Node, src []byte, lines int) bool {
-	if !holds(root, structures) {
+func yamlConfig(c comment, root *tree_sitter.Node, body, src []byte) bool {
+	if !holds(root, structures) || documented(c, src) {
 		return false
 	}
 	var pairs []*tree_sitter.Node
@@ -307,7 +307,7 @@ func yamlConfig(root *tree_sitter.Node, src []byte, lines int) bool {
 	titled := 0
 	for _, pair := range pairs {
 		if key := pair.ChildByFieldName("key"); key != nil {
-			if text := key.Utf8Text(src); text != "" && text[0] >= 'A' && text[0] <= 'Z' {
+			if text := key.Utf8Text(body); text != "" && text[0] >= 'A' && text[0] <= 'Z' {
 				titled++
 			}
 		}
@@ -323,7 +323,7 @@ func yamlConfig(root *tree_sitter.Node, src []byte, lines int) bool {
 	}
 	for _, pair := range pairs {
 		value := pair.ChildByFieldName("value")
-		if value == nil || strings.Contains(strings.TrimSpace(value.Utf8Text(src)), " ") {
+		if value == nil || strings.Contains(strings.TrimSpace(value.Utf8Text(body)), " ") {
 			return false
 		}
 	}

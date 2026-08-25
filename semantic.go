@@ -23,8 +23,10 @@ type class struct {
 // in false positives than it buys. Where ONNX Runtime is missing the phrases
 // are all there is, and judging worse beats staying silent.
 //
-// Each comment arrives as its sentences, and bias lowers a comment's threshold
-// by however much its position already argues against it.
+// Each comment arrives as its sentences, and bias moves its threshold by
+// whatever [allowance] made of where it sits and how long it is. A caller
+// passing a bare zero is judging a one-line comment above a declaration,
+// whatever it actually handed over.
 func judge(comments [][]string, bias []float64) []verdict {
 	var flat []string
 	var owner []int
@@ -83,12 +85,12 @@ func nearest(vector []float32, bias float64) verdict {
 // is taken to have recognised anything: the width of the noise the thresholds
 // are fitted through rather than a reading.
 //
-// The case that prompted it — a stock chart header clearing by 0.003 — is now
-// answered structurally, by requiring a restatement to share a word with the
-// line it restates. What is left is the noise floor. Measured held out, 0.02
-// cost restatement two true positives of fifteen to buy one fewer false
-// positive of seventy-five, so this sits just above the evidence rather than
-// four times it.
+// The two thresholds a comment can meet want different things from it, and the
+// sweep in window_test.go prints both: above a declaration anything up to 0.01
+// is free while 0.02 costs three catches of twenty-three, and inside a function
+// body 0.02 is what buys the last false positive of seventy-five at no cost in
+// catches. This takes the first reading and accepts that one false positive,
+// which the held-out floor tolerates.
 const clear = 0.005
 
 // perDraw is how much each additional sentence in a comment raises the bar for
@@ -97,9 +99,10 @@ const clear = 0.005
 //
 // Measured by the sweep in window_test.go, on held-out contract rows read three
 // to a comment and on held-out positives padded with two innocent neighbours:
-// 0.005 is what buys the last false positive, and every larger step costs true
-// positives and buys nothing. It costs nothing at all on the one-line comments
-// most findings come from.
+// 0.005 is the smallest step that leaves all twenty-five contract comments
+// alone, and it costs no catches at all. 0.01 is free too; 0.02 costs three of
+// twenty-three. It costs nothing on the one-line comments most findings come
+// from, whatever the step.
 const perDraw = 0.005
 
 // allowance is how far a comment's threshold moves before it is judged: down by

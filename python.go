@@ -17,7 +17,7 @@ import (
 // when what it assigns is a value: `TIMEOUT = 30` is a setting somebody
 // commented out, and `on_delete=CASCADE is deliberate` assigns a comparison,
 // which is a sentence wearing an equals sign.
-func pythonCode(root *tree_sitter.Node, src []byte, lines int) bool {
+func pythonCode(c comment, root *tree_sitter.Node, body, src []byte) bool {
 	found := false
 	var walk func(*tree_sitter.Node)
 	walk = func(node *tree_sitter.Node) {
@@ -64,8 +64,8 @@ func settable(kind string) bool {
 // "copy the buffer before the write" parses as a clean COPY. What separates
 // them is the case. Every Dockerfile in the world writes its instructions in
 // capitals, and no comment writes prose that way.
-func dockerCode(root *tree_sitter.Node, src []byte, lines int) bool {
-	head := strings.Fields(string(src))
+func dockerCode(c comment, root *tree_sitter.Node, body, src []byte) bool {
+	head := strings.Fields(string(body))
 	if len(head) == 0 || head[0] != strings.ToUpper(head[0]) {
 		return false
 	}

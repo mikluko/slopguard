@@ -35,9 +35,9 @@ type language struct {
 	strict bool
 	// evidence decides, for a language whose prose parses as source, whether a
 	// cleanly parsed comment is code somebody commented out or a sentence that
-	// merely reads as code. It is given the parse of the comment, the text it
-	// came from, and how many lines the comment ran to.
-	evidence func(root *tree_sitter.Node, src []byte, lines int) bool
+	// merely reads as code. It is given the comment, the parse of its text, that
+	// text, and the file the comment came from.
+	evidence func(c comment, parsed *tree_sitter.Node, body, src []byte) bool
 	// templated reports whether files in this language are commonly written
 	// through a template whose actions the grammar cannot read.
 	templated bool
@@ -55,18 +55,24 @@ func lookup(path string) *language {
 	if lang := byName[name]; lang != nil {
 		return lang
 	}
-	// A named file keeps its language when it is qualified: Dockerfile.dev and
-	// api.Dockerfile are both Dockerfiles, and Makefile.local is a Makefile.
-	for named, lang := range byName {
-		if strings.HasPrefix(name, named+".") || strings.HasSuffix(name, "."+named) {
+	if extension := strings.ToLower(filepath.Ext(name)); extension != "" {
+		if lang := byExtension[extension]; lang != nil {
 			return lang
 		}
 	}
-	if extension := strings.ToLower(filepath.Ext(name)); extension != "" {
-		return byExtension[extension]
+	// A named file keeps its language when it is qualified: Dockerfile.dev and
+	// api.Dockerfile are both Dockerfiles, and Makefile.local is a Makefile.
+	// The extension is asked first, so Makefile.md is the markdown it is.
+	for _, named := range qualified {
+		if strings.HasPrefix(name, named+".") || strings.HasSuffix(name, "."+named) {
+			return byName[named]
+		}
 	}
 	return nil
 }
+
+// qualified is byName's keys in a fixed order, since a map's is not one.
+var qualified = []string{"Dockerfile", "Containerfile", "Makefile", "makefile", "GNUmakefile"}
 
 var (
 	golang = &language{

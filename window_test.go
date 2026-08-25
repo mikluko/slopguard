@@ -56,14 +56,22 @@ func TestPerDraw(t *testing.T) {
 	skipWithoutRuntime(t)
 	texts, want := heldOut()
 
+	// A row labelled for a class this build does not carry is catchable by
+	// nothing, so counting it among the positives would credit a correction
+	// with rows no setting could ever reach.
+	live := map[string]bool{}
+	for _, c := range classes {
+		live[c.name] = true
+	}
 	var contract []string
 	var positives [][]string
 	for i, text := range texts {
-		if want[i] == "" {
+		switch {
+		case want[i] == "":
 			contract = append(contract, text)
-			continue
+		case live[want[i]]:
+			positives = append(positives, []string{text})
 		}
-		positives = append(positives, []string{text})
 	}
 	// A positive padded with contract prose is the case the correction has to
 	// survive: the comment is still one that should be nudged, and it now
@@ -103,6 +111,52 @@ func biasFor(comments [][]string, step float64) []float64 {
 		out[i] = buriedBias - float64(len(sentences)-1)*step
 	}
 	return out
+}
+
+// TestClear reports what each noise floor costs and buys, at both thresholds a
+// comment can meet: above a declaration, and inside a function body where the
+// bar is lower. It is how clear was chosen, and the two rows behave differently
+// enough that a number quoted from one of them says little about the other.
+func TestClear(t *testing.T) {
+	skipWithoutRuntime(t)
+	e, err := model()
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts, want := heldOut()
+	vectors, err := e.embed(texts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := map[string]bool{}
+	for _, c := range classes {
+		live[c.name] = true
+	}
+	for _, bias := range []float64{0, buriedBias} {
+		for _, floor := range []float64{0.0, 0.005, 0.01, 0.02, 0.04} {
+			caught, nudged, catchable := 0, 0, 0
+			for i, v := range vectors {
+				if live[want[i]] {
+					catchable++
+				}
+				best, over := -1, floor
+				for k := range classes {
+					if s := dot(v, fitted.directions[k]) - (fitted.thresholds[k] - bias); s > over {
+						best, over = k, s
+					}
+				}
+				switch {
+				case best < 0:
+				case want[i] == "":
+					nudged++
+				case classes[best].name == want[i]:
+					caught++
+				}
+			}
+			t.Logf("bias %.2f  clear %.3f  caught %d/%d  contract nudged %d/75",
+				bias, floor, caught, catchable, nudged)
+		}
+	}
 }
 
 // fires returns the class a vector fires, or -1, under the rule the binary

@@ -216,9 +216,9 @@ pays about 90 ms for the ONNX session and 2 ms a sentence after that.
 - Change-event comments, as above.
 - A five-word fragment carries too little for an embedding to place.
 - `Jenkinsfile` and other Groovy: no grammar wired.
-- Recall is modest by construction: held out, restatement reaches three fifths
-  and self-justification a quarter, at the precision the thresholds are fitted
-  for. A comment this tool passes over is not a comment it approves of.
+- Recall is modest by construction: held out, restatement reaches about half and
+  self-justification a quarter, at the precision the thresholds are fitted for.
+  A comment this tool passes over is not a comment it approves of.
 - A chart's `values.yaml` documents its optional settings by commenting them
   out, so commented-out config is not reported there at all. Every other rule
   still applies to it.
@@ -233,10 +233,16 @@ pays about 90 ms for the ONNX session and 2 ms a sentence after that.
 ## Calibration
 
 Thresholds are fitted, not chosen. Each class gets the lowest score at which it
-still fires at 0.85 precision on the fitting corpus, and 0.85 itself is measured:
-`go test -v -run TestCalibrate` fits at 0.70 through 0.95 and reports what each
-costs on comments the fit never saw. Below 0.85 the tool starts nudging prose
-that was right; above it, recall falls and nothing is bought.
+still fires at 0.85 precision on the fitting corpus — over everything above the
+cut, and among the examples within 0.02 of it, since cumulative precision alone
+lets a clean top of the ranking buy slack that is spent entirely at the margin.
+
+Both numbers are measured rather than picked. `go test -v -run TestCalibrate`
+fits at required precisions from 0.70 to 0.95, and `-run TestWindow` at margin
+widths from 0 to 0.08; each reports what that choice costs on comments the fit
+never saw. Below 0.85 the tool starts nudging prose that was right; above it,
+recall falls for nothing. The margin band from 0.01 to 0.02 nudges no held-out
+prose at all and still reaches the most true positives.
 
 The corpus is in `corpus.go` (hand-written) and `mined.go` (harvested and
 labelled). Half of the harvest fits; the other half is held out in
@@ -244,13 +250,13 @@ labelled). Half of the harvest fits; the other half is held out in
 precision and recall per class against that half, and fails if the share of
 contract prose left alone drops.
 
-Measured on 98 held-out comments: restatement at recall 0.60 and
+Measured on 98 held-out comments: restatement at recall 0.53 and
 self-justification at 0.25, both at precision 1.0. Contract prose is left alone
-75 of 75 above a declaration, 73 of 75 at the lower threshold a comment inside a
-function body meets, and 24 of 25 when those rows are read three to a comment,
+75 of 75 above a declaration, 74 of 75 at the lower threshold a comment inside a
+function body meets, and 25 of 25 when those rows are read three to a comment,
 which is the unit a real doc comment arrives in. All three are asserted.
 
-On a production Go service, 22 findings across `internal`, `app` and `pkg`. On
+On a production Go service, 27 findings across `internal`, `app` and `pkg`. On
 9934 YAML files and 5313 Terraform files of an infrastructure repository, 32
 findings between them. On its own source, none.
 

@@ -7,6 +7,8 @@ import (
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
+	tsdocker "github.com/alexaandru/go-sitter-forest/dockerfile"
+	tsmake "github.com/alexaandru/go-sitter-forest/make"
 	tshcl "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
 	tsyaml "github.com/tree-sitter-grammars/tree-sitter-yaml/bindings/go"
 	tsbash "github.com/tree-sitter/tree-sitter-bash/bindings/go"
@@ -45,10 +47,18 @@ type language struct {
 	docstrings bool
 }
 
-// lookup returns the language to parse path as, or nil when the extension
-// carries no grammar.
+// lookup returns the language to parse path as, or nil when nothing here reads
+// it. A file with no useful extension is looked up by name, which is the only
+// way a Dockerfile or a Makefile is ever identified.
 func lookup(path string) *language {
-	return byExtension[strings.ToLower(filepath.Ext(path))]
+	name := filepath.Base(path)
+	if lang := byName[name]; lang != nil {
+		return lang
+	}
+	if extension := strings.ToLower(filepath.Ext(name)); extension != "" {
+		return byExtension[extension]
+	}
+	return nil
 }
 
 var (
@@ -153,6 +163,22 @@ var (
 		functions: set(),
 		strict:    true,
 	}
+	// A Dockerfile and a Makefile are named rather than extended, and both are
+	// written by agents constantly. Neither has function bodies; a Makefile's
+	// recipes are shell, which this does not descend into.
+	dockerfile = &language{
+		name:      "dockerfile",
+		grammar:   tsdocker.GetLanguage,
+		comments:  set("comment"),
+		functions: set(),
+		evidence:  dockerCode,
+	}
+	makefile = &language{
+		name:      "make",
+		grammar:   tsmake.GetLanguage,
+		comments:  set("comment"),
+		functions: set(),
+	}
 	php = &language{
 		name:     "php",
 		grammar:  tsphp.LanguagePHP,
@@ -193,6 +219,16 @@ var byExtension = map[string]*language{
 	".tf":     hcl,
 	".tfvars": hcl,
 	".hcl":    hcl,
+	".mk":     makefile,
+}
+
+// byName reads the files that carry their language in their name.
+var byName = map[string]*language{
+	"Dockerfile":    dockerfile,
+	"Containerfile": dockerfile,
+	"Makefile":      makefile,
+	"makefile":      makefile,
+	"GNUmakefile":   makefile,
 }
 
 func set(names ...string) map[string]bool {

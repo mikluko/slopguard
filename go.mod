@@ -3,6 +3,8 @@ module github.com/mikluko/slopguard
 go 1.27.0
 
 require (
+	github.com/alexaandru/go-sitter-forest/dockerfile v1.9.1
+	github.com/alexaandru/go-sitter-forest/make v1.9.1
 	github.com/gomlx/go-huggingface v0.4.1
 	github.com/tree-sitter-grammars/tree-sitter-hcl v1.2.0
 	github.com/tree-sitter-grammars/tree-sitter-yaml v0.7.2

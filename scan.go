@@ -203,7 +203,10 @@ func leftover(c comment, lang *language) bool {
 	if err := parser.SetLanguage(tree_sitter.NewLanguage(lang.grammar())); err != nil {
 		return false
 	}
-	body := dedent(c.body)
+	// The newline is not cosmetic: some grammars, Dockerfile's among them,
+	// require a line ending and report a MISSING node without one, which reads
+	// as a broken parse and stops this rule before it starts.
+	body := dedent(c.body) + "\n"
 	tree := parser.Parse([]byte(body), nil)
 	if tree == nil {
 		return false

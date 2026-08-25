@@ -108,10 +108,11 @@ a manifest opening with `{{- if }}` keeps its comments and its byte offsets. A
 `.tpl` file is deliberately not mapped: those are mostly `{{ define }}` bodies,
 and calling them YAML would be a false claim of coverage.
 
-Dispatch is by extension, so `Dockerfile`, `Makefile` and `Jenkinsfile` are
-unreachable. That is not an oversight to fix by adding a basename table: no
-tree-sitter grammar for them ships Go bindings, so the table would map to
-nothing.
+`Dockerfile`, `Containerfile` and `Makefile` are read too, by name rather than
+by extension. A commented-out Dockerfile instruction is told from prose by its
+case: every Dockerfile writes `RUN` and `COPY` in capitals, and no comment
+writes prose that way, which matters because `# copy the buffer first` parses as
+a perfectly good `COPY`.
 
 ## Install
 
@@ -215,7 +216,7 @@ pays about 90 ms for the ONNX session and 2 ms a sentence after that.
 
 - Change-event comments, as above.
 - A five-word fragment carries too little for an embedding to place.
-- Files without a useful extension, as above.
+- `Jenkinsfile` and other Groovy: no grammar wired.
 - Recall is modest by construction: held out, restatement reaches two thirds and
   self-justification a quarter, at the precision the thresholds are fitted for. A
   comment this tool passes over is not a comment it approves of.

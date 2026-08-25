@@ -1,3 +1,7 @@
+github.com/alexaandru/go-sitter-forest/dockerfile v1.9.1 h1:J874Qr7NNIjYe0lk1Ia6XcNskv6hgzd0JKBhik6E94c=
+github.com/alexaandru/go-sitter-forest/dockerfile v1.9.1/go.mod h1:LSPviwKzlksGPTMe2C5Kaz+hHIYX9x/frFYJWJTjSQg=
+github.com/alexaandru/go-sitter-forest/make v1.9.1 h1:RthLvGEwRi7bufPhFqlg1azcVu0hd1OWRWdcAI56LtE=
+github.com/alexaandru/go-sitter-forest/make v1.9.1/go.mod h1:2zuovDw+jvgWnWU/WMRDxtjHOo4ttuNJX+tIq3egxoM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gofrs/flock v0.13.0 h1:95JolYOvGMqeH31+FC7D2+uULf6mG61mEZ/A8dRYMzw=

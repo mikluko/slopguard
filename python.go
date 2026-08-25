@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -54,6 +56,32 @@ func settable(kind string) bool {
 		return true
 	}
 	return false
+}
+
+// dockerCode reports whether a comment is a commented-out instruction.
+//
+// The grammar alone cannot say: an instruction is a keyword and some words, so
+// "copy the buffer before the write" parses as a clean COPY. What separates
+// them is the case. Every Dockerfile in the world writes its instructions in
+// capitals, and no comment writes prose that way.
+func dockerCode(root *tree_sitter.Node, src []byte, lines int) bool {
+	head := strings.Fields(string(src))
+	if len(head) == 0 || head[0] != strings.ToUpper(head[0]) {
+		return false
+	}
+	found := false
+	var walk func(*tree_sitter.Node)
+	walk = func(node *tree_sitter.Node) {
+		if strings.HasSuffix(node.Kind(), "_instruction") {
+			found = true
+			return
+		}
+		for i := uint(0); i < node.ChildCount() && !found; i++ {
+			walk(node.Child(i))
+		}
+	}
+	walk(root)
+	return found
 }
 
 // docstring reports whether a node is a documentation string: a bare string in

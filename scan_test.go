@@ -324,6 +324,31 @@ metadata:
 		want: "commented-out",
 	},
 	{
+		name: "dockerfile commented-out instruction",
+		lang: dockerfile,
+		src: `FROM alpine:3.20
+# RUN apk add --no-cache curl
+RUN apk add --no-cache ca-certificates
+`,
+		want: "commented-out",
+	},
+	{
+		name: "dockerfile comment carrying a constraint",
+		lang: dockerfile,
+		src: `FROM alpine:3.20
+# the certificates have to land before the build, which fetches over TLS
+RUN apk add --no-cache ca-certificates
+`,
+	},
+	{
+		name: "makefile comment carrying a constraint",
+		lang: makefile,
+		src: `# the asset is refit here rather than in build, because it needs the model
+test:
+	go test ./...
+`,
+	},
+	{
 		name: "terraform commented-out attribute",
 		lang: hcl,
 		src: `resource "aws_instance" "worker" {

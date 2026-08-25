@@ -14,6 +14,17 @@ const converges = 0.45
 // TestStability fits each class from the even half of its own examples and
 // again from the odd half, and compares the two directions. Everything outside
 // the class stays in both halves, since it is the class that has to converge.
+//
+// What it measures is reproducibility, not coherence, and the difference
+// matters: gluing two unrelated classes into one deliberately incoherent class
+// scores +0.68 and passes, because an alternating split hands each half the
+// same mixture. It catches a class whose examples share no direction at all,
+// which is what the change-event class turned out to be, and it would not catch
+// a class that is two coherent things wearing one name.
+//
+// The floor is not arbitrary. Against 200 random pseudo-classes carved out of
+// the contract pool, this statistic has a median of +0.06 and a 95th percentile
+// of +0.21; the classes that survive sit at +0.59 and +0.69.
 func TestStability(t *testing.T) {
 	skipWithoutRuntime(t)
 	e, err := model()

@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	_ "embed"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -71,11 +72,13 @@ var (
 // reaches it; a hook that finds no comment to judge never pays it and returns
 // in about 5 ms.
 func model() (*embedder, error) {
+	// Read outside the Once: a process that consults the variable only on its
+	// first call would answer later ones from whatever it happened to hold
+	// then, which in a test run is whichever test got there first.
+	if os.Getenv(disableEnv) != "" {
+		return nil, errors.New("the semantic pass is off")
+	}
 	loadOnce.Do(func() {
-		if os.Getenv(disableEnv) != "" {
-			loadedErr = fmt.Errorf("the semantic pass is off")
-			return
-		}
 		loaded, loadedErr = load()
 	})
 	return loaded, loadedErr

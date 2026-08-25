@@ -161,7 +161,7 @@ type verdict struct {
 // to leave that judgment to the semantic pass. The first rule that fires wins:
 // one line of nudge per comment.
 func inspect(c comment, lang *language, src []byte) verdict {
-	if leftover(c, lang) {
+	if leftover(c, lang, src) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
 	if echoes(c, src) {
@@ -191,7 +191,7 @@ func site(text string) uint64 {
 // sequence parses, shell and Ruby among them, are exempt. A language whose
 // prose parses as a plain value, YAML, needs a structure to appear and needs
 // more than one line, because `# note: read this` is a mapping too.
-func leftover(c comment, lang *language) bool {
+func leftover(c comment, lang *language, src []byte) bool {
 	if c.doc {
 		return false
 	}
@@ -340,13 +340,12 @@ func holds(node *tree_sitter.Node, kinds map[string]bool) bool {
 
 // buried reports whether a node sits inside a function body, where the rules
 // allow no prose at all.
-// found is a comment node and what the walk down to it already knew: whether
-// anything above it was a function.
+// found is a comment node together with what the walk down to it already knew:
+// whether anything above it was a function.
 //
-// Climbing back up to ask costs more than it looks. tree-sitter's Parent()
-// re-descends from the root, so a climb is quadratic in depth, and a 64 KB file
-// of deeply nested code took twenty seconds of it. The walk down passes the
-// answer along instead.
+// The answer travels down rather than being asked for on the way back up,
+// because tree-sitter answers Parent() by re-descending from the root, which
+// makes a climb quadratic in the depth of the file.
 type found struct {
 	node   *tree_sitter.Node
 	buried bool

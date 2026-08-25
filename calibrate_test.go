@@ -51,7 +51,10 @@ func TestCalibrate(t *testing.T) {
 				if want[i] == c.name {
 					labelledAs++
 				}
-				best, over := -1, 0.0
+				// The same rule the binary runs, margin included: a
+				// procedure that justifies a threshold by measuring a
+				// different rule justifies nothing.
+				best, over := -1, clear
 				for k := range classes {
 					if s := dot(v, h.directions[k]) - h.thresholds[k]; s > over {
 						best, over = k, s

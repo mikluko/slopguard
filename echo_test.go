@@ -60,6 +60,15 @@ func Counter() int { return counter }
 `,
 	},
 	{
+		name: "a heading is not a restatement of what it heads",
+		lang: hcl,
+		src: `variable "node" {
+  # User data
+  type = string
+}
+`,
+	},
+	{
 		name: "python, snake case split",
 		lang: python,
 		src: `def f(user):
@@ -73,14 +82,19 @@ func Counter() int { return counter }
 func TestEchoes(t *testing.T) {
 	for _, c := range echoCases {
 		t.Run(c.name, func(t *testing.T) {
+			if !c.want {
+				// A case that must stay silent has to hold against the model
+				// as well, since that is the other way this class fires.
+				skipWithoutRuntime(t)
+			}
 			found := false
 			for _, f := range scan([]byte(c.src), c.lang, []span{{start: 0, end: uint(len(c.src))}}) {
-				if f.class == "echo" {
+				if f.class == "echo" || f.class == "tautology" {
 					found = true
 				}
 			}
 			if found != c.want {
-				t.Fatalf("echo = %v, want %v", found, c.want)
+				t.Fatalf("read as restatement = %v, want %v", found, c.want)
 			}
 		})
 	}

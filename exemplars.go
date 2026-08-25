@@ -5,8 +5,8 @@ import (
 	"hash/fnv"
 )
 
-// The fitted head travels in the binary beside the model: four directions and
-// four thresholds, a few kilobytes, computed once when the corpus changes.
+// The fitted head travels in the binary beside the model: one direction and one
+// threshold per class, a few kilobytes, computed once when the corpus changes.
 
 //go:embed assets/head.bin
 var headBytes []byte

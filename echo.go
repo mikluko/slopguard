@@ -50,8 +50,12 @@ func annotated(root, node *tree_sitter.Node, src []byte) *tree_sitter.Node {
 // container reports whether a node kind holds a run of statements rather than
 // being one. Every grammar spells it differently and all of them spell it in
 // the name.
+//
+// "list" alone is too broad: Go puts the left side of `total := 0` in an
+// expression_list, so climbing would stop at the identifier and the statement
+// would never be seen.
 func container(kind string) bool {
-	for _, mark := range []string{"list", "block", "body", "suite", "statements", "source_file", "program", "module", "document"} {
+	for _, mark := range []string{"statement_list", "statements", "block", "body", "suite", "source_file", "program", "module", "document"} {
 		if strings.Contains(kind, mark) {
 			return true
 		}
@@ -104,7 +108,13 @@ func restates(c comment, src []byte) bool {
 	if len(words) < 2 {
 		return false
 	}
-	if c.buried {
+	// Inside a body, a comment with more code after it is summarising the run
+	// rather than repeating the first line of it: "sum the items" over a
+	// counter and a loop covers all three lines. A comment with nothing after
+	// it has only the one line to be about, which is where "multiply it by
+	// two" over `return v * 2` lives — a restatement in words rather than in
+	// symbols, and one no shared-word test would ever catch.
+	if c.buried && last(c.annotates) {
 		return true
 	}
 	spelled := identifiers(c.annotates, src)
@@ -114,6 +124,16 @@ func restates(c comment, src []byte) bool {
 		}
 	}
 	return false
+}
+
+// last reports whether nothing but comments follows a node in its block.
+func last(node *tree_sitter.Node) bool {
+	for next := node.NextNamedSibling(); next != nil; next = next.NextNamedSibling() {
+		if !strings.Contains(next.Kind(), "comment") {
+			return false
+		}
+	}
+	return true
 }
 
 // oneLine reports whether a node begins and ends on the same line.

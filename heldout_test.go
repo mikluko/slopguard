@@ -272,12 +272,18 @@ func classOf(reason string) string {
 	return "unknown"
 }
 
-// contractFloor is the share of contract prose the model must leave alone.
-// The measured rate on this set is 144 of 151, 0.954; the floor is one miss
-// below it, so a change that costs two more false positives on prose this tool
-// has never seen fails here rather than in somebody's editor. Only this
-// direction is asserted: everything else the test measures is logged, because
-// the recall a re-tune should aim for is a judgement nobody has made yet.
+// contractFloor is the share of contract prose the tool must leave alone.
+//
+// Measured on the 75 contract rows held out: 75 of 75 above a declaration, 73
+// of 75 at the lower threshold a comment inside a function body meets, and 24
+// of 25 when those rows are read three to a comment, which is the unit a real
+// doc comment arrives in. The floor sits one miss below the worst of those, so
+// a change costing another false positive on prose this tool has never seen
+// fails here rather than in somebody's editor.
+//
+// Only this direction is asserted. Everything else the test measures is
+// logged, because the recall a re-tune should aim for is a judgement nobody has
+// made yet.
 const contractFloor = 0.947
 
 func TestHeldOut(t *testing.T) {
@@ -447,6 +453,14 @@ func TestHeldOut(t *testing.T) {
 	for i := range buried {
 		buried[i] = buriedBias
 	}
+	check := func(name string, left, contract int) {
+		rate := float64(left) / float64(contract)
+		t.Logf("%-26s contract prose left alone %d/%d = %.3f", name, left, contract, rate)
+		if rate < contractFloor {
+			t.Errorf("%s: contract prose left alone %d/%d = %.3f, want at least %.3f",
+				name, left, contract, rate, contractFloor)
+		}
+	}
 	for _, pass := range []struct {
 		name    string
 		verdict []verdict
@@ -464,13 +478,34 @@ func TestHeldOut(t *testing.T) {
 				left++
 			}
 		}
-		rate := float64(left) / float64(contract)
-		t.Logf("%-24s contract prose left alone %d/%d = %.3f", pass.name, left, contract, rate)
-		if rate < contractFloor {
-			t.Errorf("%s: contract prose left alone %d/%d = %.3f, want at least %.3f",
-				pass.name, left, contract, rate, contractFloor)
+		check(pass.name, left, contract)
+	}
+
+	// A row is one sentence and a doc comment is several, each of which gets
+	// its own draw against the same threshold, so the rate above is measured
+	// in a unit the hook never sees. Reading the contract rows three to a
+	// comment is what the tool actually faces.
+	var sentences []string
+	for _, r := range heldout {
+		if r.class == "" {
+			sentences = append(sentences, r.text)
 		}
 	}
+	var docs [][]string
+	for at := 0; at < len(sentences); at += 3 {
+		docs = append(docs, sentences[at:min(at+3, len(sentences))])
+	}
+	bias := make([]float64, len(docs))
+	for i := range bias {
+		bias[i] = buriedBias
+	}
+	left := 0
+	for _, v := range judge(docs, bias) {
+		if v.reason == "" {
+			left++
+		}
+	}
+	check("three to a comment", left, len(docs))
 }
 
 // distance is how badly a miss missed, along the class direction and in the

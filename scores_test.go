@@ -37,8 +37,10 @@ func TestScores(t *testing.T) {
 	}
 }
 
+// fmtScore reports what the binary would do with a score, margin included: a
+// diagnostic that models a rule the tool does not run explains nothing.
 func fmtScore(v float64) string {
-	if v > 0 {
+	if v > clear {
 		return " FIRES"
 	}
 	return " ....."

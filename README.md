@@ -215,9 +215,12 @@ pays about 90 ms for the ONNX session and 2 ms a sentence after that.
 - Change-event comments, as above.
 - A five-word fragment carries too little for an embedding to place.
 - `Jenkinsfile` and other Groovy: no grammar wired.
-- Recall is modest by construction: held out, restatement reaches two thirds and
-  self-justification a quarter, at the precision the thresholds are fitted for. A
-  comment this tool passes over is not a comment it approves of.
+- Recall is modest by construction: held out, restatement reaches three fifths
+  and self-justification a quarter, at the precision the thresholds are fitted
+  for. A comment this tool passes over is not a comment it approves of.
+- A chart's `values.yaml` documents its optional settings by commenting them
+  out, so commented-out config is not reported there at all. Every other rule
+  still applies to it.
 - A finding is remembered when it is named, not when it is acted on. Ignoring a
   nudge silences it for the rest of the session, rewording earns a fresh one, and
   deleting the line goes quiet. The cheapest paths to silence are still ignore
@@ -240,20 +243,21 @@ labelled). Half of the harvest fits; the other half is held out in
 precision and recall per class against that half, and fails if the share of
 contract prose left alone drops.
 
-Measured on 98 held-out comments, at both the threshold a doc comment meets and
-the lower one a comment inside a function body meets: contract prose left alone
-75 of 75, restatement at recall 0.67 and self-justification at 0.25, both at
-precision 1.0. On 33 files of a production Go service, 9 findings where the
-first working version produced 48. On 9934 YAML files of an infrastructure
-repository, 104 findings across 15552 comment lines.
+Measured on 98 held-out comments: restatement at recall 0.60 and
+self-justification at 0.25, both at precision 1.0. Contract prose is left alone
+75 of 75 above a declaration, 73 of 75 at the lower threshold a comment inside a
+function body meets, and 24 of 25 when those rows are read three to a comment,
+which is the unit a real doc comment arrives in. All three are asserted.
 
-Two caveats on that first number, because it is the one that decides whether
-this tool is worth running. The held-out half and the fitting half were split
-row by row within each source rather than by source, so comments from one file
-sit on both sides and the classes see the topics they are tested on: it is an
-upper bound. And every labelled row is a single sentence, while a real doc
-comment gets up to three draws against the same threshold, so the multi-sentence
-case is measured only by the repository sweeps, which carry no labels.
+On a production Go service, 22 findings across `internal`, `app` and `pkg`. On
+9934 YAML files and 5313 Terraform files of an infrastructure repository, 32
+findings between them. On its own source, none.
+
+One caveat on the held-out numbers, because they are what decides whether this
+tool is worth running: the held-out half and the fitting half were split row by
+row within each source rather than by source, so comments from one file sit on
+both sides and the classes see the topics they are tested on. It is an upper
+bound, and the repository sweeps above are the group-disjoint check beside it.
 
 Editing the corpus changes every score, so `assets/head.bin` carries a
 fingerprint of the text it was fitted from and `go test` fails when the two

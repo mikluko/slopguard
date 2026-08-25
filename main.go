@@ -114,7 +114,7 @@ func review(in payload) []finding {
 	if len(added) == 0 {
 		return nil
 	}
-	findings := scan(src, lang, added)
+	findings := keep(scan(src, lang, added), in.ToolInput.FilePath)
 	said, before, remember := spoken(in.SessionID, in.ToolInput.FilePath)
 	repeat = before
 	kept := findings[:0]
@@ -129,6 +129,36 @@ func review(in payload) []finding {
 	}
 	remember(findings)
 	return findings
+}
+
+// keep drops the findings a file's own conventions rule out.
+//
+// A chart's values.yaml documents its optional settings by commenting them out
+// — `podSecurityContext: {}` above `# fsGroup: 2000` is what `helm create`
+// scaffolds — so commented-out config there is the documentation rather than
+// something left behind. Both of that rule's instructions are wrong for it:
+// deleting the block deletes the documentation, and making it real changes what
+// the chart deploys. Everything else in the file is still read.
+func keep(findings []finding, path string) []finding {
+	if !documents(path) {
+		return findings
+	}
+	out := findings[:0]
+	for _, f := range findings {
+		if f.class != "leftover" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// documents reports whether a file's commented-out config is its documentation.
+func documents(path string) bool {
+	switch filepath.Base(path) {
+	case "values.yaml", "values.yml":
+		return true
+	}
+	return false
 }
 
 // readable returns the contents of a file worth judging: a regular file, small
@@ -187,7 +217,7 @@ func sweepFiles(paths []string) {
 		if err != nil {
 			continue
 		}
-		for _, f := range scan(src, lang, []span{{start: 0, end: uint(len(src))}}) {
+		for _, f := range keep(scan(src, lang, []span{{start: 0, end: uint(len(src))}}), path) {
 			fmt.Printf("%s:%d\t%s\t%.3f\t%s\n", path, f.line, f.class, f.score, f.reason)
 		}
 	}
@@ -196,11 +226,11 @@ func sweepFiles(paths []string) {
 // written returns the byte ranges of src that this tool call authored: the
 // whole file for a Write, and the text each edit put in place otherwise.
 //
-// An edit is located by its replacement text, which is exact when that text
-// occurs once and a guess when it does not. Ambiguity is resolved by the
-// surrounding old text where the payload carries it, and bounded by
-// [spanBudget] where it does not, because attributing the whole file to a
-// one-character edit would nudge the agent for lines it never touched.
+// An edit is located by its replacement text and trimmed to the bytes that
+// text changed, so an insertion claims the line it added and not the lines it
+// carried along. Where the changed bytes occur more than once, every occurrence
+// is claimed: nothing in the payload tells the copies apart, and [spanBudget]
+// bounds how many a call may claim.
 func written(src []byte, in payload) []span {
 	if in.ToolName == "Write" {
 		return []span{{start: 0, end: uint(len(src))}}
@@ -268,13 +298,13 @@ func shared(old, new string) (prefix, suffix int) {
 	return prefix, suffix
 }
 
-// report is the work handed back to the agent: which lines, which rule, and
-// what to do about each. It names the tool and the file, because a nudge that
-// does not ask for an edit is read as commentary and answered in prose.
 // repeat records whether this session has been nudged before, which is what
 // decides between the instruction and its short form.
 var repeat bool
 
+// report is the work handed back to the agent: which lines, which rule, and
+// what to do about each. It names the tool and the file, because a nudge that
+// does not ask for an edit is read as commentary and answered in prose.
 func report(name string, findings []finding, in payload) string {
 	var b strings.Builder
 	b.WriteString("Edit " + name + " before your next step: these comments it just gained say things that belong elsewhere.\n\n")

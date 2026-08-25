@@ -87,6 +87,35 @@ func echoes(c comment, src []byte) bool {
 	return hits*2 >= len(words)
 }
 
+// restates reports whether the code below a comment could bear out a reading of
+// it as restatement: one line, and at least two content words.
+//
+// Outside a function body it has to share a word with that line as well. That
+// is where headings live — "User data" over `ami_type`, "Networking" over
+// `hostNetwork` — and a heading names the section it opens rather than repeating
+// the setting under it. Inside a body there are no headings, and requiring a
+// shared word there would lose the plainest case there is: "multiply it by two"
+// over `return v * 2`, which repeats the line in words rather than in symbols.
+func restates(c comment, src []byte) bool {
+	if c.annotates == nil || !oneLine(c.annotates) {
+		return false
+	}
+	words := content(c.text)
+	if len(words) < 2 {
+		return false
+	}
+	if c.buried {
+		return true
+	}
+	spelled := identifiers(c.annotates, src)
+	for _, word := range words {
+		if spelled[word] {
+			return true
+		}
+	}
+	return false
+}
+
 // oneLine reports whether a node begins and ends on the same line.
 func oneLine(node *tree_sitter.Node) bool {
 	return node.StartPosition().Row == node.EndPosition().Row

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"slices"
 	"strconv"
@@ -60,7 +61,7 @@ func scan(src []byte, lang *language, added []span) []finding {
 	if err := parser.SetLanguage(tree_sitter.NewLanguage(lang.grammar())); err != nil {
 		return nil
 	}
-	tree := parser.Parse(src, nil)
+	tree := parser.Parse(blank(src, lang), nil)
 	if tree == nil {
 		return nil
 	}
@@ -146,12 +147,7 @@ func inspect(c comment, lang *language) verdict {
 // prose parses as a plain value, YAML, needs a structure to appear and needs
 // more than one line, because `# note: read this` is a mapping too.
 func leftover(c comment, lang *language) bool {
-	switch {
-	case lang.structure != nil:
-		if len(c.nodes) < 2 {
-			return false
-		}
-	case !lang.strict || !code(c.text):
+	if lang.structure == nil && (!lang.strict || !code(c.text)) {
 		return false
 	}
 	parser := tree_sitter.NewParser()
@@ -159,7 +155,8 @@ func leftover(c comment, lang *language) bool {
 	if err := parser.SetLanguage(tree_sitter.NewLanguage(lang.grammar())); err != nil {
 		return false
 	}
-	tree := parser.Parse([]byte(dedent(c.body)), nil)
+	body := dedent(c.body)
+	tree := parser.Parse([]byte(body), nil)
 	if tree == nil {
 		return false
 	}
@@ -169,9 +166,104 @@ func leftover(c comment, lang *language) bool {
 		return false
 	}
 	if lang.structure != nil {
-		return holds(root, lang.structure)
+		return holds(root, lang.structure) && config(root, []byte(body), len(c.nodes))
 	}
 	return root.NamedChildCount() > 0
+}
+
+// config separates configuration somebody commented out from a sentence that
+// happens to hold a colon. Both parse as a mapping, so the tell is elsewhere:
+// configuration nests, or repeats, or carries a value with no prose in it,
+// while `# Note: this cluster is shared` carries a sentence and a capital.
+func config(root *tree_sitter.Node, src []byte, lines int) bool {
+	var pairs []*tree_sitter.Node
+	var walk func(*tree_sitter.Node)
+	walk = func(node *tree_sitter.Node) {
+		if node.Kind() == "block_mapping_pair" || node.Kind() == "flow_pair" {
+			pairs = append(pairs, node)
+		}
+		for i := uint(0); i < node.ChildCount(); i++ {
+			walk(node.Child(i))
+		}
+	}
+	walk(root)
+	if len(pairs) == 0 {
+		return true
+	}
+	titled := 0
+	for _, pair := range pairs {
+		if key := pair.ChildByFieldName("key"); key != nil {
+			if text := key.Utf8Text(src); text != "" && text[0] >= 'A' && text[0] <= 'Z' {
+				titled++
+			}
+		}
+	}
+	if titled == len(pairs) {
+		return false
+	}
+	// Nesting is configuration on its own: a sentence does not indent under a
+	// key. Without it, every value has to read as a setting rather than as
+	// prose, which is what tells `# replicas: 3` from a heading with a colon.
+	if nested(root) {
+		return true
+	}
+	for _, pair := range pairs {
+		value := pair.ChildByFieldName("value")
+		if value == nil || strings.Contains(strings.TrimSpace(value.Utf8Text(src)), " ") {
+			return false
+		}
+	}
+	return true
+}
+
+// nested reports whether a mapping holds another mapping or a sequence.
+func nested(node *tree_sitter.Node) bool {
+	for i := uint(0); i < node.ChildCount(); i++ {
+		child := node.Child(i)
+		if child.Kind() == "block_mapping_pair" || child.Kind() == "flow_pair" {
+			if value := child.ChildByFieldName("value"); value != nil {
+				if holds(value, set("block_mapping", "block_sequence", "flow_mapping", "flow_sequence")) {
+					return true
+				}
+			}
+		}
+		if nested(child) {
+			return true
+		}
+	}
+	return false
+}
+
+// blank replaces template actions with spaces of the same width, so that a
+// Helm chart's manifests parse as the YAML they become.
+//
+// A `{{- if }}` at column zero otherwise makes the grammar drop every comment
+// in the file, which is worse than no coverage: the same comment is read in one
+// manifest and invisible in the next. Widths are preserved so that every byte
+// offset the parse reports still addresses the file the agent wrote, and the
+// text handed back is the file's own.
+func blank(src []byte, lang *language) []byte {
+	if !lang.templated || !bytes.Contains(src, []byte("{{")) {
+		return src
+	}
+	out := append([]byte(nil), src...)
+	for i := 0; i+1 < len(out); {
+		if out[i] != '{' || out[i+1] != '{' {
+			i++
+			continue
+		}
+		end := bytes.Index(out[i:], []byte("}}"))
+		if end < 0 {
+			break
+		}
+		for k := i; k < i+end+2; k++ {
+			if out[k] != '\n' {
+				out[k] = ' '
+			}
+		}
+		i += end + 2
+	}
+	return out
 }
 
 // holds reports whether the tree under node contains one of the kinds.

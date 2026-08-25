@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/gomlx/go-huggingface v0.4.1
+	github.com/tree-sitter-grammars/tree-sitter-hcl v1.2.0
 	github.com/tree-sitter-grammars/tree-sitter-yaml v0.7.2
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-bash v0.25.1

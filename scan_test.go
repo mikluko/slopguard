@@ -238,6 +238,54 @@ replicas: 2
 `,
 	},
 	{
+		name: "yaml prose that parses as a mapping",
+		lang: yaml,
+		src: `# Ref: https://runbooks.example.com/scale-up
+# Owner: platform-team
+replicas: 2
+`,
+	},
+	{
+		name: "yaml single line of commented-out config",
+		lang: yaml,
+		src: `# replicas: 3
+replicas: 5
+`,
+		want: "commented-out",
+	},
+	{
+		name: "helm template keeps its comments",
+		lang: yaml,
+		src: `{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  # previously this pointed at the docker hub mirror
+  name: {{ include "chart.fullname" . }}
+{{- end }}
+`,
+		want: "change-event explanation",
+	},
+	{
+		name: "terraform commented-out attribute",
+		lang: hcl,
+		src: `resource "aws_instance" "worker" {
+  instance_type = "t3.small"
+  # instance_type = "t3.micro"
+}
+`,
+		want: "commented-out code",
+	},
+	{
+		name: "terraform comment carrying a constraint",
+		lang: hcl,
+		src: `resource "aws_instance" "worker" {
+  # the smallest plan the node pool will build
+  instance_type = "t3.small"
+}
+`,
+	},
+	{
 		name: "yaml chart values header",
 		lang: yaml,
 		src: `# Default values for the chart.

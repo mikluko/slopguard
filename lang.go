@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unsafe"
 
+	tshcl "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
 	tsyaml "github.com/tree-sitter-grammars/tree-sitter-yaml/bindings/go"
 	tsbash "github.com/tree-sitter/tree-sitter-bash/bindings/go"
 	tsc "github.com/tree-sitter/tree-sitter-c/bindings/go"
@@ -31,6 +32,9 @@ type language struct {
 	// structure names the node kinds that make a cleanly parsed comment code
 	// rather than prose, for a language where prose parses as a plain value.
 	structure map[string]bool
+	// templated reports whether files in this language are commonly written
+	// through a template whose actions the grammar cannot read.
+	templated bool
 }
 
 // lookup returns the language to parse path as, or nil when the extension
@@ -125,6 +129,16 @@ var (
 		comments:  set("comment"),
 		functions: set(),
 		structure: set("block_mapping", "block_sequence", "flow_mapping", "flow_sequence"),
+		templated: true,
+	}
+	// hcl has no function bodies, so every comment in a Terraform file is judged
+	// as documentation of the block it sits in.
+	hcl = &language{
+		name:      "hcl",
+		grammar:   tshcl.Language,
+		comments:  set("comment"),
+		functions: set(),
+		strict:    true,
 	}
 	php = &language{
 		name:     "php",
@@ -137,32 +151,35 @@ var (
 )
 
 var byExtension = map[string]*language{
-	".go":   golang,
-	".py":   python,
-	".pyi":  python,
-	".js":   javascript,
-	".mjs":  javascript,
-	".cjs":  javascript,
-	".jsx":  javascript,
-	".ts":   typescript,
-	".mts":  typescript,
-	".cts":  typescript,
-	".tsx":  tsx,
-	".rs":   rust,
-	".sh":   bash,
-	".bash": bash,
-	".c":    clang,
-	".h":    clang,
-	".cc":   cpp,
-	".cpp":  cpp,
-	".cxx":  cpp,
-	".hpp":  cpp,
-	".hh":   cpp,
-	".java": java,
-	".rb":   ruby,
-	".php":  php,
-	".yaml": yaml,
-	".yml":  yaml,
+	".go":     golang,
+	".py":     python,
+	".pyi":    python,
+	".js":     javascript,
+	".mjs":    javascript,
+	".cjs":    javascript,
+	".jsx":    javascript,
+	".ts":     typescript,
+	".mts":    typescript,
+	".cts":    typescript,
+	".tsx":    tsx,
+	".rs":     rust,
+	".sh":     bash,
+	".bash":   bash,
+	".c":      clang,
+	".h":      clang,
+	".cc":     cpp,
+	".cpp":    cpp,
+	".cxx":    cpp,
+	".hpp":    cpp,
+	".hh":     cpp,
+	".java":   java,
+	".rb":     ruby,
+	".php":    php,
+	".yaml":   yaml,
+	".yml":    yaml,
+	".tf":     hcl,
+	".tfvars": hcl,
+	".hcl":    hcl,
 }
 
 func set(names ...string) map[string]bool {

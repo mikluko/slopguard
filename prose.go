@@ -59,7 +59,13 @@ func directive(line string) bool {
 	if strings.HasPrefix(line, "#!") {
 		return true
 	}
-	line = strings.ToLower(strings.TrimLeft(line, "/*#-! \t"))
+	line = strings.TrimLeft(line, "/*#-! \t")
+	// A comment holding a JSON object is a marker some other tool reads: Flux
+	// image policies, kustomize annotations, renovate directives.
+	if strings.HasPrefix(line, "{") && strings.HasSuffix(strings.TrimRight(line, " \t"), "}") {
+		return true
+	}
+	line = strings.ToLower(line)
 	for _, prefix := range directives {
 		if strings.HasPrefix(line, prefix) {
 			return true

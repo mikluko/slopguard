@@ -56,6 +56,9 @@ type comment struct {
 	// it as source.
 	body string
 	line uint
+	// annotates is the code this comment sits above, where it sits above any:
+	// what a comment restates, if it restates anything.
+	annotates *tree_sitter.Node
 }
 
 // scan parses src and reports the comments inside added that the
@@ -73,7 +76,8 @@ func scan(src []byte, lang *language, added []span) []finding {
 	}
 	defer tree.Close()
 	var candidates []comment
-	for _, c := range group(collect(tree.RootNode(), lang, src), src) {
+	root := tree.RootNode()
+	for _, c := range group(root, collect(root, lang, src), src) {
 		if c.within(added) && !c.pragma() {
 			candidates = append(candidates, c)
 		}
@@ -81,7 +85,7 @@ func scan(src []byte, lang *language, added []span) []finding {
 			break
 		}
 	}
-	return weigh(candidates, lang)
+	return weigh(candidates, lang, src)
 }
 
 // weigh runs the structural rules over the candidates and hands whatever they
@@ -91,11 +95,11 @@ func scan(src []byte, lang *language, added []span) []finding {
 // Sitting inside a function body is a bias, not a verdict. A line that points
 // outward, at a constraint enforced somewhere the reader cannot see, earns its
 // place there; only what the semantic pass recognises is nudged.
-func weigh(candidates []comment, lang *language) []finding {
+func weigh(candidates []comment, lang *language, src []byte) []finding {
 	verdicts := make([]verdict, len(candidates))
 	var pending []int
 	for i, c := range candidates {
-		if verdicts[i] = inspect(c, lang); verdicts[i].reason == "" {
+		if verdicts[i] = inspect(c, lang, src); verdicts[i].reason == "" {
 			pending = append(pending, i)
 		}
 	}
@@ -109,6 +113,14 @@ func weigh(candidates []comment, lang *language) []finding {
 			}
 		}
 		for j, v := range judge(texts, bias) {
+			// A comment over a block is summarising it, not repeating it, so
+			// the model's reading of one as restatement is taken only where
+			// the code below is a single line.
+			if v.class == "tautology" {
+				if node := candidates[pending[j]].annotates; node == nil || !oneLine(node) {
+					continue
+				}
+			}
 			verdicts[pending[j]] = v
 		}
 	}
@@ -141,9 +153,12 @@ type verdict struct {
 // inspect returns why the shape of a comment rules it out, or the zero verdict
 // to leave that judgment to the semantic pass. The first rule that fires wins:
 // one line of nudge per comment.
-func inspect(c comment, lang *language) verdict {
+func inspect(c comment, lang *language, src []byte) verdict {
 	if leftover(c, lang) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
+	}
+	if echoes(c, lang, src) {
+		return verdict{reasonFor("tautology"), 0.95, "echo"}
 	}
 	if n := sentences(c.text); n > docSentences {
 		return verdict{
@@ -327,7 +342,7 @@ func collect(node *tree_sitter.Node, lang *language, src []byte) []*tree_sitter.
 
 // group merges the single-line comments of one run into a single comment, so
 // that a doc comment written as four `//` lines is judged as one piece of prose.
-func group(nodes []*tree_sitter.Node, src []byte) []comment {
+func group(root *tree_sitter.Node, nodes []*tree_sitter.Node, src []byte) []comment {
 	var out []comment
 	for _, node := range nodes {
 		raw := node.Utf8Text(src)
@@ -336,14 +351,16 @@ func group(nodes []*tree_sitter.Node, src []byte) []comment {
 			out[n-1].raw = append(out[n-1].raw, raw)
 			out[n-1].text = join(out[n-1].text, prose(raw))
 			out[n-1].body += "\n" + body(raw)
+			out[n-1].annotates = annotated(root, node, src)
 			continue
 		}
 		out = append(out, comment{
-			nodes: []*tree_sitter.Node{node},
-			raw:   []string{raw},
-			text:  prose(raw),
-			body:  body(raw),
-			line:  node.StartPosition().Row + 1,
+			nodes:     []*tree_sitter.Node{node},
+			raw:       []string{raw},
+			text:      prose(raw),
+			body:      body(raw),
+			line:      node.StartPosition().Row + 1,
+			annotates: annotated(root, node, src),
 		})
 	}
 	return out

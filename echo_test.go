@@ -1,0 +1,87 @@
+package main
+
+import "testing"
+
+// Whether a comment restates the code is a fact about the pair, so the table
+// carries both halves. No case here reaches the model: the words are already
+// in the line below, or they are not.
+var echoCases = []struct {
+	name string
+	lang *language
+	src  string
+	want bool
+}{
+	{
+		name: "the words are the identifiers",
+		lang: golang,
+		src: `package p
+
+func f(items []int) {
+	// increment the counter
+	counter++
+	_ = items
+}
+`,
+		want: true,
+	},
+	{
+		name: "a comment pointing outward",
+		lang: golang,
+		src: `package p
+
+func f(v int) int {
+	// the caller has already bounded this, so it cannot overflow
+	return v * 2
+}
+`,
+	},
+	{
+		name: "a summary over a block is not a restatement",
+		lang: golang,
+		src: `package p
+
+func f(items []int) int {
+	// sum the items
+	total := 0
+	for _, item := range items {
+		total += item
+	}
+	return total
+}
+`,
+	},
+	{
+		name: "a doc comment naming its own symbol",
+		lang: golang,
+		src: `package p
+
+// Counter returns the counter.
+func Counter() int { return counter }
+`,
+	},
+	{
+		name: "python, snake case split",
+		lang: python,
+		src: `def f(user):
+    # save the user profile
+    save_user_profile(user)
+`,
+		want: true,
+	},
+}
+
+func TestEchoes(t *testing.T) {
+	for _, c := range echoCases {
+		t.Run(c.name, func(t *testing.T) {
+			found := false
+			for _, f := range scan([]byte(c.src), c.lang, []span{{start: 0, end: uint(len(c.src))}}) {
+				if f.class == "echo" {
+					found = true
+				}
+			}
+			if found != c.want {
+				t.Fatalf("echo = %v, want %v", found, c.want)
+			}
+		})
+	}
+}

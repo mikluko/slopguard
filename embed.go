@@ -33,11 +33,8 @@ const (
 	// A comment longer than this is truncated rather than chunked: the opening
 	// sentences are what the rules read.
 	budgetTokens = 256
-	// libraryPath is where ONNX Runtime is looked for when nothing overrides
-	// it. The binding dlopens the library, so a wrong path is an ordinary error
-	// rather than a loader abort, and slopguard falls back to its phrase lists.
-	libraryPath = "/opt/homebrew/lib/libonnxruntime.dylib"
-	// libraryPathEnv overrides libraryPath.
+	// libraryPathEnv names the shared library outright, for a machine that
+	// keeps it somewhere none of [libraryPaths] looks.
 	libraryPathEnv = "SLOPGUARD_ONNXRUNTIME_LIBRARY"
 	// disableEnv turns the semantic pass off, leaving the syntactic rules and
 	// the phrase lists.
@@ -84,11 +81,35 @@ func model() (*embedder, error) {
 	return loaded, loadedErr
 }
 
-func load() (*embedder, error) {
-	path := libraryPath
+// libraryPaths are where ONNX Runtime is looked for, in order: Homebrew on
+// Apple Silicon, Homebrew on Intel, Linuxbrew, and the two places a Linux
+// package manager puts it. Hardcoding the first of them meant the formula could
+// depend on onnxruntime and the binary still fail to find it on every machine
+// but one.
+var libraryPaths = []string{
+	"/opt/homebrew/lib/libonnxruntime.dylib",
+	"/usr/local/lib/libonnxruntime.dylib",
+	"/home/linuxbrew/.linuxbrew/lib/libonnxruntime.so",
+	"/usr/lib/x86_64-linux-gnu/libonnxruntime.so",
+	"/usr/local/lib/libonnxruntime.so",
+}
+
+// library returns the first shared library that is there, or the last place
+// looked so that the failure names something.
+func library() string {
 	if override := os.Getenv(libraryPathEnv); override != "" {
-		path = override
+		return override
 	}
+	for _, path := range libraryPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return libraryPaths[len(libraryPaths)-1]
+}
+
+func load() (*embedder, error) {
+	path := library()
 	ort.SetSharedLibraryPath(path)
 	if err := ort.InitializeEnvironment(); err != nil {
 		return nil, fmt.Errorf("open ONNX Runtime at %s: %w", path, err)

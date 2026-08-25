@@ -96,10 +96,7 @@ func TestLiteralFallback(t *testing.T) {
 
 func skipWithoutRuntime(t *testing.T) {
 	t.Helper()
-	path := libraryPath
-	if override := os.Getenv(libraryPathEnv); override != "" {
-		path = override
-	}
+	path := library()
 	if _, err := os.Stat(path); err != nil {
 		t.Skip("no ONNX Runtime at " + path)
 	}

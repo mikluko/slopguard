@@ -118,9 +118,10 @@ a perfectly good `COPY`.
 brew install mikluko/tap/slopguard
 ```
 
-The formula depends on `onnxruntime`. From source, `go install
-github.com/mikluko/slopguard@latest` builds against whatever
-`/opt/homebrew/lib/libonnxruntime.dylib` is installed.
+The formula depends on `onnxruntime`. `go install
+github.com/mikluko/slopguard@latest` works too; either way the binary dlopens
+the library at run time, looking in Homebrew's prefix on both architectures,
+Linuxbrew's, and the two places a Linux package manager puts it.
 
 ## Configure
 
@@ -146,7 +147,7 @@ Restart the session to load it.
 
 | Variable | Effect |
 | --- | --- |
-| `SLOPGUARD_ONNXRUNTIME_LIBRARY` | where to dlopen ONNX Runtime from, when it is not in Homebrew's prefix |
+| `SLOPGUARD_ONNXRUNTIME_LIBRARY` | where to dlopen ONNX Runtime from, when it is in none of the usual places |
 | `SLOPGUARD_NO_MODEL` | turns the semantic pass off, leaving the structural rules |
 | `SLOPGUARD_STATE` | where the per-session memory of what has already been said lives; empty turns it off |
 | `SLOPGUARD_LOG` | a file every finding is appended to, one JSON object per line |

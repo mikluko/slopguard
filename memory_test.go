@@ -2,8 +2,10 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const restated = `package p
@@ -53,6 +55,44 @@ func TestMemoryIsNarrow(t *testing.T) {
 	}
 	if findings := review(first); len(findings) != 1 {
 		t.Fatalf("a different comment should be heard, got %d findings", len(findings))
+	}
+}
+
+// The sweep deletes only what this program wrote. SLOPGUARD_STATE is a path
+// somebody types, and a sweep that trusted the directory would empty it.
+func TestSweepLeavesOtherFilesAlone(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-48 * time.Hour)
+	for _, name := range []string{"notes.md", "config.json", ".hidden", "1chkc1qdadytv"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "2uufoxcnq1d11"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	sweep(dir)
+
+	left := map[string]bool{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		left[entry.Name()] = true
+	}
+	for _, name := range []string{"notes.md", "config.json", ".hidden", "2uufoxcnq1d11"} {
+		if !left[name] {
+			t.Errorf("swept %s, which this program did not write", name)
+		}
+	}
+	if left["1chkc1qdadytv"] {
+		t.Error("kept a stale memory of its own")
 	}
 }
 

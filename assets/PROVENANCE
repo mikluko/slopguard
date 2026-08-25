@@ -18,8 +18,14 @@ To verify:
     curl -sL https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx | shasum -a 256
     curl -sL https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/tokenizer.json | shasum -a 256
 
-exemplars.bin is built rather than fetched: it holds one vector per exemplar in
-corpus.go, computed by this model, and is regenerated with `go test -update`. It
-carries a fingerprint of the exemplar text, so a binary whose corpus has moved
-since falls back to embedding the exemplars at run time rather than scoring
-against stale vectors.
+head.bin is built rather than fetched: it holds one direction and one threshold
+per class, fitted by this model from the labelled corpus in corpus.go and
+mined.go, and is regenerated with `go test -run TestHeadAsset -update`. It
+carries a fingerprint of the text it was fitted from, and a binary whose corpus
+has moved since refuses to judge rather than scoring along a stale direction.
+
+The int8 export at the same revision was measured and rejected. It is a quarter
+the size and a fifth faster, but dynamic quantization takes its scale from each
+tensor's own range, and padding width is part of that range: the same comment
+scores differently depending on which other comments share its batch. A
+calibrated threshold needs a fixed geometry.

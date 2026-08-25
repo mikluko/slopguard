@@ -44,3 +44,33 @@ func TestHeadAsset(t *testing.T) {
 		}
 	}
 }
+
+// A head that does not describe this binary's corpus is refused rather than
+// read: every rejection is checked before any length is trusted for indexing.
+func TestHeadAssetRejects(t *testing.T) {
+	mark := fingerprint()
+	whole := head{
+		directions: make([][]float32, len(classes)),
+		thresholds: make([]float64, len(classes)),
+	}
+	for i := range whole.directions {
+		whole.directions[i] = make([]float32, dimensions)
+	}
+	good := encodeHead(whole, mark)
+	for _, c := range []struct {
+		name string
+		blob []byte
+	}{
+		{"empty", nil},
+		{"a header and nothing else", good[:16]},
+		{"truncated body", good[:len(good)-4]},
+		{"another corpus", encodeHead(whole, mark+1)},
+		{"trailing bytes", append(append([]byte{}, good...), 0)},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if _, ok := decodeHead(c.blob, mark); ok {
+				t.Fatal("accepted a head it should have refused")
+			}
+		})
+	}
+}

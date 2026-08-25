@@ -10,6 +10,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,9 +27,9 @@ const (
 	// generated or vendored, and the parse and the embedding both stop being
 	// worth their cost.
 	ceiling = 2 << 20
-	// spanBudget bounds how many occurrences of an edit's text are treated as
-	// newly written. A short replacement such as "}" occurs everywhere, and
-	// every extra span costs a pass over every comment.
+	// spanBudget bounds how much of a file one call may claim to have written,
+	// across every edit in it. A short replacement such as "}" occurs
+	// everywhere, and every extra span costs a pass over every comment.
 	spanBudget = 64
 	// logEnv names a file every finding is appended to, as one JSON object per
 	// line.
@@ -60,7 +61,16 @@ func main() {
 			os.Exit(0)
 		}
 	}()
+	// Paths instead of a payload: judge those files and print what is found.
+	// A flag is neither, and reading stdin for one would hang a hook whose
+	// wiring grew an argument by accident.
 	if len(os.Args) > 1 {
+		for _, arg := range os.Args[1:] {
+			if strings.HasPrefix(arg, "-") {
+				fmt.Fprintln(os.Stderr, "usage: slopguard [file ...]   (a hook payload on stdin, or files to judge)")
+				return
+			}
+		}
 		sweepFiles(os.Args[1:])
 		return
 	}
@@ -96,11 +106,7 @@ func review(in payload) []finding {
 	if lang == nil {
 		return nil
 	}
-	info, err := os.Stat(in.ToolInput.FilePath)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > ceiling {
-		return nil
-	}
-	src, err := os.ReadFile(in.ToolInput.FilePath)
+	src, err := readable(in.ToolInput.FilePath)
 	if err != nil {
 		return nil
 	}
@@ -123,6 +129,25 @@ func review(in payload) []finding {
 	remember(findings)
 	return findings
 }
+
+// readable returns the contents of a file worth judging: a regular file, small
+// enough that parsing and embedding it are worth their cost. A named pipe under
+// a known extension would otherwise block the hook until the harness kills it,
+// and a generated file of several megabytes is not what the tool is for.
+func readable(path string) ([]byte, error) {
+	info, err := os.Stat(path)
+	switch {
+	case err != nil:
+		return nil, err
+	case !info.Mode().IsRegular():
+		return nil, errNotWorthReading
+	case info.Size() > ceiling:
+		return nil, errNotWorthReading
+	}
+	return os.ReadFile(path)
+}
+
+var errNotWorthReading = errors.New("not a regular file, or too large to judge")
 
 // record appends what was found to the log, when one is asked for. A week of
 // real use is the only honest measure of how often this tool is wrong, and
@@ -157,7 +182,7 @@ func sweepFiles(paths []string) {
 		if lang == nil {
 			continue
 		}
-		src, err := os.ReadFile(path)
+		src, err := readable(path)
 		if err != nil {
 			continue
 		}
@@ -186,7 +211,7 @@ func written(src []byte, in payload) []span {
 	}
 	var out []span
 	for _, e := range edits {
-		if e.new == "" {
+		if e.new == "" || len(out) >= spanBudget {
 			continue
 		}
 		found := locate(src, e.new)

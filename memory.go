@@ -97,16 +97,31 @@ func store(session string) string {
 }
 
 // sweep removes the memories of sessions that have not written in a day.
+//
+// It deletes only what this program writes: a regular file whose whole name is
+// one base-36 number. SLOPGUARD_STATE is a path a person types, and a sweep
+// that trusted the directory would empty whatever they pointed it at.
 func sweep(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !ours(entry.Name()) {
+			continue
+		}
 		info, err := entry.Info()
 		if err != nil || time.Since(info.ModTime()) < stale {
 			continue
 		}
 		os.Remove(filepath.Join(dir, entry.Name()))
 	}
+}
+
+// ours reports whether a name is one this program wrote.
+func ours(name string) bool {
+	if _, err := strconv.ParseUint(name, 36, 64); err != nil {
+		return false
+	}
+	return true
 }

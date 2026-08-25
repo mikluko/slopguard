@@ -132,9 +132,19 @@ Add a `Write|Edit|MultiEdit` matcher to `PostToolUse` in `~/.claude/settings.jso
 Use an absolute path if sessions start without the Homebrew prefix on `PATH`.
 Restart the session to load it.
 
-Two environment variables: `SLOPGUARD_ONNXRUNTIME_LIBRARY` points at the shared
-library when it is not in Homebrew's prefix, and `SLOPGUARD_NO_MODEL` turns the
-semantic pass off, leaving the structural rules and a phrase list.
+| Variable | Effect |
+| --- | --- |
+| `SLOPGUARD_ONNXRUNTIME_LIBRARY` | where to dlopen ONNX Runtime from, when it is not in Homebrew's prefix |
+| `SLOPGUARD_NO_MODEL` | turns the semantic pass off, leaving the structural rules |
+| `SLOPGUARD_STATE` | where the per-session memory of what has already been said lives; empty turns it off |
+| `SLOPGUARD_LOG` | a file every finding is appended to, one JSON object per line |
+
+The last two write to disk. `SLOPGUARD_STATE` defaults to `slopguard` under the
+user cache directory, and files there that have gone a day without a write are
+removed — only files this program wrote, whose names are a single base-36
+number, so pointing it at a directory of your own will not empty it.
+
+It loads a native library into its own process and is not a sandbox.
 
 ## Contract
 

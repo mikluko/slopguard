@@ -17,6 +17,7 @@ func double(v int) int {
 
 // A Write is reviewed whole: every comment in the file is new.
 func TestReviewWrite(t *testing.T) {
+	t.Setenv(memoryEnv, t.TempDir())
 	in := payload{ToolName: "Write"}
 	in.ToolInput.FilePath = file(t, "double.go", source)
 	in.ToolInput.Content = source
@@ -32,6 +33,7 @@ func TestReviewWrite(t *testing.T) {
 // An Edit is reviewed at the text it inserted, in the context of the file it
 // landed in.
 func TestReviewEdit(t *testing.T) {
+	t.Setenv(memoryEnv, t.TempDir())
 	in := payload{ToolName: "Edit"}
 	in.ToolInput.FilePath = file(t, "double.go", source)
 	in.ToolInput.NewString = "\t// multiply it by two\n\treturn v * 2"

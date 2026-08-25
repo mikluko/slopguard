@@ -96,10 +96,8 @@ Machine-readable comments are skipped outright: shebangs, build constraints,
 ## Languages
 
 Go, Python, JavaScript, TypeScript, TSX, Rust, C, C++, Java, Ruby, PHP, shell,
-and YAML. A file whose extension carries no grammar produces nothing, and so
-does a file that fails to parse — a broken tree is not evidence of a comment.
-
-Terraform too: `.tf`, `.tfvars` and `.hcl`.
+YAML and Terraform. A file nothing here reads produces nothing, and so does a
+file that fails to parse — a broken tree is not evidence of a comment.
 
 YAML is judged as configuration: a stacked comment that parses as a mapping or a
 sequence is config left behind. Helm templates are read as the YAML they become

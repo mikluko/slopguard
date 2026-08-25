@@ -101,9 +101,6 @@ var directives = []string{
 // meaning, so it catches the common wording of a change-event comment and
 // nothing beyond it.
 func literal(text string) string {
-	if history(text) != "" {
-		return reasonFor("history")
-	}
 	if compat(text) {
 		return reasonFor("compat")
 	}

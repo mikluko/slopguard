@@ -85,7 +85,6 @@ func TestLiteralFallback(t *testing.T) {
 		text string
 		want bool
 	}{
-		{"previously this pointed at the docker hub mirror", true},
 		{"kept for backwards compatibility", true},
 		{"Replicas is the number of pods to run", false},
 	} {

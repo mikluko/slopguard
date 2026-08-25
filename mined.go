@@ -12,18 +12,6 @@ package main
 // threshold and fired on nothing at all.
 
 var mined = map[string][]string{
-	"history": {
-		"a self-closing tag used to be classified as an open tag, which routed everything after it into the wrong bucket for the rest of the stream",
-		"only the onboarding events are enabled for now",
-		"skip the other content types for now",
-		"this check is what closes the gap the earlier dry run left",
-		"the per-kind partitions the previous schema enforced as column constraints live here now",
-		"the bug caught against the real corpus, where an unrelated path was wrongly rewritten onto a mapped number",
-		"resolving attendance used to cost a second call, so the count rides along now",
-		"the total is no longer maintained by hand: it now comes from the read",
-		"re-minting the descendants after a rotation is not automated yet",
-		"stamp the record's own historical date rather than today, which is the gap this closes",
-	},
 	"compat": {
 		"legacy alias kept for callers that have not migrated their import path yet",
 		"the key is kept under its old name for backward compatibility with persisted user settings",

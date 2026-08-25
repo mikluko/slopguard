@@ -293,12 +293,25 @@ func TestHeldOut(t *testing.T) {
 			inCorpus[text] = true
 		}
 	}
+	live := map[string]bool{"": true}
+	for _, c := range classes {
+		live[c.name] = true
+	}
 	var heldout []struct{ text, class string }
+	retired := 0
 	for _, r := range labelled {
-		if !inCorpus[r.text] {
+		switch {
+		case inCorpus[r.text]:
+		case !live[r.class]:
+			// Labelled for a class the tool no longer has. The rows stay in the
+			// table because the labelling is what a future attempt at that
+			// class would be measured against.
+			retired++
+		default:
 			heldout = append(heldout, r)
 		}
 	}
+	t.Logf("%d rows labelled for a class this build does not carry", retired)
 
 	comments := make([][]string, len(heldout))
 	for i, r := range heldout {

@@ -1,44 +1,35 @@
 package main
 
-// The exemplars are the specification of taste. The four classes were distilled
-// from comments an agent wrote into working repositories, preferring the ones a
+// The corpus is the specification of taste. The classes were distilled from
+// comments an agent wrote into working repositories, preferring the ones a
 // human deleted within weeks; the contract set was distilled from the Go
 // standard library, the DOOM sources, and Django, whose comments have aged
 // well, and from the infrastructure register the classes kept misreading.
 //
-// Sets are kept near the same size on purpose: the score is the mean of a
-// vector's two closest exemplars, which grows with the size of the set it is
-// measured against, so an unbalanced class wins by cardinality alone. The
-// contract set is the exception, being the one every class is measured against.
+// A fifth class was tried and dropped, and its absence is measured rather than
+// an oversight. A change-event explanation — "we now use the pooled client",
+// "this fixes the nil panic" — belongs in the commit message, and recognising
+// one was the original point of this tool. It cannot be done this way. The
+// distinction is in the embedding: across twenty pairs writing one claim first
+// as contract and then as change event, the change-event member projects
+// further along the fitted direction in nineteen. But framing moves a sentence
+// about a quarter as far as its subject does, so averaging a class of comments
+// about different subjects cancels the framing and leaves the topic. Directions
+// fitted from two disjoint halves of real comments agree at cos +0.32 for that
+// class, against +0.58 for compat and +0.65 for tautology: it converges on
+// nothing. An L2 logistic head over the same vectors reaches the same +0.32 and
+// no held-out threshold at 0.70 precision, so the method was not the limit, and
+// exemplars rewritten in the register real comments use reach 0.70 recall at
+// 0.64 precision, failing on contracts about state that changes over time —
+// what the direction learns is "is about change", not "its truth condition is
+// in the past".
+//
+// A phrase list is worse than nothing here. "The consumer no longer runs these
+// durables" is a contract that spells a marker, and across 33 files of a
+// production service all seven change-event findings a phrase list produced
+// were of that shape.
 
 var classes = []class{
-	{
-		name:   "history",
-		reason: "reads as change-event explanation: it belongs in the commit message, which ships beside the diff",
-		exemplars: []string{
-			"we now use a pooled client instead of dialing per request",
-			"this previously caused the liveness probe to time out",
-			"it used to allocate a buffer on every call",
-			"previously this pointed at the upstream mirror",
-			"the retry logic was temporarily disabled because it blocked",
-			"for now we only test that the basic functionality is preserved",
-			"the module was renamed, so update the callers",
-			"previously created by the deployment unit that is now dormant",
-			"the rule this used to write is superseded by the ones above",
-			"retained for now until the follow-up lands",
-			"accepted temporarily while both versions run side by side",
-			"bumped the timeout because the build server is slower than a laptop",
-			"removed the cache, the store is fast enough now",
-			"this fixes the panic reported after the last release",
-			"switched from a map to a slice in this refactor",
-			"the value was fifty milliseconds before the load test",
-			"changed from a map because ordering matters",
-			"this used to be handled by the old parser",
-			"added to fix the flaky test on the build server",
-			"moved here from the utility package",
-			"reverted the change from last week",
-		},
-	},
 	{
 		name:   "compat",
 		reason: "justifies the symbol by its own history: state the contract instead, as a Deprecated: note if that is what it is",

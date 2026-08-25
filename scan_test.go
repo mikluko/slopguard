@@ -76,15 +76,13 @@ func double(v int) int {
 `,
 	},
 	{
-		name: "go change-event comment",
+		name: "a change-event comment is left alone, deliberately",
 		lang: golang,
 		src: `package p
 
 // previously this pointed at the docker hub mirror.
 func double(v int) int { return v * 2 }
 `,
-		want: "change-event explanation",
-		gap:  "the history direction separates nothing: it fires on no held-out comment at any threshold, see octant 1105",
 	},
 	{
 		name: "go compatibility comment",
@@ -285,15 +283,6 @@ replicas: 2
 image: nginx
 `,
 		want: "commented-out code",
-	},
-	{
-		name: "yaml change-event comment",
-		lang: yaml,
-		src: `# previously this pointed at the internal mirror
-image: ghcr.io/acme/api
-`,
-		want: "change-event explanation",
-		gap:  "the history direction separates nothing: it fires on no held-out comment at any threshold, see octant 1105",
 	},
 	{
 		name: "yaml documentation carrying a constraint",

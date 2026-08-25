@@ -256,8 +256,11 @@ labelled). Half of the harvest fits; the other half is held out in
 precision and recall per class against that half, and fails if the share of
 contract prose left alone drops.
 
-Measured on 98 held-out comments: restatement at recall 0.53 and
-self-justification at 0.25, both at precision 1.0. Contract prose is left alone
+Measured on 98 held-out comments, each a single sentence: restatement at recall
+0.53 and self-justification at 0.25, both at precision 1.0. Those two are
+per-sentence rates — a comment of several sentences takes the strongest verdict
+among them, so its recall is somewhat higher and is not measured here. Contract
+prose is left alone
 75 of 75 above a declaration, 74 of 75 at the lower threshold a comment inside a
 function body meets, and 25 of 25 when those rows are read three to a comment,
 which is the unit a real doc comment arrives in. All three are asserted.

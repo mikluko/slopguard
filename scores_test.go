@@ -2,41 +2,44 @@ package main
 
 import "testing"
 
+// probes are sentences under examination right now: what a test expects and
+// the tool no longer says, or the other way round.
 var probes = []string{
+	"previously this pointed at the docker hub mirror",
 	"Twice is kept for backwards compatibility",
 	"kept for backwards compatibility",
-	"this was bumped from 3 when the disruption budget changed",
-	"the replica count was raised when the budget changed",
-	"double no longer clamps v",
+	"we swapped the map for a slice here",
+	"multiply it by two",
 }
 
+// TestScores prints where a sentence falls along each class direction, against
+// the threshold fitted for that class. It asserts nothing: it is what a
+// threshold, an exemplar or a test expectation is chosen from.
 func TestScores(t *testing.T) {
 	skipWithoutRuntime(t)
-	texts := append(append([]string{}, probes...), func() []string {
-		out := make([]string, len(readings))
-		for i, r := range readings {
-			out[i] = r.text
-		}
-		return out
-	}()...)
+	texts := append([]string{}, probes...)
+	for _, r := range readings {
+		texts = append(texts, r.text)
+	}
 	vectors, err := embedAll(texts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("baselines: %.3f", catalogue.baseline)
-	for i, v := range vectors {
-		best, score := -1, -1.0
-		for c := range classes {
-			if s := excess(v, catalogue.classes[c], catalogue.baseline[c]); s > score {
-				best, score = c, s
-			}
-		}
-		contract := excess(v, catalogue.contract, catalogue.baseline[len(classes)])
-		want := "probe"
-		if i >= len(probes) {
-			want = readings[i-len(probes)].class
-		}
-		t.Logf("want %-10s got %-10s %+.3f  contract %+.3f  margin %+.3f  %s",
-			want, classes[best].name, score, contract, score-contract, texts[i])
+	for i, c := range classes {
+		t.Logf("%-10s threshold %+.3f", c.name, fitted.thresholds[i])
 	}
+	for i, v := range vectors {
+		line := ""
+		for c := range classes {
+			line += " " + classes[c].name[:4] + fmtScore(dot(v, fitted.directions[c])-fitted.thresholds[c])
+		}
+		t.Logf("%s  %s", line, texts[i])
+	}
+}
+
+func fmtScore(v float64) string {
+	if v > 0 {
+		return " FIRES"
+	}
+	return " ....."
 }

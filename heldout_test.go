@@ -13,7 +13,7 @@ import (
 // is the reading rather than the vocabulary of any one codebase. It is the
 // generalisation check the calibration set cannot be: the same sentences that
 // set a floor cannot also report what that floor costs.
-var heldout = []struct {
+var labelled = []struct {
 	text  string
 	class string
 }{
@@ -283,6 +283,23 @@ const contractFloor = 0.947
 func TestHeldOut(t *testing.T) {
 	skipWithoutRuntime(t)
 
+	// Half of this table was moved into mined.go to fit the thresholds, and
+	// those rows are no longer held out. Filtering here rather than deleting
+	// them keeps one copy of the labelling: move a row into mined.go and it
+	// leaves the evaluation set by that fact alone.
+	inCorpus := map[string]bool{}
+	for _, texts := range mined {
+		for _, text := range texts {
+			inCorpus[text] = true
+		}
+	}
+	var heldout []struct{ text, class string }
+	for _, r := range labelled {
+		if !inCorpus[r.text] {
+			heldout = append(heldout, r)
+		}
+	}
+
 	comments := make([][]string, len(heldout))
 	for i, r := range heldout {
 		comments[i] = split(r.text)
@@ -340,11 +357,10 @@ func TestHeldOut(t *testing.T) {
 			m := miss{text: r.text, want: r.class, got: got}
 			for ci, c := range classes {
 				if c.name == named {
-					m.score = excess(vectors[i], catalogue.classes[ci], catalogue.baseline[ci])
-					m.floor = c.floor
+					m.score = dot(vectors[i], fitted.directions[ci])
+					m.floor = fitted.thresholds[ci]
 				}
 			}
-			m.contract = excess(vectors[i], catalogue.contract, catalogue.baseline[len(classes)])
 			misses = append(misses, m)
 		}
 	}
@@ -427,14 +443,14 @@ func TestHeldOut(t *testing.T) {
 	}
 }
 
-// distance is how badly a miss missed, in the units the floor and the margin
-// are set in. A false positive is ranked by how far past both gates it went;
-// a missed positive by how far short of the nearer gate it fell.
+// distance is how badly a miss missed, along the class direction and in the
+// units its threshold is set in. A false positive is ranked by how far past
+// the threshold it went, a missed positive by how far short it fell.
 func distance(score, floor, contract float64, want string) float64 {
 	if want == "" {
-		return min(score-floor, score-contract-margin)
+		return score - floor
 	}
-	return -min(score-floor, score-contract-margin)
+	return floor - score
 }
 
 // ratio renders a rate, or a dash where the denominator is zero.

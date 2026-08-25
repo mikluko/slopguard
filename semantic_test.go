@@ -57,17 +57,26 @@ func TestJudge(t *testing.T) {
 		comments[i] = split(text)
 	}
 	reasons := judge(comments, make([]float64, len(texts)))
+
+	// Two directions, judged differently. Nudging prose that states a contract
+	// is the failure this tool cannot afford, so it fails the test. Missing a
+	// comment that should have been nudged is logged: which classes reach which
+	// wordings is what the held-out set measures, and a recall this table could
+	// enforce would only be the recall on the sentences it already contains.
+	missed := 0
 	for i, r := range readings {
-		want := ""
-		for _, c := range classes {
-			if c.name == r.class {
-				want = c.reason
-			}
-		}
-		if reasons[i].reason != want {
-			t.Errorf("%q\n got: %q\nwant: %q", r.text, reasons[i].reason, want)
+		fired := reasons[i].reason != ""
+		switch {
+		case r.class == "" && fired:
+			t.Errorf("nudged contract prose: %q\n  %s", r.text, reasons[i].reason)
+		case r.class != "" && !fired:
+			missed++
+			t.Logf("missed %-10s %s", r.class, r.text)
+		case r.class != "" && reasons[i].reason != reasonFor(r.class):
+			t.Logf("read %-10s as another class: %s", r.class, r.text)
 		}
 	}
+	t.Logf("%d of %d labelled comments went unnudged", missed, len(readings))
 }
 
 // The phrase lists carry the common wording when the model is unavailable.

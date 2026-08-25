@@ -15,7 +15,6 @@ var classes = []class{
 	{
 		name:   "history",
 		reason: "reads as change-event explanation: it belongs in the commit message, which ships beside the diff",
-		floor:  0.15,
 		exemplars: []string{
 			"we now use a pooled client instead of dialing per request",
 			"this previously caused the liveness probe to time out",
@@ -43,7 +42,6 @@ var classes = []class{
 	{
 		name:   "compat",
 		reason: "justifies the symbol by its own history: state the contract instead, as a Deprecated: note if that is what it is",
-		floor:  0.22,
 		exemplars: []string{
 			"kept for backwards compatibility with older callers",
 			"this name is kept for backwards compatibility with older clients",
@@ -63,7 +61,6 @@ var classes = []class{
 	{
 		name:   "tautology",
 		reason: "restates what the code already says: the line below is the documentation",
-		floor:  0.30,
 		exemplars: []string{
 			"increment the counter",
 			"close the connection",
@@ -90,7 +87,6 @@ var classes = []class{
 	{
 		name:   "narrative",
 		reason: "narrates how the code works: a doc states the contract, and the walkthrough belongs in a test",
-		floor:  0.20,
 		exemplars: []string{
 			"this wrapper does two things: first it flattens, then it formats",
 			"traverses the message by reflection and substitutes every placeholder",

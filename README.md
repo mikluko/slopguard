@@ -223,9 +223,11 @@ pays about 90 ms for the ONNX session and 2 ms a sentence after that.
 - Recall is modest by construction: held out, restatement reaches about half and
   self-justification a quarter, at the precision the thresholds are fitted for.
   A comment this tool passes over is not a comment it approves of.
-- A chart's `values.yaml` documents its optional settings by commenting them
-  out, so commented-out config is not reported there at all. Every other rule
-  still applies to it.
+- A commented block indented under a key whose value is an empty collection is
+  documentation, not residue: `podSecurityContext: {}` over `# fsGroup: 2000` is
+  how a chart shows what a setting takes, and it is read that way whatever the
+  file is called. A commented option under a key that already has values is
+  still reported, which on a stock `helm create` scaffold is two findings.
 - A finding is remembered when it is named, not when it is acted on. Ignoring a
   nudge silences it for the rest of the session, rewording earns a fresh one, and
   deleting the line goes quiet. The cheapest paths to silence are still ignore

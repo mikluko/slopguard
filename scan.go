@@ -62,6 +62,9 @@ type comment struct {
 	// doc marks a docstring, which documents the symbol it opens rather than
 	// sitting inside it: the rules for prose in a body do not reach it.
 	doc bool
+	// buried marks a comment inside a function body, where prose is harder to
+	// justify and the thresholds are lower.
+	buried bool
 }
 
 // scan parses src and reports the comments inside added that the
@@ -80,7 +83,7 @@ func scan(src []byte, lang *language, added []span) []finding {
 	defer tree.Close()
 	var candidates []comment
 	root := tree.RootNode()
-	for _, c := range group(root, collect(root, lang, src), src) {
+	for _, c := range group(root, collect(root, lang, false), src) {
 		if c.within(added) && !c.pragma() {
 			candidates = append(candidates, c)
 		}
@@ -111,16 +114,19 @@ func weigh(candidates []comment, lang *language, src []byte) []finding {
 		bias := make([]float64, len(pending))
 		for j, i := range pending {
 			texts[j] = opening(split(candidates[i].text))
-			if !candidates[i].doc && buried(candidates[i].nodes[0], lang) {
+			if !candidates[i].doc && candidates[i].buried {
 				bias[j] = buriedBias
 			}
 		}
 		for j, v := range judge(texts, bias) {
 			// A comment over a block is summarising it, not repeating it, so
 			// the model's reading of one as restatement is taken only where
-			// the code below is a single line.
+			// the code below is a single line. A section banner — one word
+			// over the settings it heads — restates nothing, because it
+			// claims nothing.
 			if v.class == "tautology" {
-				if node := candidates[pending[j]].annotates; node == nil || !oneLine(node) {
+				node := candidates[pending[j]].annotates
+				if node == nil || !oneLine(node) || len(content(candidates[pending[j]].text)) < 2 {
 					continue
 				}
 			}
@@ -160,7 +166,7 @@ func inspect(c comment, lang *language, src []byte) verdict {
 	if leftover(c, lang) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
-	if echoes(c, lang, src) {
+	if echoes(c, src) {
 		return verdict{reasonFor("tautology"), 0.95, "echo"}
 	}
 	if n := sentences(c.text); n > docSentences {
@@ -333,49 +339,55 @@ func holds(node *tree_sitter.Node, kinds map[string]bool) bool {
 
 // buried reports whether a node sits inside a function body, where the rules
 // allow no prose at all.
-func buried(node *tree_sitter.Node, lang *language) bool {
-	for parent := node.Parent(); parent != nil; parent = parent.Parent() {
-		if lang.functions[parent.Kind()] {
-			return true
-		}
-	}
-	return false
+// found is a comment node and what the walk down to it already knew: whether
+// anything above it was a function.
+//
+// Climbing back up to ask costs more than it looks. tree-sitter's Parent()
+// re-descends from the root, so a climb is quadratic in depth, and a 64 KB file
+// of deeply nested code took twenty seconds of it. The walk down passes the
+// answer along instead.
+type found struct {
+	node   *tree_sitter.Node
+	buried bool
 }
 
-// collect returns the comment nodes of a tree in document order.
-func collect(node *tree_sitter.Node, lang *language, src []byte) []*tree_sitter.Node {
-	var out []*tree_sitter.Node
+// collect returns the comment nodes of a tree in document order, each carrying
+// whether it sits inside a function body.
+func collect(node *tree_sitter.Node, lang *language, buried bool) []found {
 	if lang.comments[node.Kind()] || (lang.docstrings && docstring(node)) {
-		return []*tree_sitter.Node{node}
+		return []found{{node: node, buried: buried}}
 	}
+	buried = buried || lang.functions[node.Kind()]
+	var out []found
 	for i := uint(0); i < node.ChildCount(); i++ {
-		out = append(out, collect(node.Child(i), lang, src)...)
+		out = append(out, collect(node.Child(i), lang, buried)...)
 	}
 	return out
 }
 
 // group merges the single-line comments of one run into a single comment, so
 // that a doc comment written as four `//` lines is judged as one piece of prose.
-func group(root *tree_sitter.Node, nodes []*tree_sitter.Node, src []byte) []comment {
+func group(root *tree_sitter.Node, nodes []found, src []byte) []comment {
 	var out []comment
-	for _, node := range nodes {
-		raw := node.Utf8Text(src)
-		if n := len(out); n > 0 && adjacent(out[n-1].nodes[len(out[n-1].nodes)-1], node) {
-			out[n-1].nodes = append(out[n-1].nodes, node)
+	for _, f := range nodes {
+		raw := f.node.Utf8Text(src)
+		if n := len(out); n > 0 && adjacent(out[n-1].nodes[len(out[n-1].nodes)-1], f.node) {
+			out[n-1].nodes = append(out[n-1].nodes, f.node)
 			out[n-1].raw = append(out[n-1].raw, raw)
 			out[n-1].text = join(out[n-1].text, prose(raw))
 			out[n-1].body += "\n" + body(raw)
-			out[n-1].annotates = annotated(root, node, src)
+			out[n-1].annotates = annotated(root, f.node, src)
 			continue
 		}
 		out = append(out, comment{
-			nodes:     []*tree_sitter.Node{node},
+			nodes:     []*tree_sitter.Node{f.node},
 			raw:       []string{raw},
 			text:      prose(raw),
 			body:      body(raw),
-			line:      node.StartPosition().Row + 1,
-			annotates: annotated(root, node, src),
-			doc:       docstring(node),
+			line:      f.node.StartPosition().Row + 1,
+			annotates: annotated(root, f.node, src),
+			doc:       docstring(f.node),
+			buried:    f.buried,
 		})
 	}
 	return out

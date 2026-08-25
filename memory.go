@@ -28,14 +28,14 @@ const (
 )
 
 // spoken returns the keys this session has already been nudged about for path,
-// and a function that records the ones about to be named. It fails open in
-// both directions: an unreadable store nudges as if nothing were remembered,
-// and an unwritable one forgets.
-func spoken(session, path string) (map[uint64]bool, func([]finding)) {
+// whether it has been nudged about anything at all, and a function that records
+// what is about to be named. It fails open in both directions: an unreadable
+// store nudges as if nothing were remembered, and an unwritable one forgets.
+func spoken(session, path string) (map[uint64]bool, bool, func([]finding)) {
 	seen := map[uint64]bool{}
 	file := store(session)
 	if file == "" {
-		return seen, func([]finding) {}
+		return seen, false, func([]finding) {}
 	}
 	prefix := site(path)
 	lines := 0
@@ -56,7 +56,7 @@ func spoken(session, path string) (map[uint64]bool, func([]finding)) {
 		}
 		handle.Close()
 	}
-	return seen, func(findings []finding) {
+	return seen, lines > 0, func(findings []finding) {
 		if len(findings) == 0 || lines > remembered {
 			return
 		}

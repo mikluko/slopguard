@@ -48,6 +48,36 @@ func TestReviewEdit(t *testing.T) {
 	}
 }
 
+// An edit is credited with the bytes it changed, not with everything its
+// replacement text happens to match. The same three lines appear twice here,
+// and only the copy the edit inserted a comment into is this write's.
+func TestReviewCreditsOnlyWhatChanged(t *testing.T) {
+	skipWithoutRuntime(t)
+	t.Setenv(memoryEnv, t.TempDir())
+
+	const both = `package p
+
+func first(v int) int {
+	// close the connection
+	return v * 2
+}
+
+func second(v int) int {
+	// close the connection
+	return v * 2
+}
+`
+	in := payload{SessionID: "one", ToolName: "Edit"}
+	in.ToolInput.FilePath = file(t, "twice.go", both)
+	in.ToolInput.OldString = "\treturn v * 2\n}\n\nfunc second"
+	in.ToolInput.NewString = "\treturn v * 2\n}\n\nfunc second"
+
+	if findings := review(in); len(findings) != 0 {
+		t.Fatalf("an edit that changed nothing claimed %d comments, at line %d",
+			len(findings), findings[0].line)
+	}
+}
+
 // Everything slopguard has no business judging passes in silence.
 func TestReviewFailsOpen(t *testing.T) {
 	prose := file(t, "notes.md", "# Notes\n\nno longer true, previously it was.\n")

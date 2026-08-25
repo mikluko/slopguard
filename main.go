@@ -115,7 +115,8 @@ func review(in payload) []finding {
 		return nil
 	}
 	findings := scan(src, lang, added)
-	said, remember := spoken(in.SessionID, in.ToolInput.FilePath)
+	said, before, remember := spoken(in.SessionID, in.ToolInput.FilePath)
+	repeat = before
 	kept := findings[:0]
 	for _, f := range findings {
 		if !said[f.key] {
@@ -214,15 +215,28 @@ func written(src []byte, in payload) []span {
 		if e.new == "" || len(out) >= spanBudget {
 			continue
 		}
-		found := locate(src, e.new)
-		if len(found) > 1 && e.old != "" {
-			if narrowed := context(src, found, e); len(narrowed) > 0 {
-				found = narrowed
+		prefix, suffix := shared(e.old, e.new)
+		for _, s := range locate(src, e.new) {
+			if narrowed, ok := narrow(s, prefix, suffix); ok {
+				out = append(out, narrowed)
 			}
 		}
-		out = append(out, found...)
 	}
 	return out
+}
+
+// narrow trims an occurrence to the bytes the edit actually changed: an edit
+// that inserts a line into a function leaves the rest of its replacement text
+// exactly as it was, and claiming all of it would attribute untouched comments
+// to this write. It reports false when nothing changed inside the occurrence,
+// which is what a pure deletion looks like from here.
+func narrow(s span, prefix, suffix int) (span, bool) {
+	start := s.start + uint(prefix)
+	end := s.end - uint(suffix)
+	if prefix+suffix >= int(s.end-s.start) || start >= end {
+		return span{}, false
+	}
+	return span{start: start, end: end}, true
 }
 
 // locate returns every occurrence of text in src, up to [spanBudget].
@@ -237,26 +251,6 @@ func locate(src []byte, text string) []span {
 		start := offset + i
 		out = append(out, span{start: uint(start), end: uint(start + len(needle))})
 		offset = start + len(needle)
-	}
-	return out
-}
-
-// context keeps the occurrences whose neighbourhood still holds the unchanged
-// halves of the text the edit replaced, which is what tells one occurrence of a
-// repeated replacement from another.
-func context(src []byte, found []span, e struct{ old, new string }) []span {
-	prefix, suffix := shared(e.old, e.new)
-	if prefix == 0 && suffix == 0 {
-		return nil
-	}
-	var out []span
-	for _, s := range found {
-		before := int(s.start) - prefix
-		after := int(s.end) + suffix
-		if before < 0 || after > len(src) {
-			continue
-		}
-		out = append(out, s)
 	}
 	return out
 }
@@ -277,14 +271,24 @@ func shared(old, new string) (prefix, suffix int) {
 // report is the work handed back to the agent: which lines, which rule, and
 // what to do about each. It names the tool and the file, because a nudge that
 // does not ask for an edit is read as commentary and answered in prose.
+// repeat records whether this session has been nudged before, which is what
+// decides between the instruction and its short form.
+var repeat bool
+
 func report(name string, findings []finding, in payload) string {
 	var b strings.Builder
-	b.WriteString("slopguard read the comments this write added to " + name + ".\n\n")
+	b.WriteString("Edit " + name + " before your next step: these comments it just gained say things that belong elsewhere.\n\n")
 	for _, f := range findings {
 		b.WriteString("  line " + strconv.FormatUint(uint64(f.line), 10) + "  " + f.reason + "\n")
 	}
-	b.WriteString("\nTake each line with Edit on " + name + " before the next step. " +
-		"If the claim still binds the next editor, restate it as the symbol's contract or as a test. " +
+	// The long form is worth its tokens once. After that the agent has read
+	// it, and re-sending it every time is the one place this tool spends
+	// context it has not earned.
+	if repeat {
+		b.WriteString("\nAs before: restate the claim as a contract, or move it to the commit message. Rewording is not a fix.")
+		return b.String()
+	}
+	b.WriteString("\nPer line: if the claim still binds the next editor, restate it as the symbol's contract or as a test. " +
 		"If it only records this change, cut it and carry it into the commit message. " +
 		"What is judged is where the claim lives, not which words carry it, so rewording is not a fix. " +
 		"If a line is right where it is, keep it and say so in one line.")

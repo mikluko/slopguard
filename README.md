@@ -99,11 +99,19 @@ Go, Python, JavaScript, TypeScript, TSX, Rust, C, C++, Java, Ruby, PHP, shell,
 and YAML. A file whose extension carries no grammar produces nothing, and so
 does a file that fails to parse — a broken tree is not evidence of a comment.
 
+Terraform too: `.tf`, `.tfvars` and `.hcl`.
+
 YAML is judged as configuration: a stacked comment that parses as a mapping or a
-sequence is config left behind. Helm templates are a known gap. A `{{- if }}` at
-column zero makes the YAML grammar drop every comment in the file, so
-`templates/*.yaml` is unguarded while `values.yaml` and `Chart.yaml` are read
-normally.
+sequence is config left behind. Helm templates are read as the YAML they become
+— template actions are blanked to spaces of the same width before the parse, so
+a manifest opening with `{{- if }}` keeps its comments and its byte offsets. A
+`.tpl` file is deliberately not mapped: those are mostly `{{ define }}` bodies,
+and calling them YAML would be a false claim of coverage.
+
+Dispatch is by extension, so `Dockerfile`, `Makefile` and `Jenkinsfile` are
+unreachable. That is not an oversight to fix by adding a basename table: no
+tree-sitter grammar for them ships Go bindings, so the table would map to
+nothing.
 
 ## Install
 
@@ -197,18 +205,27 @@ Sitting inside a function body lowers the threshold and moves nothing else.
 Prose is harder to justify there, but a line pointing at a constraint enforced
 elsewhere still earns its place.
 
-The directions are fitted at build time into `assets/head.bin`, six kilobytes,
+The directions are fitted at build time into `assets/head.bin`, three kilobytes,
 so an invocation embeds only the sentences in front of it. Re-embedding the
-corpus on every hook call was most of what a run used to cost.
+corpus on every hook call was most of what a run used to cost: a write with
+nothing for the model to read now returns in about 5 ms, and one that reaches it
+pays about 90 ms for the ONNX session and 2 ms a sentence after that.
 
 ## Known limits
 
 - Change-event comments, as above.
 - A five-word fragment carries too little for an embedding to place.
-- Helm templates whose comments sit inside a block action.
-- Recall is modest by construction. Held out, the classes catch between a sixth
-  and two thirds of what they should, at the precision the thresholds are fitted
-  for. A comment this tool passes over is not a comment it approves of.
+- Files without a useful extension, as above.
+- Recall is modest by construction: held out, restatement reaches two thirds and
+  self-justification a quarter, at the precision the thresholds are fitted for. A
+  comment this tool passes over is not a comment it approves of.
+- A finding is remembered when it is named, not when it is acted on. Ignoring a
+  nudge silences it for the rest of the session, rewording earns a fresh one, and
+  deleting the line goes quiet. The cheapest paths to silence are still ignore
+  and delete; the wording argues against both, and nothing enforces it.
+- The same replacement text occurring twice in a file is claimed twice. Only the
+  bytes an edit changed are attributed to it, but where those bytes appear more
+  than once there is nothing in the payload that tells the copies apart.
 
 ## Calibration
 

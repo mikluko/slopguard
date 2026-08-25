@@ -8,7 +8,7 @@ import "testing"
 // The change-event class died at +0.32, having learned the subjects of its
 // examples rather than what they had in common, and it read as healthy from
 // every other angle until it was measured this way. The floor sits above that
-// number and below the three classes that survive.
+// number and below the classes that survive.
 const converges = 0.45
 
 // TestStability fits each class from the even half of its own examples and

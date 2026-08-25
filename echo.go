@@ -69,8 +69,8 @@ func container(kind string) bool {
 // A doc comment is exempt whatever it repeats: naming the symbol it documents
 // is what a doc does, and a one-line function makes its whole body available to
 // be echoed. Only prose inside a body is read this way.
-func echoes(c comment, lang *language, src []byte) bool {
-	if c.annotates == nil || !oneLine(c.annotates) || !buried(c.nodes[0], lang) {
+func echoes(c comment, src []byte) bool {
+	if c.annotates == nil || !oneLine(c.annotates) || !c.buried {
 		return false
 	}
 	words := content(c.text)

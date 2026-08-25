@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unsafe"
 
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
 	tshcl "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
 	tsyaml "github.com/tree-sitter-grammars/tree-sitter-yaml/bindings/go"
 	tsbash "github.com/tree-sitter/tree-sitter-bash/bindings/go"
@@ -29,12 +31,18 @@ type language struct {
 	// strict reports whether prose reliably fails to parse as source in this
 	// language, which is what makes the commented-out-code rule safe to apply.
 	strict bool
-	// structure names the node kinds that make a cleanly parsed comment code
-	// rather than prose, for a language where prose parses as a plain value.
-	structure map[string]bool
+	// evidence decides, for a language whose prose parses as source, whether a
+	// cleanly parsed comment is code somebody commented out or a sentence that
+	// merely reads as code. It is given the parse of the comment, the text it
+	// came from, and how many lines the comment ran to.
+	evidence func(root *tree_sitter.Node, src []byte, lines int) bool
 	// templated reports whether files in this language are commonly written
 	// through a template whose actions the grammar cannot read.
 	templated bool
+	// docstrings reports whether this language documents with a string in
+	// statement position rather than with a comment. Python does, and it is
+	// where essentially all of its standing documentation lives.
+	docstrings bool
 }
 
 // lookup returns the language to parse path as, or nil when the extension
@@ -51,12 +59,17 @@ var (
 		functions: set("function_declaration", "method_declaration", "func_literal"),
 		strict:    true,
 	}
+	// Python prose parses as Python: `in`, `is`, `not`, `and` and `or` are
+	// operators, so "# DEBUG=False in production" is a clean parse and was
+	// being reported as commented-out code. It is judged by structure instead,
+	// like YAML, and needs a statement rather than a bare expression.
 	python = &language{
-		name:      "python",
-		grammar:   tspython.Language,
-		comments:  set("comment"),
-		functions: set("function_definition", "lambda"),
-		strict:    true,
+		name:       "python",
+		grammar:    tspython.Language,
+		comments:   set("comment"),
+		functions:  set("function_definition", "lambda"),
+		evidence:   pythonCode,
+		docstrings: true,
 	}
 	javascript = &language{
 		name:     "javascript",
@@ -128,7 +141,7 @@ var (
 		grammar:   tsyaml.Language,
 		comments:  set("comment"),
 		functions: set(),
-		structure: set("block_mapping", "block_sequence", "flow_mapping", "flow_sequence"),
+		evidence:  yamlConfig,
 		templated: true,
 	}
 	// hcl has no function bodies, so every comment in a Terraform file is judged

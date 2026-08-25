@@ -59,6 +59,9 @@ type comment struct {
 	// annotates is the code this comment sits above, where it sits above any:
 	// what a comment restates, if it restates anything.
 	annotates *tree_sitter.Node
+	// doc marks a docstring, which documents the symbol it opens rather than
+	// sitting inside it: the rules for prose in a body do not reach it.
+	doc bool
 }
 
 // scan parses src and reports the comments inside added that the
@@ -108,7 +111,7 @@ func weigh(candidates []comment, lang *language, src []byte) []finding {
 		bias := make([]float64, len(pending))
 		for j, i := range pending {
 			texts[j] = opening(split(candidates[i].text))
-			if buried(candidates[i].nodes[0], lang) {
+			if !candidates[i].doc && buried(candidates[i].nodes[0], lang) {
 				bias[j] = buriedBias
 			}
 		}
@@ -185,7 +188,10 @@ func site(text string) uint64 {
 // prose parses as a plain value, YAML, needs a structure to appear and needs
 // more than one line, because `# note: read this` is a mapping too.
 func leftover(c comment, lang *language) bool {
-	if lang.structure == nil && (!lang.strict || !code(c.text)) {
+	if c.doc {
+		return false
+	}
+	if lang.evidence == nil && (!lang.strict || !code(c.text)) {
 		return false
 	}
 	parser := tree_sitter.NewParser()
@@ -203,17 +209,21 @@ func leftover(c comment, lang *language) bool {
 	if root.HasError() {
 		return false
 	}
-	if lang.structure != nil {
-		return holds(root, lang.structure) && config(root, []byte(body), len(c.nodes))
+	if lang.evidence != nil {
+		return lang.evidence(root, []byte(body), len(c.nodes))
 	}
 	return root.NamedChildCount() > 0
 }
 
-// config separates configuration somebody commented out from a sentence that
-// happens to hold a colon. Both parse as a mapping, so the tell is elsewhere:
-// configuration nests, or repeats, or carries a value with no prose in it,
-// while `# Note: this cluster is shared` carries a sentence and a capital.
-func config(root *tree_sitter.Node, src []byte, lines int) bool {
+// yamlConfig separates configuration somebody commented out from a sentence
+// that happens to hold a colon. Both parse as a mapping, so the tell is
+// elsewhere: configuration nests, or repeats, or carries a value with no prose
+// in it, while `# Note: this cluster is shared` carries a sentence and a
+// capital.
+func yamlConfig(root *tree_sitter.Node, src []byte, lines int) bool {
+	if !holds(root, structures) {
+		return false
+	}
 	var pairs []*tree_sitter.Node
 	var walk func(*tree_sitter.Node)
 	walk = func(node *tree_sitter.Node) {
@@ -254,13 +264,17 @@ func config(root *tree_sitter.Node, src []byte, lines int) bool {
 	return true
 }
 
+// structures are the YAML shapes configuration takes. Prose parses as a plain
+// scalar and reaches none of them.
+var structures = set("block_mapping", "block_sequence", "flow_mapping", "flow_sequence")
+
 // nested reports whether a mapping holds another mapping or a sequence.
 func nested(node *tree_sitter.Node) bool {
 	for i := uint(0); i < node.ChildCount(); i++ {
 		child := node.Child(i)
 		if child.Kind() == "block_mapping_pair" || child.Kind() == "flow_pair" {
 			if value := child.ChildByFieldName("value"); value != nil {
-				if holds(value, set("block_mapping", "block_sequence", "flow_mapping", "flow_sequence")) {
+				if holds(value, structures) {
 					return true
 				}
 			}
@@ -331,7 +345,7 @@ func buried(node *tree_sitter.Node, lang *language) bool {
 // collect returns the comment nodes of a tree in document order.
 func collect(node *tree_sitter.Node, lang *language, src []byte) []*tree_sitter.Node {
 	var out []*tree_sitter.Node
-	if lang.comments[node.Kind()] {
+	if lang.comments[node.Kind()] || (lang.docstrings && docstring(node)) {
 		return []*tree_sitter.Node{node}
 	}
 	for i := uint(0); i < node.ChildCount(); i++ {
@@ -361,6 +375,7 @@ func group(root *tree_sitter.Node, nodes []*tree_sitter.Node, src []byte) []comm
 			body:      body(raw),
 			line:      node.StartPosition().Row + 1,
 			annotates: annotated(root, node, src),
+			doc:       docstring(node),
 		})
 	}
 	return out

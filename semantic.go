@@ -38,7 +38,7 @@ func judge(comments [][]string, bias []float64) []verdict {
 	vectors, err := embedAll(flat)
 	for j, sentence := range flat {
 		if err != nil {
-			found[j] = verdict{literal(sentence), 0.5}
+			found[j] = verdict{literal(sentence), 0.5, "phrase"}
 			continue
 		}
 		found[j] = nearest(vectors[j], bias[owner[j]])
@@ -76,7 +76,7 @@ func nearest(vector []float32, bias float64) verdict {
 	if best < 0 {
 		return verdict{}
 	}
-	return verdict{classes[best].reason, margin}
+	return verdict{classes[best].reason, margin, classes[best].name}
 }
 
 // fitted is the head this process decides with.

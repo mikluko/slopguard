@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"cmp"
+	"hash/fnv"
 	"slices"
 	"strconv"
 	"strings"
@@ -32,6 +33,11 @@ type finding struct {
 	line   uint
 	reason string
 	score  float64
+	// class names the rule that fired, for the log and for nothing else.
+	class string
+	// key identifies this comment at this path, so that a comment already
+	// named once is not named again when the agent's own edit re-enters.
+	key uint64
 }
 
 // examined bounds how many comments one write is judged on. A file rewritten
@@ -109,7 +115,13 @@ func weigh(candidates []comment, lang *language) []finding {
 	var out []finding
 	for i, v := range verdicts {
 		if v.reason != "" {
-			out = append(out, finding{line: candidates[i].line, reason: v.reason, score: v.score})
+			out = append(out, finding{
+				line:   candidates[i].line,
+				reason: v.reason,
+				score:  v.score,
+				class:  v.class,
+				key:    site(candidates[i].text),
+			})
 		}
 	}
 	slices.SortStableFunc(out, func(a, b finding) int {
@@ -123,6 +135,7 @@ func weigh(candidates []comment, lang *language) []finding {
 type verdict struct {
 	reason string
 	score  float64
+	class  string
 }
 
 // inspect returns why the shape of a comment rules it out, or the zero verdict
@@ -130,15 +143,25 @@ type verdict struct {
 // one line of nudge per comment.
 func inspect(c comment, lang *language) verdict {
 	if leftover(c, lang) {
-		return verdict{"commented-out code: delete it, the previous version is in git", 1}
+		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
 	if n := sentences(c.text); n > docSentences {
 		return verdict{
 			strconv.Itoa(n) + " sentences of documentation: one is the default, a second is earned by a precondition, an invariant, a failure mode, or a cost",
 			0.5 + float64(n-docSentences)/100,
+			"length",
 		}
 	}
 	return verdict{}
+}
+
+// site identifies a comment by what it says rather than by where it sits, so
+// that the agent's own corrective edit — which moves every line below it — is
+// still recognised as the same comment.
+func site(text string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(normalize(text)))
+	return h.Sum64()
 }
 
 // leftover reports whether a comment is commented-out code: text that parses

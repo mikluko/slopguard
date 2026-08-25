@@ -10,10 +10,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -28,6 +30,9 @@ const (
 	// newly written. A short replacement such as "}" occurs everywhere, and
 	// every extra span costs a pass over every comment.
 	spanBudget = 64
+	// logEnv names a file every finding is appended to, as one JSON object per
+	// line.
+	logEnv = "SLOPGUARD_LOG"
 )
 
 type payload struct {
@@ -55,11 +60,16 @@ func main() {
 			os.Exit(0)
 		}
 	}()
+	if len(os.Args) > 1 {
+		sweepFiles(os.Args[1:])
+		return
+	}
 	var in payload
 	if err := json.NewDecoder(os.Stdin).Decode(&in); err != nil {
 		return
 	}
 	findings := review(in)
+	record(in.ToolInput.FilePath, findings)
 	if len(findings) == 0 {
 		return
 	}
@@ -99,10 +109,62 @@ func review(in payload) []finding {
 		return nil
 	}
 	findings := scan(src, lang, added)
+	said, remember := spoken(in.SessionID, in.ToolInput.FilePath)
+	kept := findings[:0]
+	for _, f := range findings {
+		if !said[f.key] {
+			kept = append(kept, f)
+		}
+	}
+	findings = kept
 	if len(findings) > budget {
 		findings = findings[:budget]
 	}
+	remember(findings)
 	return findings
+}
+
+// record appends what was found to the log, when one is asked for. A week of
+// real use is the only honest measure of how often this tool is wrong, and
+// nothing else in the process writes it down.
+func record(path string, findings []finding) {
+	name := os.Getenv(logEnv)
+	if name == "" || len(findings) == 0 {
+		return
+	}
+	handle, err := os.OpenFile(name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer handle.Close()
+	for _, f := range findings {
+		json.NewEncoder(handle).Encode(map[string]any{
+			"at":    time.Now().UTC().Format(time.RFC3339),
+			"file":  path,
+			"line":  f.line,
+			"class": f.class,
+			"score": f.score,
+		})
+	}
+}
+
+// sweepFiles judges the named files whole and prints what it finds, so that
+// the numbers in the README are reproducible from the repository rather than
+// from a script in somebody's scratch directory.
+func sweepFiles(paths []string) {
+	for _, path := range paths {
+		lang := lookup(path)
+		if lang == nil {
+			continue
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, f := range scan(src, lang, []span{{start: 0, end: uint(len(src))}}) {
+			fmt.Printf("%s:%d\t%s\t%.3f\t%s\n", path, f.line, f.class, f.score, f.reason)
+		}
+	}
 }
 
 // written returns the byte ranges of src that this tool call authored: the

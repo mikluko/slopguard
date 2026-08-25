@@ -67,8 +67,9 @@ var (
 )
 
 // model returns the process's embedder, loading ONNX Runtime and the graph on
-// the first call. The load costs about 25 ms; a hook that finds no comment to
-// judge never pays it.
+// the first call. Measured warm, that is about 90 ms of an invocation that
+// reaches it; a hook that finds no comment to judge never pays it and returns
+// in about 5 ms.
 func model() (*embedder, error) {
 	loadOnce.Do(func() {
 		if os.Getenv(disableEnv) != "" {
@@ -249,15 +250,6 @@ func pool(states []float32, content int) []float32 {
 		}
 	}
 	return vec
-}
-
-// cosine returns the similarity of two unit-length vectors.
-func cosine(a, b []float32) float64 {
-	var sum float64
-	for i := range a {
-		sum += float64(a[i]) * float64(b[i])
-	}
-	return sum
 }
 
 func destroy(values []ort.Value) {

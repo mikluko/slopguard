@@ -100,9 +100,16 @@ func unit(v []float32) []float32 {
 	return v
 }
 
+// margin is how many of the examples nearest a candidate threshold have to be
+// right, as well as all of them together. Cumulative precision alone lets a
+// clean top of the ranking buy slack that is then spent entirely at the cut,
+// which is where every real firing lives.
+const marginWindow = 8
+
 // cut returns the lowest threshold at which this class fires with the required
-// precision, or +Inf when no threshold reaches it and the class is better off
-// silent.
+// precision, both over everything above the cut and among the examples nearest
+// it. It returns +Inf when no threshold reaches that, and a class whose
+// threshold is +Inf is better off silent.
 func cut(vectors [][]float32, labels []string, name string, direction []float32, precision float64) float64 {
 	type scored struct {
 		score float64
@@ -122,17 +129,31 @@ func cut(vectors [][]float32, labels []string, name string, direction []float32,
 		return 0
 	})
 	best, right, wrong := math.Inf(1), 0, 0
-	for _, s := range scores {
+	for i, s := range scores {
 		if s.right {
 			right++
 		} else {
 			wrong++
 		}
-		if right > 0 && float64(right)/float64(right+wrong) >= precision {
+		if right == 0 || float64(right)/float64(right+wrong) < precision {
+			continue
+		}
+		if local(scores[max(0, i-marginWindow+1):i+1], precision, func(s scored) bool { return s.right }) {
 			best = s.score
 		}
 	}
 	return best
+}
+
+// local reports whether the required share of a window is right.
+func local[T any](window []T, precision float64, right func(T) bool) bool {
+	hits := 0
+	for _, item := range window {
+		if right(item) {
+			hits++
+		}
+	}
+	return float64(hits)/float64(len(window)) >= precision
 }
 
 func dot(a, b []float32) float64 {

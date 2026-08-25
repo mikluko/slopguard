@@ -107,28 +107,6 @@ func literal(text string) string {
 	return ""
 }
 
-// history returns the change-event phrase a comment carries, or "" when it
-// carries none. Bare "new", "old", and "now" are not markers: ordinary contract
-// prose uses all three.
-func history(text string) string {
-	haystack := normalize(text)
-	for _, phrase := range historyMarkers {
-		if strings.Contains(haystack, " "+phrase+" ") {
-			return phrase
-		}
-	}
-	return ""
-}
-
-var historyMarkers = []string{
-	"previously", "formerly", "refactored", "renamed",
-	"no longer", "used to", "instead of", "changed from", "switched from",
-	"moved from", "was replaced", "replaces the", "this fixes", "fixes the",
-	"fix for", "we now", "it now", "now uses", "now returns", "now takes",
-	"now handles", "before this change", "after the refactor", "as of this change",
-	"the old implementation", "the new implementation", "for now",
-}
-
 // compat reports whether a comment justifies a symbol by its own history rather
 // than by its contract.
 func compat(text string) bool {

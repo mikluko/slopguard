@@ -432,26 +432,44 @@ func TestHeldOut(t *testing.T) {
 		if got == "" {
 			got = "(contract)"
 		}
-		t.Logf("miss  want %-10s got %-10s score %+.3f floor %.2f contract %+.3f margin %+.3f  %s",
-			want, got, m.score, m.floor, m.contract, m.score-m.contract, m.text)
+		t.Logf("miss  want %-10s got %-10s score %+.3f short of %.3f by %.3f  %s",
+			want, got, m.score, m.floor, m.floor-m.score, m.text)
 	}
 
 	// Only the false-positive rate is asserted: prose wrongly nudged costs an
 	// edit against documentation that was already right, and a missed comment
 	// costs a nudge nobody sees.
-	contract, left := 0, 0
-	for i, r := range heldout {
-		if r.class != "" {
-			continue
-		}
-		contract++
-		if reasons[i].reason == "" {
-			left++
-		}
+	//
+	// It is asserted twice, because most comments do not take the path the
+	// first pass measures. A comment inside a function body is judged at a
+	// threshold 0.06 lower, and that is where the tool objects most.
+	buried := make([]float64, len(heldout))
+	for i := range buried {
+		buried[i] = buriedBias
 	}
-	if rate := float64(left) / float64(contract); rate < contractFloor {
-		t.Errorf("contract prose left alone %d/%d = %.3f, want at least %.3f",
-			left, contract, rate, contractFloor)
+	for _, pass := range []struct {
+		name    string
+		verdict []verdict
+	}{
+		{"above a declaration", reasons},
+		{"inside a function body", judge(comments, buried)},
+	} {
+		contract, left := 0, 0
+		for i, r := range heldout {
+			if r.class != "" {
+				continue
+			}
+			contract++
+			if pass.verdict[i].reason == "" {
+				left++
+			}
+		}
+		rate := float64(left) / float64(contract)
+		t.Logf("%-24s contract prose left alone %d/%d = %.3f", pass.name, left, contract, rate)
+		if rate < contractFloor {
+			t.Errorf("%s: contract prose left alone %d/%d = %.3f, want at least %.3f",
+				pass.name, left, contract, rate, contractFloor)
+		}
 	}
 }
 

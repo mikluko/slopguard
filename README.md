@@ -29,14 +29,18 @@ comes back as context, and what the agent does about it is the agent's business.
 | --- | --- |
 | restatement | `// close the connection` above `conn.Close()` |
 | self-justification | `// kept for backwards compatibility` |
-| narration | `// first we parse the input, then we walk the tree` |
 | commented-out code | a comment that parses as source, or as YAML config |
 | length | documentation running past five sentences |
 
-The first three are read by the model. The last two are structural, and so is
-half of restatement: a comment whose content words are already spelled by the
+The first two are read by the model. The last two are structural, and so is half
+of restatement: a comment whose content words are already spelled by the
 identifiers on the line below it is a restatement on the evidence, with no model
 involved.
+
+A narration class was tried and dropped too, more cheaply than the one below.
+Its direction converged, but it fired once on the held-out set, never across
+three production repositories, and not on its own training sentence. A class
+that says almost nothing is carrying risk for nothing.
 
 ## What it does not catch, and why
 
@@ -65,7 +69,8 @@ that shape.
 
 So the tool says nothing about change-event comments rather than guessing at
 them. The labelled examples are kept in `heldout_test.go` for whatever tries
-next.
+next, and the full diagnosis — three hypotheses, the numbers that refuted each,
+and the two things worth trying — is in `docs/history-class.md`.
 
 ## What it leaves alone
 
@@ -151,11 +156,16 @@ It loads a native library into its own process and is not a sandbox.
 Reads the hook payload on stdin, writes a `PostToolUse` result on stdout, always
 exits 0. A write it does not object to produces no output at all.
 
-It fails open, in every direction. A payload it cannot decode, a tool other than
-`Write`, `Edit` or `MultiEdit`, an extension with no grammar, a file that is
-gone or is not a regular file or is over 2 MB, replacement text it cannot locate
-in the file, a source that does not parse, a missing ONNX Runtime: all of them
-yield silence, because none of them is evidence of a comment.
+It fails open. A payload it cannot decode, a tool other than `Write`, `Edit` or
+`MultiEdit`, an extension with no grammar, a file that is gone or is not a
+regular file or is over 2 MB, replacement text it cannot locate in the file, and
+a source that does not parse all yield silence, because none of them is evidence
+of a comment.
+
+Without ONNX Runtime it does not go silent, it goes stupid: the structural rules
+still run, and a phrase list stands in for the one model class it can
+approximate. That fallback judges differently from the model in both directions,
+and `SLOPGUARD_NO_MODEL=1` is how to see what it says.
 
 A finding names the line and the rule, at most three per write, strongest first:
 
@@ -214,11 +224,20 @@ labelled). Half of the harvest fits; the other half is held out in
 precision and recall per class against that half, and fails if the share of
 contract prose left alone drops.
 
-Measured on 114 held-out comments: contract prose left alone 75 of 75, with
-restatement at recall 0.67, self-justification 0.50 and narration 0.17, each at
+Measured on 98 held-out comments, at both the threshold a doc comment meets and
+the lower one a comment inside a function body meets: contract prose left alone
+75 of 75, restatement at recall 0.67 and self-justification at 0.25, both at
 precision 1.0. On 33 files of a production Go service, 9 findings where the
 first working version produced 48. On 9934 YAML files of an infrastructure
 repository, 104 findings across 15552 comment lines.
+
+Two caveats on that first number, because it is the one that decides whether
+this tool is worth running. The held-out half and the fitting half were split
+row by row within each source rather than by source, so comments from one file
+sit on both sides and the classes see the topics they are tested on: it is an
+upper bound. And every labelled row is a single sentence, while a real doc
+comment gets up to three draws against the same threshold, so the multi-sentence
+case is measured only by the repository sweeps, which carry no labels.
 
 Editing the corpus changes every score, so `assets/head.bin` carries a
 fingerprint of the text it was fitted from and `go test` fails when the two
@@ -234,7 +253,14 @@ The tables are the specification: `scan_test.go` for what fires per language,
 `semantic_test.go` for what the model must and must not recognise. A false
 positive or a missed comment is a row added there first.
 
-Tests touching the model skip when ONNX Runtime is absent.
+Tests that judge text skip when ONNX Runtime is absent; the parsing and
+structural tests run either way, so a checkout without it still exercises the
+language table, the commented-out-code rules and the identifier echo.
+
+`go test -v -run TestStability` reports how far each class's direction moves
+when it is fitted from one half of its own examples rather than the other. It
+fails below cos 0.45. That is the measurement the deleted change-event class
+failed at +0.32 while looking healthy from every other angle.
 
 ## License
 

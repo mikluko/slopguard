@@ -55,26 +55,6 @@ var classes = []class{
 			"read the file",
 		},
 	},
-	{
-		name:   "narrative",
-		reason: "narrates how the code works: a doc states the contract, and the walkthrough belongs in a test",
-		exemplars: []string{
-			"this wrapper does two things: first it flattens, then it formats",
-			"traverses the message by reflection and substitutes every placeholder",
-			"the handler receives the event, computes a time, and writes it",
-			"step one observes the source, step two extracts the path",
-			"the loop reads each entry, filters it, and appends to the slice",
-			"first we acquire the lock, then we drain the channel",
-			"first we parse the input, then we walk the tree and collect the results",
-			"this works by iterating over every element and applying the transform",
-			"here we build the request, send it, and then handle the response",
-			"we start by allocating the buffer, after which each chunk is copied in",
-			"we check the cache, and if it misses we go to the database",
-			"what happens here is that the client opens a connection and keeps it alive",
-			"the algorithm walks the graph depth first, marking each node as it goes",
-			"this function first validates the input and then writes it to disk",
-		},
-	},
 }
 
 // contract is what every class is measured against: prose that states what a

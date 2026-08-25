@@ -7,9 +7,9 @@ package main
 // of what the fit is worth.
 //
 // It exists because hand-written exemplars put a threshold where hand-written
-// prose lives, and that is not where real comments live. Fitted from corpus.go
-// alone, the history class scored every one of 229 real comments below its own
-// threshold and fired on nothing at all.
+// prose lives, and that is not where real comments live: fitted from corpus.go
+// alone, the classes scored real comments below their own thresholds and one of
+// them fired on nothing at all.
 
 var mined = map[string][]string{
 	"compat": {
@@ -38,14 +38,6 @@ var mined = map[string][]string{
 		"an Unsubscriber represents something that can be unsubscribed",
 		"find the drafts and sent folder ids",
 		"upload the blob if content was provided",
-	},
-	"narrative": {
-		"it resolves an optional template, unions the template's grants with the explicit flags, reconciles the validity window, mints with the library, and persists both the new record and the issuance",
-		"it swaps the allowlist entry from the old identifier to the new one, marks the superseded issuance revoked, records the new issuance, and re-mints each live credential beneath it",
-		"the handler receives the event, resolves the identity, and writes the result back onto the response",
-		"we build the request, send it, read the stream line by line, and assemble the accumulated partial content at the end",
-		"step one resolves the file id to a path, step two downloads the raw bytes",
-		"this works by iterating over every entry and applying the transform to each one",
 	},
 	"": {
 		"implementations must be safe for concurrent use and may be backed by memory or shared storage",

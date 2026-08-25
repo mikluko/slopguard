@@ -356,6 +356,9 @@ image:
 func TestScan(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			if judged(c.want) {
+				skipWithoutRuntime(t)
+			}
 			findings := scan([]byte(c.src), c.lang, []span{{start: 0, end: uint(len(c.src))}})
 			if c.gap != "" {
 				if len(findings) > 0 && strings.Contains(findings[0].reason, c.want) {
@@ -377,8 +380,21 @@ func TestScan(t *testing.T) {
 	}
 }
 
+// judged reports whether a case needs the model to answer. The structural
+// rules — commented-out code, the identifier echo, documentation running long —
+// answer on any machine, and a case expecting silence has to hold on both.
+func judged(want string) bool {
+	for _, c := range classes {
+		if want != "" && strings.Contains(c.reason, want) {
+			return true
+		}
+	}
+	return false
+}
+
 // A comment outside the text the tool call wrote is somebody else's problem.
 func TestScanIgnoresUntouchedComments(t *testing.T) {
+	skipWithoutRuntime(t)
 	src := `package p
 
 // double is older than this session and reads however it reads.

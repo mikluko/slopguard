@@ -451,7 +451,7 @@ func TestHeldOut(t *testing.T) {
 	// threshold 0.06 lower, and that is where the tool objects most.
 	buried := make([]float64, len(heldout))
 	for i := range buried {
-		buried[i] = buriedBias
+		buried[i] = allowance(buriedBias, len(comments[i]))
 	}
 	check := func(name string, left, contract int) {
 		rate := float64(left) / float64(contract)
@@ -497,7 +497,7 @@ func TestHeldOut(t *testing.T) {
 	}
 	bias := make([]float64, len(docs))
 	for i := range bias {
-		bias[i] = buriedBias
+		bias[i] = allowance(buriedBias, len(docs[i]))
 	}
 	left := 0
 	for _, v := range judge(docs, bias) {

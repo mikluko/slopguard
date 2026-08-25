@@ -78,15 +78,14 @@ func TestPerDraw(t *testing.T) {
 	}
 
 	for _, step := range []float64{0.0, 0.005, 0.01, 0.02, 0.04} {
-		perDrawOverride = step
 		left := 0
-		for _, v := range judge(docs, biasFor(docs)) {
+		for _, v := range judge(docs, biasFor(docs, step)) {
 			if v.reason == "" {
 				left++
 			}
 		}
 		caught := 0
-		for _, v := range judge(padded, biasFor(padded)) {
+		for _, v := range judge(padded, biasFor(padded, step)) {
 			if v.reason != "" {
 				caught++
 			}
@@ -94,13 +93,14 @@ func TestPerDraw(t *testing.T) {
 		t.Logf("perDraw %.3f  contract three-to-a-comment %d/%d  positives padded to three %d/%d",
 			step, left, len(docs), caught, len(padded))
 	}
-	perDrawOverride = -1
 }
 
-func biasFor[T any](of []T) []float64 {
-	out := make([]float64, len(of))
-	for i := range out {
-		out[i] = buriedBias
+// biasFor is [allowance] with the step under test, for a set of comments read
+// inside a function body.
+func biasFor(comments [][]string, step float64) []float64 {
+	out := make([]float64, len(comments))
+	for i, sentences := range comments {
+		out[i] = buriedBias - float64(len(sentences)-1)*step
 	}
 	return out
 }

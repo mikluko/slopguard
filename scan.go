@@ -117,9 +117,11 @@ func weigh(candidates []comment, lang *language, src []byte) []finding {
 		bias := make([]float64, len(pending))
 		for j, i := range pending {
 			texts[j] = opening(split(candidates[i].text))
+			position := 0.0
 			if !candidates[i].doc && candidates[i].buried {
-				bias[j] = buriedBias
+				position = buriedBias
 			}
+			bias[j] = allowance(position, len(texts[j]))
 		}
 		for j, v := range judge(texts, bias) {
 			// Restatement is a relation, so the model's reading of one is

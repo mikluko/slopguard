@@ -41,12 +41,7 @@ func judge(comments [][]string, bias []float64) []verdict {
 			found[j] = verdict{literal(sentence), 0.5, "phrase"}
 			continue
 		}
-		// Every sentence of a comment is another draw against the same
-		// threshold, and the verdict is the best of them, so a long comment is
-		// likelier to clear it for no better reason than length. Each extra
-		// draw raises the bar the others have to clear.
-		draws := float64(len(comments[owner[j]]) - 1)
-		found[j] = nearest(vectors[j], bias[owner[j]]-draws*step())
+		found[j] = nearest(vectors[j], bias[owner[j]])
 	}
 	out := make([]verdict, len(comments))
 	for j, v := range found {
@@ -107,15 +102,15 @@ const clear = 0.005
 // most findings come from.
 const perDraw = 0.005
 
-// perDrawOverride lets the sweep in window_test.go fit this constant the way
-// the others are fitted. Negative means the constant stands.
-var perDrawOverride = -1.0
-
-func step() float64 {
-	if perDrawOverride >= 0 {
-		return perDrawOverride
-	}
-	return perDraw
+// allowance is how far a comment's threshold moves before it is judged: down by
+// what its position already argues against it, and back up by one step for each
+// sentence past the first.
+//
+// Every sentence is another draw against the same threshold and the verdict is
+// the best of them, so without the second term a long comment clears the bar for
+// no better reason than length.
+func allowance(bias float64, sentences int) float64 {
+	return bias - float64(sentences-1)*perDraw
 }
 
 // fitted is the head this process decides with, and fittedErr is why there is

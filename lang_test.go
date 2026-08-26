@@ -15,6 +15,9 @@ func TestLookup(t *testing.T) {
 		{"Dockerfile", dockerfile},
 		{"build/Dockerfile", dockerfile},
 		{"Dockerfile.dev", dockerfile},
+		// An extension that is neither read nor a format of its own is a
+		// variant tag, and the file keeps the language its name gives it.
+		{"Dockerfile.tmpl", dockerfile},
 		{"api.Dockerfile", dockerfile},
 		{"Containerfile", dockerfile},
 		{"Makefile", makefile},

@@ -43,10 +43,11 @@ func main() {
 		corpusPath = flag.String("corpus", "corpus.jsonl", "the mined corpus")
 		clones     = flag.String("clones", filepath.Join(os.TempDir(), "slopguard-harvest"), "where the repositories were cloned")
 		sweep      = flag.Bool("sweep", true, "trace the curve as well as the shipped operating point")
+		dump       = flag.String("dump", "", "print every row this class fired on, with its label; \"all\" prints them for every class")
 	)
 	flag.Parse()
 
-	if err := run(*corpusPath, *clones, *sweep); err != nil {
+	if err := run(*corpusPath, *clones, *sweep, *dump); err != nil {
 		fmt.Fprintln(os.Stderr, "score:", err)
 		os.Exit(1)
 	}
@@ -79,7 +80,7 @@ func (m misses) String() string {
 		m.repo, m.blob, m.language, m.unmatched)
 }
 
-func run(corpusPath, clones string, sweep bool) error {
+func run(corpusPath, clones string, sweep bool, dump string) error {
 	rows, err := corpus.Load(corpusPath)
 	if err != nil {
 		return err
@@ -126,7 +127,29 @@ func run(corpusPath, clones string, sweep bool) error {
 		fmt.Printf("\n## The curve\n\n")
 		curve(judged, offsets, deleted, survived)
 	}
+	if dump != "" {
+		fmt.Printf("\n## What fired\n\n")
+		fired(judged[shipped], dump)
+	}
 	return nil
+}
+
+// fired prints the rows one class nudged, label first, so that a false-positive
+// rate can be read as text rather than trusted as a number. The label is what
+// makes it worth printing: a class nudging a comment somebody kept is where the
+// noise in the corpus and the noise in the rule are hardest to tell apart, and
+// only reading them separates the two.
+func fired(verdicts []verdict, want string) {
+	for _, v := range verdicts {
+		if !v.fired || (want != "all" && v.class != want) {
+			continue
+		}
+		text := v.row.Text
+		if len(text) > 96 {
+			text = corpus.Truncate(text, 96)
+		}
+		fmt.Printf("%-9s %-9s %s:%d\t%s\n", v.row.Label, v.class, v.row.Path, v.row.Line, text)
+	}
 }
 
 // judge scores every row at every offset, returning one verdict slice per

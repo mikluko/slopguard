@@ -22,6 +22,21 @@ const examined = 64
 // caller knows when it is done reading; calling it and then reading a Comment
 // is a use-after-free rather than an empty answer.
 func Scan(src []byte, language *lang.Language, added []Span) (comments []Comment, release func()) {
+	return scan(src, language, added, examined)
+}
+
+// ScanAll parses src and returns every comment in it, unbounded, together with
+// the function that releases them. It reads a file as corpus where [Scan] reads
+// one write, and it goes through the same reading: a corpus counted by a
+// different notion of what a comment is would describe a different object than
+// the rules judge.
+func ScanAll(src []byte, language *lang.Language) (comments []Comment, release func()) {
+	return scan(src, language, []Span{{Start: 0, End: uint(len(src))}}, 0)
+}
+
+// scan returns the comments of src that fall inside added, stopping after most
+// of them, which is unbounded when most is zero.
+func scan(src []byte, language *lang.Language, added []Span, most int) (comments []Comment, release func()) {
 	parser := tree_sitter.NewParser()
 	defer parser.Close()
 	if err := parser.SetLanguage(tree_sitter.NewLanguage(language.Grammar())); err != nil {
@@ -43,7 +58,7 @@ func Scan(src []byte, language *lang.Language, added []Span) (comments []Comment
 			c.Annotates = annotated(root, c.Nodes[len(c.Nodes)-1], src)
 			out = append(out, c)
 		}
-		if len(out) == examined {
+		if most > 0 && len(out) == most {
 			break
 		}
 	}

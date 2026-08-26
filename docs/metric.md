@@ -80,6 +80,55 @@ actually judged, marked as an estimate.
 comments, no build reaches recall above about two thirds, and a run reporting
 0.6 is near the ceiling rather than mediocre.
 
+## What the corpus cannot see, and what to do about it
+
+The paragraph above says the noise runs one way and is therefore safe. That
+holds, but on one class the bound is loose enough to be useless, and the reason
+is structural rather than a matter of sample size.
+
+Measured on 11,387 harvested rows, `echo` catches 25 deleted comments and nudges
+254 survived ones. Reading those 254 rather than counting them: `Copy
+axios.prototype to instance`, `Iterate over object keys`, `Update the Host
+header.`, `Set the sequence.`, `Recursively delete all child buckets.`
+`tautology` looks the same: `Convert to a byte array.`, `Create a cursor for
+iteration.`, `Increment and return the sequence.`
+
+Every one of those is the class Steidl's sixteen developers agreed above 80% was
+trivial, and that Jabrayilzade measures at a 31% base rate. They are correct
+firings scored as false positives.
+
+**The cause is that deletion and triviality are not the same judgement.** A
+comment gets deleted when somebody is actively bothered by it. A trivial comment
+bothers nobody: it is cheap to skim, and removing it is a diff nobody wants to
+review. So triviality is systematically absent from the `deleted` side and
+abundant on the `survived` side, and a build tuned to maximise recall on
+`deleted` would be tuned away from the best-attested defect in the literature.
+
+That is a trap rather than a reason to discard the corpus. What follows from it:
+
+- **`survived` means *nobody removed this*, never *this is good*.** Every report
+  says it in those words.
+- **The corpus is strong evidence in one direction and weak in the other.** It
+  measures false positives on prose people actively valued well, because a
+  comment kept through many readings of a file somebody was editing is a real
+  positive. It measures recall on triviality badly, because triviality does not
+  generate deletions.
+- **The classes split by which evidence governs them.** `leftover`, and any
+  narration or change-event class, produce deletions and are properly judged
+  against the mined labels. `echo` and `tautology` target a defect that does not
+  produce deletions, and are properly judged against Steidl's validated
+  coherence-coefficient criterion and a human pass, with the mined corpus used
+  only for the false-positive half.
+- **The hundred-row adjudication is therefore the linchpin, not a nicety.** What
+  it has to produce is not only `d` and `s` but a split of the `survived` rows
+  into prose that states a contract and prose that is merely trivial and was
+  left alone. Only the first is a true negative. The second is not evidence in
+  either direction and belongs in neither denominator.
+
+Until that split exists, `echo` and `tautology` are reported with their FPR
+figures marked as upper bounds that are known to be loose, and no threshold is
+moved on the strength of them.
+
 ## What has to be beaten
 
 A number with no baseline says nothing. Four, in increasing order of what they

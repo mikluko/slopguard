@@ -36,16 +36,17 @@ func main() {
 		files   = flag.Int("files", 400, "how many files of each repository to read for survivors")
 		depth   = flag.Int("depth", 4000, "how much history to clone; zero clones all of it")
 		only    = flag.String("only", "", "harvest only the repository with this name")
+		keep    = flag.Int("keep", 800, "how many survived rows to take from one repository; zero takes all of them")
 	)
 	flag.Parse()
 
-	if err := run(*clones, *out, *only, *commits, *files, *depth); err != nil {
+	if err := run(*clones, *out, *only, *commits, *files, *depth, *keep); err != nil {
 		fmt.Fprintln(os.Stderr, "harvest:", err)
 		os.Exit(1)
 	}
 }
 
-func run(clones, out, only string, commits, files, depth int) error {
+func run(clones, out, only string, commits, files, depth, keep int) error {
 	if err := os.MkdirAll(clones, 0o755); err != nil {
 		return err
 	}
@@ -72,6 +73,7 @@ func run(clones, out, only string, commits, files, depth int) error {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", repo.Name, err)
 			continue
 		}
+		rows = balance(rows, keep)
 		var kept int
 		for _, row := range rows {
 			if !clean(row.Text) {
@@ -88,6 +90,39 @@ func run(clones, out, only string, commits, files, depth int) error {
 	}
 	fmt.Fprintf(os.Stderr, "\n%d rows written to %s, %d dropped as boilerplate\n", wrote, out, dropped)
 	return nil
+}
+
+// balance caps how many survived rows one repository contributes, taking them
+// evenly across what was found rather than off the front.
+//
+// Deleted rows are never capped. They are the scarce half everywhere, and one
+// repository cannot flood them: tokio yields 100 against grpc-go's 200-odd.
+// Survived rows are the opposite, and the ratio is a fact about the language
+// rather than about the code. Rust documents every public item with `///`, so
+// tokio produced 14,646 survived rows against grpc-go's 2,600 and would have
+// been half of a 29,000-row corpus on its own. A corpus that is half one
+// repository measures that repository.
+func balance(rows []corpus.Row, keep int) []corpus.Row {
+	if keep <= 0 {
+		return rows
+	}
+	var deleted, survived []corpus.Row
+	for _, row := range rows {
+		if row.Label == corpus.Deleted {
+			deleted = append(deleted, row)
+			continue
+		}
+		survived = append(survived, row)
+	}
+	if len(survived) <= keep {
+		return rows
+	}
+	step := len(survived) / keep
+	out := deleted
+	for i := 0; i < len(survived) && len(out)-len(deleted) < keep; i += step {
+		out = append(out, survived[i])
+	}
+	return out
 }
 
 // fetch clones the repository if it is not there and updates it if it is. A

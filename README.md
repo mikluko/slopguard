@@ -29,7 +29,7 @@ comes back as context, and what the agent does about it is the agent's business.
 | --- | --- |
 | restatement | `// close the connection` above `conn.Close()` |
 | self-justification | `// kept for backwards compatibility` |
-| commented-out code | a comment that parses as source, or as YAML config |
+| commented-out code | a comment that parses as source the compiler would take |
 | length | documentation running past eight sentences |
 
 The first two are read by the model. The last two are structural, and so is half
@@ -92,6 +92,23 @@ flags every one of them, which is why there is a model here at all.
 Machine-readable comments are skipped outright: shebangs, build constraints,
 `//go:generate`, `//nolint`, `// Deprecated:`, `# noqa`, `# type:`,
 `// eslint-disable`, and their neighbours.
+
+A licence notice is exempt from every rule. Some of them ask in their own text to
+be preserved, and the length rule was nudging an agent to shorten the FreeBSD
+libm headers the Go standard library carries.
+
+A comment sharing a line with code is exempt from the rules that read it against
+that line. The words it shares with the line are what the note is about rather
+than evidence it repeats one, and the notation those notes use is the notation
+the commented-out-code rule would otherwise read as source:
+
+```
+num -= old.cap - old.len // preserve memory of old[old.len:old.cap]
+x2 := Sqrt(x1)           // x2 = sqrt(1 - x*x)
+B2 = 696219795           // (664-0.03306235651)*2**20
+```
+
+The cost is `i++ // increment i`, which nothing else here catches.
 
 ## Languages
 
@@ -209,6 +226,19 @@ Sitting inside a function body lowers the threshold and moves nothing else.
 Prose is harder to justify there, but a line pointing at a constraint enforced
 elsewhere still earns its place.
 
+The commented-out-code rule reads a comment as source, which asks more of a
+parser than a parser gives. A tree-sitter grammar is context-free and Go is not,
+so `f == g` and `y0(x) = 1/sqrt(pi) * ...` both parse cleanly and neither is
+something the compiler would take. Three shapes the grammar admits and the
+language refuses rule a fragment out: an expression statement that is not a call
+or a receive, an assignment to something not assignable, and a leading label.
+
+The fragment is parsed in statement position rather than at file scope, which is
+where code gets commented out from, and the two parse by different rules —
+`fmt.Println("x")` is a conversion at file scope and a call inside a function.
+A run cut out of a larger block leaves braces open, so they are closed before
+parsing; needing to is evidence rather than a disqualification.
+
 The directions are fitted at build time into `assets/head.bin`, three kilobytes,
 so an invocation embeds only the sentences in front of it. Re-embedding the
 corpus on every hook call was most of what a run used to cost: a write with
@@ -235,6 +265,13 @@ pays about 90 ms for the ONNX session and 2 ms a sentence after that.
 - The same replacement text occurring twice in a file is claimed twice. Only the
   bytes an edit changed are attributed to it, but where those bytes appear more
   than once there is nothing in the payload that tells the copies apart.
+- An equation whose left side is a plain identifier is legal Go and is still read
+  as code: `// EM = 0x00 || 0x02 || PS`, `// U_n = PRF(password, U_(n-1))`.
+  Separating those from a switched-off assignment needs the identifiers resolved
+  against the file, since these resolve to nothing in it.
+- The legality check that rules the rest of that family out is wired for Go
+  alone. Every other language still decides on a bare parse plus a lexical
+  prefilter, which is what all of them did before any was measured.
 
 ## Calibration
 
@@ -246,9 +283,11 @@ lets a clean top of the ranking buy slack that is spent entirely at the margin.
 Both numbers are measured rather than picked. `go test -v -run TestCalibrate`
 fits at required precisions from 0.70 to 0.95, and `-run TestWindow` at margin
 widths from 0 to 0.08; each reports what that choice costs on comments the fit
-never saw. Below 0.85 the tool starts nudging prose that was right; above it,
-recall falls for nothing. The margin band from 0.01 to 0.02 nudges no held-out
-prose at all and still reaches the most true positives.
+never saw. Nothing below 0.85 nudges held-out prose that was right either, so
+what picks 0.85 is the other side: at 0.95 the self-justification class stops
+firing at all and two more comments go unnudged for nothing. The margin band
+from 0.01 to 0.02 nudges no held-out prose and still reaches the most true
+positives; at 0 it reaches five wrong.
 
 The corpus is in `corpus.go` (hand-written) and `mined.go` (harvested and
 labelled). Half of the harvest fits; the other half is held out in
@@ -260,12 +299,16 @@ Measured on 98 held-out comments, each a single sentence: restatement at recall
 0.53 and self-justification at 0.25, both at precision 1.0. Those two are
 per-sentence rates — a comment of several sentences takes the strongest verdict
 among them, so its recall is somewhat higher and is not measured here. Contract
-prose is left alone
-75 of 75 above a declaration, 74 of 75 at the lower threshold a comment inside a
-function body meets, and 25 of 25 when those rows are read three to a comment,
-which is the unit a real doc comment arrives in. All three are asserted.
+prose is left alone 75 of 75 above a declaration, 75 of 75 at the lower
+threshold a comment inside a function body meets, and 25 of 25 when those rows
+are read three to a comment, which is the unit a real doc comment arrives in.
+All three are asserted. The first row that costs a piece of contract prose is
+twice the shipped tilt, where `TestClear` reports 1 of 75.
 
-On a production Go service, 19 findings across `internal`, `app` and `pkg`. On
+On a production Go service, 11 findings across 115 files of `internal`, `app`
+and `pkg`. On the Go standard library, 3600 files and no test data, 1771: the
+largest class is a step comment inside a long function, which is the shape this
+tool is pointed at and the shape that library uses most. On
 9934 YAML files and 5313 Terraform files of an infrastructure repository, 32
 findings between them. On its own source, none.
 

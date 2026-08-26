@@ -77,6 +77,19 @@ func echoes(c comment, src []byte) bool {
 	if c.annotates == nil || !oneLine(c.annotates) || !c.buried {
 		return false
 	}
+	// A comment beside code is a note about that line, and the words it shares
+	// with the line are what the note is about rather than evidence it repeats
+	// one. `num -= old.cap - old.len // preserve memory of old[old.len:old.cap]`
+	// names the same fields to say what the subtraction is for. The cost is
+	// `i++ // increment i`, which nothing else here catches.
+	if c.trailing {
+		return false
+	}
+	// A comment that goes on to say something else is not reading the line
+	// back, whatever its opening sentence shares with it.
+	if sentences(c.text) > 1 {
+		return false
+	}
 	words := content(c.text)
 	if len(words) < 2 {
 		return false
@@ -101,7 +114,14 @@ func echoes(c comment, src []byte) bool {
 // shared word there would lose the plainest case there is: "multiply it by two"
 // over `return v * 2`, which repeats the line in words rather than in symbols.
 func restates(c comment, src []byte) bool {
-	if c.annotates == nil || !oneLine(c.annotates) {
+	if c.annotates == nil || !oneLine(c.annotates) || c.trailing {
+		return false
+	}
+	// A comment that goes on to say something else is not repeating the line,
+	// whatever its opening sentence reads like on its own. "Find the field
+	// start and end indices" is a restatement until the three sentences after
+	// it explain why the pass is separate.
+	if sentences(c.text) > 1 {
 		return false
 	}
 	words := content(c.text)

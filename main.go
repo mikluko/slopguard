@@ -65,13 +65,20 @@ func main() {
 	// A flag is neither, and reading stdin for one would hang a hook whose
 	// wiring grew an argument by accident.
 	if len(os.Args) > 1 {
+		var paths []string
+		verbose := false
 		for _, arg := range os.Args[1:] {
-			if strings.HasPrefix(arg, "-") {
-				fmt.Fprintln(os.Stderr, "usage: slopguard [file ...]   (a hook payload on stdin, or files to judge)")
+			switch {
+			case arg == "-v":
+				verbose = true
+			case strings.HasPrefix(arg, "-"):
+				fmt.Fprintln(os.Stderr, "usage: slopguard [-v] [file ...]   (a hook payload on stdin, or files to judge)")
 				return
+			default:
+				paths = append(paths, arg)
 			}
 		}
-		sweepFiles(os.Args[1:])
+		sweepFiles(paths, verbose)
 		return
 	}
 	var in payload
@@ -177,7 +184,7 @@ func record(path string, findings []finding) {
 // sweepFiles judges the named files whole and prints what it finds, so that
 // the numbers in the README are reproducible from the repository rather than
 // from a script in somebody's scratch directory.
-func sweepFiles(paths []string) {
+func sweepFiles(paths []string, verbose bool) {
 	for _, path := range paths {
 		lang := lookup(path)
 		if lang == nil {
@@ -187,10 +194,34 @@ func sweepFiles(paths []string) {
 		if err != nil {
 			continue
 		}
+		var lines [][]byte
+		if verbose {
+			lines = bytes.Split(src, []byte("\n"))
+		}
 		for _, f := range scan(src, lang, []span{{start: 0, end: uint(len(src))}}) {
 			fmt.Printf("%s:%d\t%s\t%.3f\t%s\n", path, f.line, f.class, f.score, f.reason)
+			for _, text := range quoted(lines, f.line) {
+				fmt.Printf("\t| %s\n", text)
+			}
 		}
 	}
+}
+
+// quoted returns the comment at a one-based line and the first line of code
+// under it, for a sweep being read by someone deciding whether the finding is
+// right. It returns nothing when the sweep is not printing them.
+func quoted(lines [][]byte, at uint) []string {
+	if len(lines) == 0 || at == 0 || int(at) > len(lines) {
+		return nil
+	}
+	out := []string{printable(strings.TrimSpace(string(lines[at-1])))}
+	for _, line := range lines[at:] {
+		if text := strings.TrimSpace(string(line)); text != "" {
+			out = append(out, printable(text))
+			break
+		}
+	}
+	return out
 }
 
 // written returns the byte ranges of src that this tool call authored: the
@@ -329,10 +360,16 @@ func display(in payload) string {
 	if in.CWD == "" || err != nil || strings.HasPrefix(relative, "..") {
 		relative = filepath.Base(path)
 	}
+	return printable(relative)
+}
+
+// printable drops what a terminal or a language model would read as structure
+// rather than as text.
+func printable(text string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
 			return -1
 		}
 		return r
-	}, relative)
+	}, text)
 }

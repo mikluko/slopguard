@@ -78,9 +78,24 @@ type comment struct {
 	// buried marks a comment inside a function body, where prose is harder to
 	// justify and the thresholds are lower.
 	buried bool
+	// trailing marks a comment with code before it on its own line. Nobody
+	// disables a statement by appending it to a live one, so the
+	// commented-out-code rule does not reach these.
+	trailing bool
 	// root is the tree the comment came from, for the rules that need to look
 	// at what surrounds it.
 	root *tree_sitter.Node
+}
+
+// after reports whether a node has code before it on its own line, which makes
+// a comment a note about that code rather than a line in its own right.
+func after(node *tree_sitter.Node, src []byte) bool {
+	for at := int(node.StartByte()) - 1; at >= 0 && src[at] != '\n'; at-- {
+		if src[at] != ' ' && src[at] != '\t' && src[at] != '\r' {
+			return true
+		}
+	}
+	return false
 }
 
 // scan parses src and reports the comments inside added that the
@@ -179,6 +194,9 @@ type verdict struct {
 // to leave that judgment to the semantic pass. The first rule that fires wins:
 // one line of nudge per comment.
 func inspect(c comment, lang *language, src []byte) verdict {
+	if notice(c.text) {
+		return verdict{}
+	}
 	if leftover(c, lang, src) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
@@ -209,11 +227,23 @@ func site(text string) uint64 {
 // sequence parses, shell and Ruby among them, are exempt. A language whose
 // prose parses as a plain value, YAML, needs a structure to appear and needs
 // more than one line, because `# note: read this` is a mapping too.
+//
+// A comment sharing its line with code is exempt whatever it parses as. Code is
+// disabled by commenting the line it is on, which leaves the comment alone on
+// that line; a comment after a live statement is a note about it, and the
+// notation those notes use is the notation this rule reads as source —
+// `x2 := Sqrt(x1) // x2 = sqrt(1 - x*x)` says what the variable now holds.
 func leftover(c comment, lang *language, src []byte) bool {
-	if c.doc {
+	if c.doc || c.trailing {
 		return false
 	}
-	if lang.evidence == nil && (!lang.strict || !code(c.text)) {
+	// The lexical prefilter is what a language has instead of a legality check:
+	// a bare parse succeeds on too much prose to be evidence by itself, so text
+	// that does not even look like source is turned away before parsing. A
+	// language that can say what the compiler would have refused does not need
+	// it, and it costs real findings — `fmt.Println("x")` is a call with an
+	// argument, which no list of leading keywords matches.
+	if lang.evidence == nil && lang.legal == nil && (!lang.strict || !code(c.text)) {
 		return false
 	}
 	parser := tree_sitter.NewParser()
@@ -225,7 +255,16 @@ func leftover(c comment, lang *language, src []byte) bool {
 	// require a line ending and report a MISSING node without one, which reads
 	// as a broken parse and stops this rule before it starts.
 	body := dedent(c.body) + "\n"
-	tree := parser.Parse([]byte(body), nil)
+	prefix, suffix := "", ""
+	if lang.wrapper != nil {
+		prefix, suffix = lang.wrapper()
+		// A run of commented-out lines is usually cut out of a larger block, so
+		// it opens braces it never closes. Closing them is what makes the rest
+		// of the fragment readable at all, and needing to is itself evidence:
+		// prose does not leave a brace open.
+		body += balance(body)
+	}
+	tree := parser.Parse([]byte(prefix+body+suffix), nil)
 	if tree == nil {
 		return false
 	}
@@ -237,7 +276,86 @@ func leftover(c comment, lang *language, src []byte) bool {
 	if lang.evidence != nil {
 		return lang.evidence(c, root, []byte(body), src)
 	}
-	return root.NamedChildCount() > 0
+	inside := fragment(root, uint(len(prefix)), uint(len(prefix)+len(body)))
+	if len(inside) == 0 {
+		return false
+	}
+	return lang.legal == nil || lang.legal(inside, []byte(body))
+}
+
+// balance returns the closing delimiters a fragment leaves open, innermost
+// first. Text inside quotes is skipped, since a brace in a string closes
+// nothing.
+func balance(body string) string {
+	var open []byte
+	var quote byte
+	for i := 0; i < len(body); i++ {
+		ch := body[i]
+		switch {
+		case quote != 0:
+			switch ch {
+			case '\\':
+				i++
+			case quote:
+				quote = 0
+			}
+		case ch == '"' || ch == '\'' || ch == '`':
+			quote = ch
+		case ch == '{' || ch == '(' || ch == '[':
+			open = append(open, ch)
+		case ch == '}' || ch == ')' || ch == ']':
+			if n := len(open); n > 0 && closes(open[n-1]) == ch {
+				open = open[:n-1]
+			}
+		}
+	}
+	var out []byte
+	for i := len(open) - 1; i >= 0; i-- {
+		out = append(out, closes(open[i]))
+	}
+	return string(out)
+}
+
+// closes returns the delimiter that closes an opening one.
+func closes(open byte) byte {
+	switch open {
+	case '{':
+		return '}'
+	case '(':
+		return ')'
+	}
+	return ']'
+}
+
+// fragment returns the statements of the wrapped text that came from the
+// comment, which are the children of whatever node the wrapper put them in.
+// Without a wrapper that node is the root and this is every top-level node.
+func fragment(root *tree_sitter.Node, start, end uint) []*tree_sitter.Node {
+	// Descend to the deepest node still holding the whole fragment: that is the
+	// block the wrapper opened, since no statement of the fragment spans all of
+	// it. Without a wrapper the root holds it and the descent does not move.
+	holder := root
+	for {
+		inner := (*tree_sitter.Node)(nil)
+		for i := uint(0); i < holder.ChildCount(); i++ {
+			if child := holder.Child(i); child.StartByte() <= start && child.EndByte() >= end {
+				inner = child
+				break
+			}
+		}
+		if inner == nil {
+			break
+		}
+		holder = inner
+	}
+	var out []*tree_sitter.Node
+	for i := uint(0); i < holder.NamedChildCount(); i++ {
+		child := holder.NamedChild(i)
+		if child.StartByte() >= start && child.EndByte() <= end {
+			out = append(out, child)
+		}
+	}
+	return out
 }
 
 // documented reports whether a commented-out block is showing what could go in
@@ -458,6 +576,7 @@ func group(root *tree_sitter.Node, nodes []found, src []byte) []comment {
 			annotates: annotated(root, f.node, src),
 			doc:       docstring(f.node),
 			buried:    f.buried,
+			trailing:  after(f.node, src),
 			root:      root,
 		})
 	}

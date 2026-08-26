@@ -26,6 +26,24 @@ var markers = []string{
 	"///", "//!", "//", "/*", "#!", "#", "--", "*",
 }
 
+// notice reports whether a comment is a licence or copyright notice, which no
+// rule here may touch. Some of them say so in their own text — the FreeBSD libm
+// headers Go carries ask that the notice be preserved — so nudging an agent to
+// shorten one is asking it to strip a licence, and that is not a style call the
+// tool gets to make.
+func notice(text string) bool {
+	lower := strings.ToLower(text)
+	for _, mark := range []string{
+		"copyright", "spdx-license-identifier", "licensed under",
+		"all rights reserved", "permission to use", "permission is hereby granted",
+	} {
+		if strings.Contains(lower, mark) {
+			return true
+		}
+	}
+	return false
+}
+
 // indented removes a comment's marker from one raw line and keeps the
 // indentation that follows it, so that a commented-out block still parses.
 func indented(line string) string {

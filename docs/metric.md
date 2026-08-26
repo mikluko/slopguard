@@ -129,6 +129,49 @@ Until that split exists, `echo` and `tautology` are reported with their FPR
 figures marked as upper bounds that are known to be loose, and no threshold is
 moved on the strength of them.
 
+## The operating point this document chose does not exist
+
+Measured on the committed corpus at a ninety-day deletion window, sweeping the
+semantic thresholds from -0.10 to +0.32:
+
+    offset   recall    FPR
+    -0.10    0.097    0.0442
+     0.00    0.110    0.0467
+    +0.04    0.128    0.0517
+    +0.10    0.158    0.0691
+    +0.18    0.232    0.1112
+    +0.32    0.359    0.2675
+
+**The curve never reaches FPR 0.02, and cannot.** Sweeping moves the semantic
+thresholds only; `echo`, `leftover` and the YAML carve-out carry no threshold, so
+they fire identically at every offset. Their combined false-positive rate, 0.044
+on this corpus, is a floor. Turning the model off entirely lands above the
+operating point this document named.
+
+So "recall at FPR 0.02" is undefined for this build, and the partial AUC over
+[0, 0.05] comes out at 0.011 for the same reason rather than as a verdict on
+quality: almost all of that region has no curve in it.
+
+What replaces it, until a build exists whose floor is lower:
+
+- **The floor itself, reported as a number**, with the per-class split that makes
+  it up. Today: 0.044, of which `leftover` is 0.024 and `echo` 0.020.
+- **Recall at the floor**, which is 0.110 at the shipped thresholds.
+- **Recall at FPR 0.05**, the first named point above the floor, which is 0.115.
+  The gap between those two is what the semantic classes buy over the structural
+  ones: 0.005 of recall for 0.003 of FPR.
+
+**And the floor is the finding, not a nuisance.** A rule with no threshold cannot
+be traded off, so the only ways to move it are to make one thresholdable or to
+cut it. That is a design conclusion the aggregate number would have hidden, and
+it is why the sweep was worth running rather than reporting the shipped point
+alone.
+
+The caveat from the previous section applies to the floor hardest: much of what
+`echo` and `leftover` contribute to it is correct firings on comments nobody
+removed. The floor is real as a measure of how much the tool speaks; how much of
+it is unwanted is what the adjudication decides.
+
 ## What has to be beaten
 
 A number with no baseline says nothing. Four, in increasing order of what they

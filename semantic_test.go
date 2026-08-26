@@ -94,8 +94,13 @@ func TestLiteralFallback(t *testing.T) {
 	}
 }
 
+// skipWithoutRuntime skips a test that needs the model, for either reason it
+// can be absent: no library to load, or the semantic pass switched off.
 func skipWithoutRuntime(t *testing.T) {
 	t.Helper()
+	if os.Getenv(disableEnv) != "" {
+		t.Skip(disableEnv + " is set")
+	}
 	path := library()
 	if _, err := os.Stat(path); err != nil {
 		t.Skip("no ONNX Runtime at " + path)

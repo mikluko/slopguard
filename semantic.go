@@ -85,24 +85,29 @@ func nearest(vector []float32, bias float64) verdict {
 // is taken to have recognised anything: the width of the noise the thresholds
 // are fitted through rather than a reading.
 //
-// The two thresholds a comment can meet want different things from it, and the
-// sweep in window_test.go prints both: above a declaration anything up to 0.01
-// is free while 0.02 costs three catches of twenty-three, and inside a function
-// body 0.02 is what buys the last false positive of seventy-five at no cost in
-// catches. This takes the first reading and accepts that one false positive,
-// which the held-out floor tolerates.
+// TestClear prints what it costs at each threshold a comment can meet. At the
+// shipped tilt no contract prose is nudged at any of these values, so what it
+// buys is not visible in the labelled corpus and what it costs is: 0.005 keeps
+// eleven catches of twenty-three where 0.02 keeps ten and 0.04 keeps five.
+// It is set at the width of the noise the thresholds are fitted through, which
+// is the smallest value that means anything at all.
 const clear = 0.005
 
 // perDraw is how much each additional sentence in a comment raises the bar for
 // all of them, since the verdict is the best of them and a longer comment
 // otherwise clears the same threshold for no better reason than length.
 //
-// Measured by the sweep in window_test.go, on held-out contract rows read three
-// to a comment and on held-out positives padded with two innocent neighbours:
-// 0.005 is the smallest step that leaves all twenty-five contract comments
-// alone, and it costs no catches at all. 0.01 is free too; 0.02 costs three of
-// twenty-three. It costs nothing on the one-line comments most findings come
-// from, whatever the step.
+// This is insurance rather than a measured win, and TestPerDraw says so: at the
+// tilt this ships with, contract rows read three to a comment survive 25 of 25
+// with no correction at all, and every step costs a catch — eleven of
+// twenty-three at zero, ten at 0.005, nine at 0.02. The case it guards cannot
+// appear in that measurement, because every labelled row is a single sentence
+// and the three-to-a-comment reading is built by grouping them.
+//
+// It stays because the inflation is real whatever the corpus can show: the
+// verdict is the best of a comment's sentences, so a longer comment clears the
+// same threshold more often for no better reason than length. It is set as
+// small as means anything.
 const perDraw = 0.005
 
 // allowance is how far a comment's threshold moves before it is judged: down by

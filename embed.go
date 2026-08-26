@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/gomlx/go-huggingface/tokenizers/api"
 	"github.com/gomlx/go-huggingface/tokenizers/hftokenizer"
@@ -176,6 +177,28 @@ func (e *embedder) embed(texts []string) ([][]float32, error) {
 	return out, nil
 }
 
+// budgetBytes is how much text is handed to the tokenizer.
+//
+// Truncating the token ids afterwards bounds what the model sees and not what
+// the tokenizer does, and the tokenizer is quadratic in its input: a comment
+// with no sentence punctuation in it — a base64 blob, a generated table —
+// arrives as one unit, and 900 KB of it ran for nine minutes before it was
+// killed. No sentence worth reading survives past this many bytes anyway, at
+// roughly four bytes to a token against a budget of 256.
+const budgetBytes = 4096
+
+// clip cuts text to [budgetBytes] on a rune boundary.
+func clip(text string) string {
+	if len(text) <= budgetBytes {
+		return text
+	}
+	cut := budgetBytes
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut]
+}
+
 // forward runs one batch, padded to its own longest member.
 func (e *embedder) forward(texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
@@ -184,7 +207,7 @@ func (e *embedder) forward(texts []string) ([][]float32, error) {
 	rows := make([][]int64, len(texts))
 	width := 0
 	for i, text := range texts {
-		ids := e.tk.Encode(text)
+		ids := e.tk.Encode(clip(text))
 		if len(ids) > budgetTokens {
 			ids = ids[:budgetTokens]
 		}

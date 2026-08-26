@@ -131,7 +131,10 @@ func TestClear(t *testing.T) {
 	for _, c := range classes {
 		live[c.name] = true
 	}
-	for _, bias := range []float64{0, 0.03, buriedBias, 0.09} {
+	// Literals, not the constant this fits: a grid written in terms of
+	// buriedBias prints its row twice and drops whichever alternative the
+	// constant used to hold, which is the row a reader came for.
+	for _, bias := range []float64{0, 0.03, 0.06, 0.09} {
 		for _, floor := range []float64{0.0, 0.005, 0.01, 0.02, 0.04} {
 			caught, nudged, catchable := 0, 0, 0
 			for i, v := range vectors {

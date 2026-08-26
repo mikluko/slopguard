@@ -274,17 +274,17 @@ func classOf(reason string) string {
 
 // contractFloor is the share of contract prose the tool must leave alone.
 //
-// Measured on the 75 contract rows held out: 75 of 75 above a declaration, 73
-// of 75 at the lower threshold a comment inside a function body meets, and 24
+// Measured on the 75 contract rows held out: 75 of 75 above a declaration, 75
+// of 75 at the lower threshold a comment inside a function body meets, and 25
 // of 25 when those rows are read three to a comment, which is the unit a real
-// doc comment arrives in. The floor sits one miss below the worst of those, so
-// a change costing another false positive on prose this tool has never seen
-// fails here rather than in somebody's editor.
+// doc comment arrives in. The floor is one miss below all three, so a change
+// costing a single false positive on prose this tool has never seen fails here
+// rather than in somebody's editor.
 //
 // Only this direction is asserted. Everything else the test measures is
 // logged, because the recall a re-tune should aim for is a judgement nobody has
 // made yet.
-const contractFloor = 0.947
+const contractFloor = 0.986
 
 func TestHeldOut(t *testing.T) {
 	skipWithoutRuntime(t)
@@ -446,9 +446,10 @@ func TestHeldOut(t *testing.T) {
 	// edit against documentation that was already right, and a missed comment
 	// costs a nudge nobody sees.
 	//
-	// It is asserted twice, because most comments do not take the path the
-	// first pass measures. A comment inside a function body is judged at a
-	// threshold 0.06 lower, and that is where the tool objects most.
+	// It is asserted three times, because most comments do not take the path
+	// the first pass measures. A comment inside a function body is judged at a
+	// lower threshold, and a real doc comment is several sentences rather than
+	// the one a labelled row holds.
 	buried := make([]float64, len(heldout))
 	for i := range buried {
 		buried[i] = allowance(buriedBias, len(comments[i]))

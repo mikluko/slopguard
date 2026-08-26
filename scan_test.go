@@ -38,22 +38,37 @@ func double(v int) int { return v * 2 }
 `,
 	},
 	{
-		name: "go documentation running long",
+		// Nine sentences, each ruling something out. Length was never the
+		// question, so this is silence.
+		name: "go documentation earning its length",
 		lang: golang,
 		src: `package p
 
 // double returns v twice over.
 // It panics when v overflows.
-// The caller usually wants twice instead.
 // Negative values are doubled as they are.
 // Zero is returned unchanged.
 // The result is never smaller than v for positive v.
 // Overflow is checked before the multiply, not after.
 // The check costs one comparison.
-// None of this is worth nine sentences.
+// A caller that has already bounded v may skip it.
+// Nothing here is retained between calls.
 func double(v int) int { return v * 2 }
 `,
-		want: "9 sentences",
+		want: "",
+	},
+	{
+		// Three sentences, two of them saying nothing the signature did not.
+		name: "go documentation padded past its contract",
+		lang: golang,
+		src: `package p
+
+// double returns v twice over.
+// This function takes a value and returns a value.
+// The implementation is simple and easy to read.
+func double(v int) int { return v * 2 }
+`,
+		want: "earn no place",
 	},
 	{
 		name: "go comment restating the code",
@@ -182,18 +197,19 @@ DEBUG = True
 `,
 	},
 	{
-		name: "python docstring is read as documentation",
+		// A docstring sits inside the body it documents rather than above it, so
+		// the declaration this is measured against is the node around it.
+		name: "python docstring padded past its contract",
 		lang: python,
 		src: `def double(v):
     """Double v.
 
-    This walks through what it does. First it checks the input. Then it doubles
-    the value. Then it returns. It also does nothing else. It never raises. It
-    has no side effects. It does not log. It is not concurrent.
+    This function takes a value and returns a value. The implementation is
+    simple and should be easy to read.
     """
     return v * 2
 `,
-		want: "sentences of documentation",
+		want: "earn no place",
 	},
 	{
 		name: "python docstring stating a contract",

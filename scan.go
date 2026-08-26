@@ -23,18 +23,16 @@ import (
 // perfect.
 const buriedBias = 0.03
 
-// docSentences is how long documentation runs before its length alone is worth
-// a word.
+// docSentences was the length rule's threshold, set at the last percent of a
+// 90,000-comment distribution. It is gone, and nothing replaced it with a
+// different number: a count answers how long a comment is, and nothing in the
+// doctrine asks that. What replaced it is in hollow.go, which asks of each
+// sentence whether it says anything the declaration did not.
 //
-// It is set against what documentation actually does rather than against what a
-// style guide says it should. Across 90,000 comments in four repositories
-// written on purpose (TestLengthDistribution measures it): half are one
-// sentence, 81% are two or fewer, 95% four or fewer, and 99% eight or fewer.
-// A threshold of five flags one comment in thirty-five, which on a densely
-// documented repository is 386 findings and drowns everything else the tool
-// has to say; at eight it flags the last percent, which is documentation that
-// has genuinely run away.
-const docSentences = 8
+// TestLengthDistribution still measures the distribution, because how long
+// documentation actually runs is worth knowing even once nothing thresholds on
+// it — it is what says a nine-sentence contract is ordinary rather than an
+// excess to be trimmed.
 
 // span is a byte range of a file that the tool call just wrote.
 type span struct{ start, end uint }
@@ -229,20 +227,22 @@ func inspect(c comment, lang *language, src []byte) verdict {
 	if echoes(c, src) {
 		return verdict{reasonFor("tautology"), 0.95, "echo"}
 	}
-	if n := sentences(c.text); n > docSentences && wordy(c, lang) {
+	if empty := hollows(c, src); len(empty) > 0 && wordy(c, lang) {
 		return verdict{
-			strconv.Itoa(n) + " sentences of documentation: one is the default, a second is earned by a precondition, an invariant, a failure mode, or a cost",
-			0.5 + float64(n-docSentences)/100,
-			"length",
+			strconv.Itoa(len(empty)) + " of its sentences earn no place in it: sentence " +
+				strconv.Itoa(empty[0].at) + " " + hollowReasons[empty[0].why] +
+				". A sentence past the first is earned by a precondition, an invariant, a failure mode, or a cost",
+			0.4 + 0.3*float64(len(empty))/float64(sentences(c.text)),
+			"hollow",
 		}
 	}
 	return verdict{}
 }
 
-// wordy reports whether a long comment has anywhere else to go, which is what
-// the length rule is asking. Its nudge names three homes — package
-// documentation, symbol documentation, a test — and it fires only where at
-// least one of them exists.
+// wordy reports whether a comment has anywhere else to put what will not fit,
+// which is what the nudge is asking. It names three homes — package
+// documentation, symbol documentation, a test — and fires only where at least
+// one of them exists.
 //
 // Two places have none. File documentation is already the first of those homes,
 // so running long there is the correct form and not a finding: the `testing`

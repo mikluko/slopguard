@@ -133,24 +133,26 @@ func TestNoticeIsExempt(t *testing.T) {
 // and where a run of lines reads as one comment, matching anywhere in it would
 // exempt everything stacked under a header.
 func TestNoticeIsAnchored(t *testing.T) {
-	long := "// One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten.\n" +
-		"// Eleven. Twelve. Thirteen. Fourteen. Fifteen. Sixteen. Seventeen.\n"
+	// Two sentences that only respell the signature, which is a finding unless
+	// something exempts the comment.
+	padded := "// This function takes a value and returns a value.\n" +
+		"// The implementation is simple and easy to read.\n"
 	for _, c := range []struct {
 		name string
 		src  string
 		want bool
 	}{
-		{"mentioned mid-sentence", "// We keep the copyright year here. " + strings.TrimPrefix(long, "// "), true},
-		{"opens the line", "// Copyright 2009 The Go Authors.\n" + long, false},
+		{"mentioned mid-sentence", "// We keep the copyright year here.\n" + padded, true},
+		{"opens the line", "// Copyright 2009 The Go Authors.\n" + padded, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			// Below the package clause, not above it: a comment heading the
-			// file is exempt from the length rule whatever it says, and this
-			// asks what the notice marker does.
-			src := "package p\n\n" + c.src + "func f() {}\n"
+			// file is exempt whatever it says, and this asks what the notice
+			// marker does.
+			src := "package p\n\n" + c.src + "func double(value int) int { return value * 2 }\n"
 			found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
 			if got := len(found) > 0; got != c.want {
-				t.Errorf("nudged = %v, want %v", got, c.want)
+				t.Errorf("nudged = %v, want %v (%v)", got, c.want, found)
 			}
 		})
 	}
@@ -177,51 +179,61 @@ func TestNoticeSkipsTheModel(t *testing.T) {
 // with a marker is pardoned by something else — the marker line does not parse
 // as source, so the run does not either, and the rule declines before reaching
 // any of this.
+// The case is written in Python because it is only observable there. A licence
+// line does not parse as Go, so a run opening with one is already turned away
+// at the parse and the exemption never decides anything; `# copyright = 2024`
+// is a clean Python assignment, so the run reaches the rule and the exemption
+// is what would have spared it.
 func TestNoticeIsNotABodyPardon(t *testing.T) {
-	long := "One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven."
-	src := "package p\n\nfunc f() {\n" +
-		"\t// Copyright 2009 The Go Authors.\n" +
-		"\t// " + long + "\n" +
-		"\tprintln(1)\n}\n"
-	found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
+	src := "def f():\n" +
+		"    # copyright = 2024\n" +
+		"    # DEBUG = True\n" +
+		"    # SECRET = \"hunter2\"\n" +
+		"    return 1\n"
+	found := scan([]byte(src), python, []span{{start: 0, end: uint(len(src))}})
 	for _, f := range found {
-		if f.class == "length" {
+		if f.class == "leftover" {
 			return
 		}
 	}
-	t.Errorf("a licence line inside a body pardoned the prose under it: %v", found)
+	t.Errorf("a licence line inside a body pardoned the commented-out code under it: %v", found)
 }
 
-// The length rule names three homes for a claim that will not fit: package
+// The nudge names three homes for a claim that will not fit: package
 // documentation, symbol documentation, a test. It fires only where one of them
 // exists, and file documentation is already the first of them.
-func TestLengthSpares(t *testing.T) {
-	long := "One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven."
+func TestPaddingSpares(t *testing.T) {
+	// Two sentences that only respell the declaration, which is what makes each
+	// of these a finding unless its position exempts it.
+	padded := "This function takes a value and returns a value. The implementation " +
+		"is simple and easy to read."
+
 	t.Run("file documentation", func(t *testing.T) {
-		src := "// Package p does a thing. " + long + "\npackage p\n"
-		if f := only(t, src, golang); f.class == "length" {
+		src := "// Package p does a thing. " + padded + "\npackage p\n"
+		if f := only(t, src, golang); f.class == "hollow" {
 			t.Errorf("nudged the package's own documentation: %s", f.reason)
 		}
 	})
 	t.Run("under a licence header", func(t *testing.T) {
-		src := "// Copyright 2009 The Go Authors.\n\n// Package p does a thing. " + long + "\npackage p\n"
+		src := "// Copyright 2009 The Go Authors.\n\n// Package p does a thing. " + padded + "\npackage p\n"
 		for _, f := range scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}}) {
-			if f.class == "length" {
+			if f.class == "hollow" {
 				t.Errorf("a licence header above it made the package doc reachable: %s", f.reason)
 			}
 		}
 	})
 	t.Run("a symbol still earns it", func(t *testing.T) {
-		src := "package p\n\n// F does a thing. " + long + "\nfunc F() {}\n"
+		src := "package p\n\n// Double returns the value twice over. " + padded +
+			"\nfunc Double(value int) int { return value * 2 }\n"
 		found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
-		if len(found) == 0 || found[0].class != "length" {
+		if len(found) == 0 || found[0].class != "hollow" {
 			t.Errorf("a symbol's documentation has somewhere to go and should still be nudged: %v", found)
 		}
 	})
 	t.Run("configuration has nowhere to move it", func(t *testing.T) {
-		src := "# " + long + "\nreplicas: 3\n"
+		src := "# " + padded + "\nreplicas: 3\n"
 		for _, f := range scan([]byte(src), yaml, []span{{start: 0, end: uint(len(src))}}) {
-			if f.class == "length" {
+			if f.class == "hollow" {
 				t.Errorf("YAML has no symbol doc and no test to move a claim into: %s", f.reason)
 			}
 		}

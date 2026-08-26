@@ -198,7 +198,11 @@ var empty = map[string]bool{
 	"all": true, "each": true, "every": true, "into": true, "out": true,
 	"here": true, "there": true, "when": true, "where": true, "which": true,
 	"what": true, "will": true, "can": true, "may": true, "must": true,
+	"should": true, "shall": true, "might": true, "could": true, "would": true,
 	"do": true, "does": true, "so": true, "up": true, "down": true, "new": true,
+	// A fragment of a hyphenated word, left behind when the hyphen is split.
+	// "self" alone names nothing; "self-explanatory" is judged on its other half.
+	"self": true,
 }
 
 // identifiers returns every word spelled by the identifiers under a node,

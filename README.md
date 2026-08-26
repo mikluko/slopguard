@@ -114,17 +114,19 @@ prose that way, which matters because `# copy the buffer first` parses as a perf
 
 ## Install
 
-Not published yet, so build it:
+```sh
+brew install mikluko/tap/slopguard
+```
+
+The formula depends on `onnxruntime` and pulls it in. To build instead:
 
 ```sh
 git clone https://github.com/mikluko/slopguard && cd slopguard && go build .
 brew install onnxruntime
 ```
 
-The formula in `mikluko/homebrew-tap` is written and waiting on the first release tag; when that lands,
-`brew install mikluko/tap/slopguard` is the install and it depends on `onnxruntime` for you. Either way the binary
-dlopens the library at run time, looking in Homebrew's prefix on both architectures, Linuxbrew's, and the two places a
-Linux package manager puts it.
+Either way the binary dlopens the library at run time, looking in Homebrew's prefix on both architectures, Linuxbrew's,
+and the two places a Linux package manager puts it.
 
 ## Configure
 

@@ -125,6 +125,10 @@ func TestAttribution(t *testing.T) {
 			continue
 		}
 		spelled := declared(declaration, src)
+		inside := map[string]bool{}
+		if body := declaration.ChildByFieldName("body"); body != nil {
+			inside = identifiers(body, src)
+		}
 		t.Logf("line %d  %s", c.line, firstLine(declaration.Utf8Text(src)))
 		for i, sentence := range pieces {
 			var novel, covered []string
@@ -136,6 +140,8 @@ func TestAttribution(t *testing.T) {
 					covered = append(covered, word+"(sig)")
 				case scaffold[word]:
 					covered = append(covered, word+"(scaffold)")
+				case inside[word]:
+					covered = append(covered, word+"(body)")
 				default:
 					novel = append(novel, word)
 				}
@@ -144,7 +150,9 @@ func TestAttribution(t *testing.T) {
 			switch {
 			case len(content(sentence)) < 3:
 				mark = "short"
-			case len(novel) == 0 && eliminates(sentence):
+			case structured(sentence):
+				mark = "tagged"
+			case len(novel) == 0 && eliminates(sentence, spelled):
 				mark = "vetoed"
 			case len(novel) == 0:
 				mark = "HOLLOW"

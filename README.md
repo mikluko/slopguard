@@ -298,6 +298,12 @@ floor is process start: the binary is 111 MB, since the model is embedded in it.
 - A comment run that opens with a licence line pardons every line stacked under
   it, because a run reads as one comment and any of its lines can carry the
   marker.
+- Rust documentation never reaches the padding rule. tree-sitter-rust ends a
+  `line_comment` on the row after it starts, so a `///` run is never grouped and
+  87,016 of 91,667 Rust comments arrive as one sentence, which the rule declines.
+  A sweep reporting nothing on Rust is reporting that the rule did not run.
+- Implementation narrative is not caught, and three mechanisms aimed at it were
+  built and reverted. `docs/narrative-class.md` has the measurements.
 - The classes are named `tautology`, `echo` and `compat` everywhere the tests
   and the sweep print them. `tautology` and `echo` are the model's reading of
   restatement and the structural one, they carry the same wording, and this file

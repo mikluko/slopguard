@@ -78,6 +78,9 @@ func hollows(c comment, src []byte) []padded {
 		if i == 0 {
 			continue
 		}
+		if structured(sentence) {
+			continue
+		}
 		words := content(sentence)
 		if len(words) < 3 {
 			// Too short to be evidence either way: "It is reused." carries one
@@ -114,7 +117,7 @@ func hollows(c comment, src []byte) []padded {
 		// signature's own words and still constrains every caller. The exemption
 		// is not extended to an assessment, because a modal taking an evaluative
 		// complement — "should be self-explanatory" — commits to nothing.
-		if why == "echo" && eliminates(sentence) {
+		if why == "echo" && eliminates(sentence, spelled) {
 			continue
 		}
 		out = append(out, padded{at: i + 1, why: why, text: sentence})
@@ -152,10 +155,25 @@ func documents(c comment, src []byte) *tree_sitter.Node {
 		}
 		return nil
 	}
-	if c.buried || c.annotates == nil || !definitions[c.annotates.Kind()] {
+	if c.buried || c.annotates == nil {
 		return nil
 	}
-	return c.annotates
+	at := c.annotates
+	// A JavaScript or TypeScript doc sits above `export function f()`, and what
+	// follows it is the export rather than the function. Left unwrapped the rule
+	// reached 2,423 declarations and missed 39,097.
+	if at.Kind() == "export_statement" {
+		for i := uint(0); i < at.NamedChildCount(); i++ {
+			if child := at.NamedChild(i); definitions[child.Kind()] {
+				return child
+			}
+		}
+		return nil
+	}
+	if !definitions[at.Kind()] {
+		return nil
+	}
+	return at
 }
 
 // definitions are the node kinds that declare something a comment can document.
@@ -170,6 +188,10 @@ var definitions = set(
 	"class_declaration", "method_definition", "lexical_declaration",
 	"field_declaration", "declaration", "interface_declaration",
 	"constructor_declaration", "enum_declaration",
+	// Ruby, which had none of its kinds here: 0 of 11,063 documentation
+	// comments reached this rule, so a sweep reporting nothing on Ruby was
+	// reporting that the rule never ran.
+	"method", "singleton_method", "class", "module",
 )
 
 // declared returns the words a declaration's signature spells: its name split
@@ -233,16 +255,56 @@ func declared(node *tree_sitter.Node, src []byte) map[string]bool {
 // consumer no longer runs` as a change-event marker. A frame does not know who
 // its subject is, and that is the whole of the distinction.
 
+// structured reports whether a sentence is not prose at all: a documentation
+// tag block, or an example somebody runs.
+//
+// Every register has these and none of them is a sentence. Javadoc, PHPDoc and
+// Doxygen put the return value and the exceptions in `@return` and `@throws`
+// sections; a Python docstring puts a worked example after `>>>` and the test
+// suite executes it; RDoc writes `#=>`. Read as prose they are hollow every
+// time — `@return the user name` carries "return", which is scaffolding, and
+// nothing else — and 409 of 410 findings on the JDK were exactly this.
+//
+// They are machine-readable, which is the category this tool already declines
+// to read: a `@return` is no more prose than a `//go:generate` is.
+func structured(sentence string) bool {
+	text := strings.TrimSpace(sentence)
+	for _, opener := range []string{"@", `\`, ">>>", "#=>", "=>", "*", "-", "+"} {
+		if strings.HasPrefix(text, opener) {
+			return true
+		}
+	}
+	// A tag or a prompt anywhere in it, since a sentence splitter joins a tag
+	// block onto whatever prose ran into it.
+	for _, marker := range []string{
+		"@return", "@param", "@throws", "@see", "@link", "@code", "@since",
+		"@deprecated", "@example", "@type", "@property", "@author", "@exception",
+		`\return`, `\param`, `\brief`, `\throws`, ">>>", "#=>", ":param:", ":returns:",
+		":rtype:", ":raises:", ":ivar:",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // eliminates reports whether a sentence rules out an implementation: a
 // negation, an obligation, a condition, a bound, a failure. The scan is over
 // the raw sentence rather than its content words, since [content] drops exactly
 // the closed-class words this is looking for.
-func eliminates(sentence string) bool {
+// A word the declaration spells is a mention of that thing and not an operator
+// on it. `block`, `error`, `empty` and `once` are all ordinary parameter names,
+// and without this a doc silenced itself by naming its own argument: two
+// character-identical docs, one taking `value` and one taking `block`, got
+// different verdicts.
+func eliminates(sentence string, spelled map[string]bool) bool {
 	if strings.Contains(sentence, "O(") {
 		return true
 	}
 	for _, word := range strings.Fields(normalize(sentence)) {
-		if eliminators[strings.Trim(word, ".,;:()")] {
+		word = strings.Trim(word, ".,;:()")
+		if eliminators[word] && !spelled[strings.TrimSuffix(word, "s")] {
 			return true
 		}
 	}
@@ -258,11 +320,20 @@ var scaffold = set(
 	"reader", "user", "about", "use", "usage", "call", "type", "object",
 	"instance", "field", "item", "data", "given", "receive", "create", "make",
 	"new", "store", "helper", "struct", "pointer", "design", "provide",
-	"contain", "hold", "get", "set", "handle", "process", "iterate", "add",
+	// Stemmed the way content() stems, which trims a trailing "s". An entry
+	// ending in one is a key no lookup ever forms: "process" and "pass" were
+	// both unreachable, since the word arrives as "proces" and "pas".
+	"contain", "hold", "get", "set", "handle", "proces", "iterate", "add",
+	"pas",
 	"turn", "wrap", "represent", "perform", "work", "way", "thing", "part",
 	"need", "want", "allow", "simply", "just", "utility", "wrapper", "loop",
 	"over", "each", "convert", "build", "run", "operation", "purpose",
 	"pass", "follow", "read", "write", "look", "see", "know", "understand",
+	// Sequence markers. They order a narrative and name nothing in it, which is
+	// what makes a sentence carrying them and otherwise nothing but the body's
+	// own identifiers a walk through the code rather than a claim about it.
+	"first", "then", "next", "finally", "lastly", "initially", "afterwards",
+	"subsequently", "second", "third", "step", "start", "begin", "end",
 )
 
 // evaluative holds the words that rate the artefact or the reader's experience
@@ -274,13 +345,22 @@ var scaffold = set(
 // praise and are contracts: "the zero value is ready to use" is an invariant
 // this repo already labels as one.
 var evaluative = set(
-	// "clean" is absent on purpose: `path.Clean` and "a clean shutdown" are both
-	// ordinary, and the word rates nothing in either.
+	// Absent on purpose, all three for the same reason: they read like praise
+	// and name something a machine checks. `clean` is `path.Clean`. `clear` is
+	// the state of a bit and the opposite of ciphertext, and sixteen exported
+	// symbols in the standard library are named for it. `trivial` is a C++ type
+	// trait — `std::is_trivial_v<T>` — so "the type must be trivial" is a
+	// precondition the compiler enforces.
+	//
+	// A word here costs more than a missed finding. Rating is tested before the
+	// signature is, and a rated sentence loses the exemption that spares one
+	// ruling something out, so a symbol named `Clear` turned every precondition
+	// mentioning it into a finding.
 	"simple", "easy", "straightforward", "explanatory", "robust",
-	"elegant", "obvious", "trivial", "designed", "intended", "meant",
+	"elegant", "obvious", "designed", "intended", "meant",
 	"basically", "essentially", "nice", "convenient", "powerful", "readable",
 	"intuitive", "ergonomic", "efficient", "fast", "quick", "better", "best",
-	"good", "handy", "useful", "helpful", "clear", "neat", "seamless",
+	"good", "handy", "useful", "helpful", "neat", "seamless",
 )
 
 // eliminators are the closed-class words by which a sentence rules something
@@ -291,7 +371,8 @@ var eliminators = set(
 	"while", "only", "whatever", "wherever", "before", "after", "during",
 	"since", "must", "shall", "required", "cannot", "panic", "panics", "nil",
 	"error", "errors", "err", "fail", "fails", "failure", "leak", "overflow",
-	"undefined", "deadlock", "block", "blocks", "truncated", "dropped",
+	"null", "nullptr", "none", "undefined", "deadlock", "block", "blocks",
+	"truncated", "dropped",
 	"ignored", "once", "twice", "exactly", "least", "most", "amortized",
 	"zero", "negative", "empty", "invalid", "safe", "unsafe", "concurrent",
 	"goroutine", "lock", "held", "reused", "retain", "own",

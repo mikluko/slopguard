@@ -257,6 +257,46 @@ func GetName(name string) string { return name }`},
 	}
 }
 
+// A rename table that avoids the word lists cannot falsify anything, which is
+// what the first version of this test did. These names are drawn from the lists
+// on purpose: `Clear` and `Clean` were in the rating list until a reviewer
+// showed that a symbol named for one turned every precondition mentioning it
+// into a finding, and `block` and `error` are in the eliminator list, where a
+// parameter named for one silences a doc that would otherwise be reported.
+//
+// The verdict has to be the same for both members of each pair. They differ by
+// one identifier and by nothing else.
+func TestRenamingOntoAWordList(t *testing.T) {
+	for _, c := range []struct{ name, one, two string }{
+		{
+			name: "a name in the rating list",
+			one: `package p
+// Purge empties the map. Purge must not be given a map the caller can read.
+func Purge(m map[string]int) {}`,
+			two: `package p
+// Clear empties the map. Clear must not be given a map the caller can read.
+func Clear(m map[string]int) {}`,
+		},
+		{
+			name: "a parameter in the eliminator list",
+			one: `package p
+// Write stores the value. This function takes a value and returns a value.
+// The implementation is simple and easy to read.
+func Write(value []byte) []byte { return value }`,
+			two: `package p
+// Write stores the block. This function takes a block and returns a block.
+// The implementation is simple and easy to read.
+func Write(block []byte) []byte { return block }`,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if one, two := padsAt(t, c.one), padsAt(t, c.two); one != two {
+				t.Errorf("one identifier changed the verdict: %v then %v\n%s", one, two, c.two)
+			}
+		})
+	}
+}
+
 // The rule must not decide by topic. Renaming every identifier in a file, and
 // every mention of those identifiers in its documentation, changes what the
 // comment is about and changes nothing about whether its sentences earn their

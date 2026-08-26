@@ -183,9 +183,13 @@ func (e *embedder) embed(texts []string) ([][]float32, error) {
 // the tokenizer does, and the tokenizer is quadratic in its input: a comment
 // with no sentence punctuation in it — a base64 blob, a generated table —
 // arrives as one unit, and 900 KB of it ran for nine minutes before it was
-// killed. No sentence worth reading survives past this many bytes anyway, at
-// roughly four bytes to a token against a budget of 256.
-const budgetBytes = 4096
+// killed. No sentence worth reading survives past this many bytes anyway.
+//
+// It is set from what the tokenizer yields rather than from four bytes to a
+// token: at 1536 bytes the thinnest input measured still gives 214 ids against
+// a budget of 256, and the densest gives 834, while the worst case costs a
+// twentieth of what 4096 did. The quadratic is still there, bounded lower.
+const budgetBytes = 1536
 
 // clip cuts text to [budgetBytes] on a rune boundary.
 func clip(text string) string {

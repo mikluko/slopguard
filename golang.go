@@ -9,9 +9,11 @@ import (
 // rule that reads "parses cleanly" as "is code" reports every equation and
 // every relation somebody wrote in a comment as code they switched off.
 //
-// What follows is the gap: three shapes the grammar admits and the language
-// refuses. A fragment carrying one of them was never compiled, so it is not
-// code anybody commented out, whatever it parses as.
+// Two of the three rules below close that gap exactly: an expression statement
+// that is not a call, and an assignment to something not assignable, are both
+// text the compiler would have refused, so neither was ever code. The third,
+// the label, is a heuristic — Go puts a label on any statement — and it is here
+// because the shape it catches is how a note announces what follows.
 
 // goLegal reports whether every statement in a fragment could have compiled.
 // One that could not is enough to rule the whole fragment out: a run of lines
@@ -21,59 +23,95 @@ func goLegal(statements []*tree_sitter.Node, body []byte) bool {
 	for _, node := range statements {
 		switch node.Kind() {
 		case "expression_statement":
-			if !goStatement(node.NamedChild(0)) {
+			if !goStatement(node.NamedChild(0), body) {
 				return false
 			}
 		case "assignment_statement":
-			if !goAssignable(node.ChildByFieldName("left"), body) {
+			if !goAssignable(node.ChildByFieldName("left")) {
 				return false
 			}
 		case "labeled_statement":
-			// `match:`, `cond:`, `result:`, `Have:` — the shape a note takes
-			// when it labels what follows. Go has labels, but a run of code
-			// commented out of a function does not usually open on one, and the
-			// rewrite-rule DSLs in the compiler are written this way throughout.
+			// `match:`, `cond:`, `result:`, `Have:`, `Cases:` — the shape a note
+			// takes when it labels what follows. Go puts a label on any
+			// statement, so this is a heuristic rather than a rule the language
+			// gives: what saves it is that a label opening a run of commented-out
+			// code labels a loop or a switch, and a note labels nothing.
+			labelled := node.NamedChild(node.NamedChildCount() - 1)
+			if labelled == nil || !loops[labelled.Kind()] {
+				return false
+			}
+		}
+		// An illegal statement nested inside a legal one rules the run out just
+		// the same: `// if x {` over `//     y == z` is an equation somebody
+		// wrote down, whatever encloses it.
+		if !goLegal(children(node), body) {
 			return false
 		}
 	}
 	return true
 }
 
+// loops are the statements a label in running code is attached to.
+var loops = set("for_statement", "range_clause", "switch_statement",
+	"expression_switch_statement", "type_switch_statement", "select_statement")
+
+// children returns a node's named children, for the walk that reaches a nested
+// statement.
+func children(node *tree_sitter.Node) []*tree_sitter.Node {
+	var out []*tree_sitter.Node
+	for i := uint(0); i < node.NamedChildCount(); i++ {
+		out = append(out, node.NamedChild(i))
+	}
+	return out
+}
+
 // goStatement reports whether an expression is one Go allows to stand alone.
-// The spec allows a call and a receive and nothing else, so a comparison or an
-// arithmetic expression on its own line is a claim about values rather than a
-// line that once ran.
-func goStatement(node *tree_sitter.Node) bool {
+// The spec allows a function or method call and a receive, and excepts the
+// built-ins whose whole purpose is the value they return. A conversion is not a
+// call at all, whatever it looks like: `int64(x)` on its own line is a claim
+// about a value, and no line of running code ever spelled it.
+func goStatement(node *tree_sitter.Node, body []byte) bool {
 	if node == nil {
 		return false
 	}
 	switch node.Kind() {
 	case "call_expression":
-		return true
+		callee := node.ChildByFieldName("function")
+		return callee == nil || !dropped[callee.Utf8Text(body)]
 	case "unary_expression":
-		return node.ChildByFieldName("operator").Kind() == "<-"
+		operator := node.ChildByFieldName("operator")
+		return operator != nil && operator.Kind() == "<-"
 	}
 	return false
 }
+
+// dropped names what a call cannot be if its result goes nowhere: a predeclared
+// type, which makes the call a conversion rather than a call, and the built-ins
+// that exist for the value they return. `len(b)` on its own line is a claim
+// about a length, and no line of running code ever spelled it.
+//
+// A name is all there is to go on, so a package-level function shadowing one of
+// these reads as the built-in and its comment goes unreported. That is a trade
+// this rule can afford: what a sweep of the standard library turns up is the
+// built-ins themselves.
+var dropped = set(
+	"append", "cap", "complex", "imag", "len", "make", "max", "min", "new", "real",
+	"bool", "byte", "complex64", "complex128", "error", "float32", "float64",
+	"int", "int8", "int16", "int32", "int64", "rune", "string",
+	"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+)
 
 // goAssignable reports whether the left side of an assignment is something Go
 // can assign to. `y0(x) = ...` and `complex(e, f) = n/m` name a function of
 // their argument, which is mathematics: the compiler's own words for it are
 // "cannot assign to f(x) (neither addressable nor a map index expression)".
-func goAssignable(left *tree_sitter.Node, body []byte) bool {
-	if left == nil {
-		return false
-	}
-	for i := uint(0); i < left.NamedChildCount(); i++ {
-		if !goTarget(left.NamedChild(i)) {
-			return false
-		}
-	}
-	// A single target is the node itself rather than a list under it.
-	return left.NamedChildCount() > 0 || goTarget(left)
+func goAssignable(left *tree_sitter.Node) bool {
+	return goTarget(left)
 }
 
-// goTarget reports whether one expression can be assigned to.
+// goTarget reports whether one expression can be assigned to. The left side of
+// an assignment is an expression_list in this grammar even when it holds one
+// target, so the list case is the one that runs.
 func goTarget(node *tree_sitter.Node) bool {
 	if node == nil {
 		return false
@@ -84,7 +122,8 @@ func goTarget(node *tree_sitter.Node) bool {
 	case "parenthesized_expression":
 		return goTarget(node.NamedChild(0))
 	case "unary_expression":
-		return node.ChildByFieldName("operator").Kind() == "*"
+		operator := node.ChildByFieldName("operator")
+		return operator != nil && operator.Kind() == "*"
 	case "expression_list":
 		for i := uint(0); i < node.NamedChildCount(); i++ {
 			if !goTarget(node.NamedChild(i)) {

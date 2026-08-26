@@ -82,6 +82,11 @@ type comment struct {
 	// disables a statement by appending it to a live one, so the
 	// commented-out-code rule does not reach these.
 	trailing bool
+	// heads marks a comment with nothing but whitespace and other comments
+	// before it in the file, which is where a file documents itself. A licence
+	// header sits above a package doc rather than instead of it, so this is not
+	// the same as being the first comment.
+	heads bool
 	// root is the tree the comment came from, for the rules that need to look
 	// at what surrounds it.
 	root *tree_sitter.Node
@@ -116,6 +121,12 @@ func scan(src []byte, lang *language, added []span) []finding {
 	root := tree.RootNode()
 	for _, c := range group(root, collect(root, lang, false), src) {
 		if c.within(added) && !c.pragma() {
+			// Deferred to here rather than done in [group]: locating the code
+			// under a comment walks the tree from the root, and a file of
+			// nothing but comments pays that for every one of them before
+			// [examined] gets to cut. The write being judged is a few lines, so
+			// almost none of them reach this.
+			c.annotates = annotated(root, c.nodes[len(c.nodes)-1], src)
 			candidates = append(candidates, c)
 		}
 		if len(candidates) == examined {
@@ -136,6 +147,13 @@ func weigh(candidates []comment, lang *language, src []byte) []finding {
 	verdicts := make([]verdict, len(candidates))
 	var pending []int
 	for i, c := range candidates {
+		// A licence notice is exempt from every rule, which means leaving it out
+		// of both passes. Returning the zero verdict from [inspect] would not do
+		// it: that is the value meaning "the shape rules nothing out", and it is
+		// what puts a comment in front of the model.
+		if notice(c.body) {
+			continue
+		}
 		if verdicts[i] = inspect(c, lang, src); verdicts[i].reason == "" {
 			pending = append(pending, i)
 		}
@@ -194,16 +212,13 @@ type verdict struct {
 // to leave that judgment to the semantic pass. The first rule that fires wins:
 // one line of nudge per comment.
 func inspect(c comment, lang *language, src []byte) verdict {
-	if notice(c.text) {
-		return verdict{}
-	}
 	if leftover(c, lang, src) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
 	if echoes(c, src) {
 		return verdict{reasonFor("tautology"), 0.95, "echo"}
 	}
-	if n := sentences(c.text); n > docSentences {
+	if n := sentences(c.text); n > docSentences && wordy(c, lang) {
 		return verdict{
 			strconv.Itoa(n) + " sentences of documentation: one is the default, a second is earned by a precondition, an invariant, a failure mode, or a cost",
 			0.5 + float64(n-docSentences)/100,
@@ -211,6 +226,21 @@ func inspect(c comment, lang *language, src []byte) verdict {
 		}
 	}
 	return verdict{}
+}
+
+// wordy reports whether a long comment has anywhere else to go, which is what
+// the length rule is asking. Its nudge names three homes — package
+// documentation, symbol documentation, a test — and it fires only where at
+// least one of them exists.
+//
+// Two places have none. File documentation is already the first of those homes,
+// so running long there is the correct form and not a finding: the `testing`
+// package's own doc is eighty sentences and every one of them earns its place.
+// And a language with no function has no symbol to document and no test to move
+// a claim into: in YAML and HCL the nudge resolves to "delete it", which on the
+// only record of a constraint is worse than saying nothing.
+func wordy(c comment, lang *language) bool {
+	return !c.heads && len(lang.functions) > 0
 }
 
 // site identifies a comment by what it says rather than by where it sits, so
@@ -255,32 +285,53 @@ func leftover(c comment, lang *language, src []byte) bool {
 	// require a line ending and report a MISSING node without one, which reads
 	// as a broken parse and stops this rule before it starts.
 	body := dedent(c.body) + "\n"
-	prefix, suffix := "", ""
 	if lang.wrapper != nil {
-		prefix, suffix = lang.wrapper()
 		// A run of commented-out lines is usually cut out of a larger block, so
 		// it opens braces it never closes. Closing them is what makes the rest
 		// of the fragment readable at all, and needing to is itself evidence:
 		// prose does not leave a brace open.
 		body += balance(body)
 	}
-	tree := parser.Parse([]byte(prefix+body+suffix), nil)
-	if tree == nil {
-		return false
+	// Code is commented out of a function body far more often than out of file
+	// scope, and the two parse by different rules, so the body is tried first.
+	// But a whole function, a method or an import is commented out at file
+	// scope and is an error inside a body — that is the canonical shape of dead
+	// Go, and trying only the one scope makes the rule silent on it.
+	for _, wrap := range scopes(lang) {
+		prefix, suffix := wrap()
+		tree := parser.Parse([]byte(prefix+body+suffix), nil)
+		if tree == nil {
+			continue
+		}
+		defer tree.Close()
+		root := tree.RootNode()
+		if root.HasError() {
+			continue
+		}
+		if lang.evidence != nil {
+			return lang.evidence(c, root, []byte(body), src)
+		}
+		inside := fragment(root, uint(len(prefix)), uint(len(prefix)+len(body)))
+		if len(inside) == 0 {
+			continue
+		}
+		// The wrapped text, not the fragment: every offset the nodes carry is
+		// into what was parsed, so reading a node's text out of the fragment
+		// alone returns whatever sits len(prefix) bytes further along.
+		return lang.legal == nil || lang.legal(inside, []byte(prefix+body+suffix))
 	}
-	defer tree.Close()
-	root := tree.RootNode()
-	if root.HasError() {
-		return false
+	return false
+}
+
+// scopes returns the positions a fragment is tried in, in the order to try
+// them. A language with no wrapper is parsed as a file and nothing else, which
+// is what every language did before any of them was measured.
+func scopes(lang *language) []func() (string, string) {
+	bare := func() (string, string) { return "", "" }
+	if lang.wrapper == nil {
+		return []func() (string, string){bare}
 	}
-	if lang.evidence != nil {
-		return lang.evidence(c, root, []byte(body), src)
-	}
-	inside := fragment(root, uint(len(prefix)), uint(len(prefix)+len(body)))
-	if len(inside) == 0 {
-		return false
-	}
-	return lang.legal == nil || lang.legal(inside, []byte(body))
+	return []func() (string, string){lang.wrapper, bare}
 }
 
 // balance returns the closing delimiters a fragment leaves open, innermost
@@ -299,7 +350,11 @@ func balance(body string) string {
 			case quote:
 				quote = 0
 			}
-		case ch == '"' || ch == '\'' || ch == '`':
+		// Not the apostrophe: a rune literal and the possessive are the same
+		// byte, and this reads text that may be either. Treating "don't" as an
+		// opening quote hides every delimiter after it, so the fragment stays
+		// unbalanced and a real finding is lost.
+		case ch == '"' || ch == '`':
 			quote = ch
 		case ch == '{' || ch == '(' || ch == '[':
 			open = append(open, ch)
@@ -338,7 +393,16 @@ func fragment(root *tree_sitter.Node, start, end uint) []*tree_sitter.Node {
 	for {
 		inner := (*tree_sitter.Node)(nil)
 		for i := uint(0); i < holder.ChildCount(); i++ {
-			if child := holder.Child(i); child.StartByte() <= start && child.EndByte() >= end {
+			child := holder.Child(i)
+			// A child filling the fragment exactly is the fragment, not
+			// something holding it. Descending into it hands back its parts,
+			// which match no rule and pass by default — and that is the common
+			// case, since a closer [balance] appended lands on the statement's
+			// own end byte.
+			if child.StartByte() == start && child.EndByte() == end {
+				continue
+			}
+			if child.StartByte() <= start && child.EndByte() >= end {
 				inner = child
 				break
 			}
@@ -348,6 +412,22 @@ func fragment(root *tree_sitter.Node, start, end uint) []*tree_sitter.Node {
 		}
 		holder = inner
 	}
+	// A grammar may put the run in a node of its own rather than directly under
+	// the block: tree-sitter-go ends a statement_list at the last terminated
+	// statement, so it falls short of the fragment and the descent stops above
+	// it. Unwrapped, every statement of the run reads as one node of a kind no
+	// rule has a case for, and the whole legality check passes by default.
+	for {
+		out := within(holder, start, end)
+		if len(out) != 1 || !container(out[0].Kind()) {
+			return out
+		}
+		holder = out[0]
+	}
+}
+
+// within returns the named children of a node that lie inside a byte range.
+func within(holder *tree_sitter.Node, start, end uint) []*tree_sitter.Node {
 	var out []*tree_sitter.Node
 	for i := uint(0); i < holder.NamedChildCount(); i++ {
 		child := holder.NamedChild(i)
@@ -557,30 +637,51 @@ func collect(node *tree_sitter.Node, lang *language, buried bool) []found {
 // that a doc comment written as four `//` lines is judged as one piece of prose.
 func group(root *tree_sitter.Node, nodes []found, src []byte) []comment {
 	var out []comment
+	// Everything before this byte is whitespace and comments, so a comment
+	// starting at it is still part of the file's own heading. It stops
+	// advancing at the first line of code, and every comment after that one
+	// documents something rather than the file.
+	heading := uint(0)
 	for _, f := range nodes {
 		raw := f.node.Utf8Text(src)
+		opens := clean(src, heading, f.node.StartByte())
+		if opens {
+			heading = f.node.EndByte()
+		}
 		if n := len(out); n > 0 && adjacent(out[n-1].nodes[len(out[n-1].nodes)-1], f.node) {
 			out[n-1].nodes = append(out[n-1].nodes, f.node)
 			out[n-1].raw = append(out[n-1].raw, raw)
 			out[n-1].text = join(out[n-1].text, prose(raw))
 			out[n-1].body += "\n" + body(raw)
-			out[n-1].annotates = annotated(root, f.node, src)
 			continue
 		}
 		out = append(out, comment{
-			nodes:     []*tree_sitter.Node{f.node},
-			raw:       []string{raw},
-			text:      prose(raw),
-			body:      body(raw),
-			line:      f.node.StartPosition().Row + 1,
-			annotates: annotated(root, f.node, src),
-			doc:       docstring(f.node),
-			buried:    f.buried,
-			trailing:  after(f.node, src),
-			root:      root,
+			nodes:    []*tree_sitter.Node{f.node},
+			raw:      []string{raw},
+			text:     prose(raw),
+			body:     body(raw),
+			line:     f.node.StartPosition().Row + 1,
+			doc:      docstring(f.node),
+			buried:   f.buried,
+			trailing: after(f.node, src),
+			heads:    opens,
+			root:     root,
 		})
 	}
 	return out
+}
+
+// clean reports whether the bytes between two offsets are all whitespace.
+func clean(src []byte, from, to uint) bool {
+	if to > uint(len(src)) {
+		return false
+	}
+	for _, b := range src[from:to] {
+		if b != ' ' && b != '\t' && b != '\n' && b != '\r' {
+			return false
+		}
+	}
+	return true
 }
 
 // adjacent reports whether two single-line comments are stacked in one column

@@ -25,12 +25,58 @@ var goLeftovers = []struct {
 	{"labelled note", "// Have: s += expr", false},
 	{"table semantics", "// arg0 == arg1", false},
 
+	// An equation broken across lines leaves a paren open, so [balance] closes
+	// it and the closer lands on the statement's own end byte. Descending into
+	// a node that fills the fragment exactly hands back its parts, which match
+	// no rule and pass by default.
+	{"unbalanced identity", "// j0(x) = 1/sqrt(pi) * (P(0,x)*cos(X) - Q(0,x)*sin(X)", false},
+	{"unbalanced invariant", "// complex(e, f) = n/(m", false},
+	// A bare label reaches goLegal only if the statement_list holding the run
+	// is unwrapped first.
+	{"bare label", "// Cases:", false},
+	{"output label", "// Output:", false},
+	// Illegal one level down is illegal.
+	{"nested comparison", "// if x {\n//\ty == z\n// }", false},
+	// A conversion is not a call, and a built-in that exists for its value
+	// cannot stand alone.
+	{"conversion", "// int64(x)", false},
+	{"builtin length", "// len(b)", false},
+	{"builtin new", "// new(T)", false},
+
 	{"disabled if", "// if initmap != nil {", true},
 	{"disabled assignment", "// cr  = buildReg(\"CR\")", true},
 	{"disabled call", "// fmt.Println(\"x\")", true},
 	{"disabled multiline", "// if n.Op == lexical.Range {\n//\treturn false\n// }", true},
 	{"disabled declaration", "// var count int", true},
 	{"disabled loop", "// for i := range xs {\n//\tuse(i)\n// }", true},
+	// Go puts a label on any statement, so the veto is narrowed to the one a
+	// note takes: a label on a loop is running code.
+	{"labelled loop", "// Loop:\n//\tfor i := range xs {\n//\t\tuse(i)\n//\t}", true},
+}
+
+// A whole function, a method or an import is commented out at file scope, and
+// is an error inside a function body. Trying the one position made the rule
+// silent on the canonical shape of dead Go.
+func TestGoLeftoverAtFileScope(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		body string
+	}{
+		{"function", "// func helper() int {\n//\treturn 1\n// }"},
+		{"import", "// import \"fmt\""},
+		{"method", "// func (t *T) M() {\n//\tt.x = 1\n// }"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			src := "package p\n\n" + c.body + "\n\nfunc g() {}\n"
+			found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
+			for _, f := range found {
+				if f.class == "leftover" {
+					return
+				}
+			}
+			t.Errorf("commented-out declaration not reported: %v", found)
+		})
+	}
 }
 
 func TestGoLeftover(t *testing.T) {
@@ -77,6 +123,83 @@ func TestNoticeIsExempt(t *testing.T) {
 	if f := only(t, src, golang); f.reason != "" {
 		t.Errorf("nudged a licence notice: %s %s", f.class, f.reason)
 	}
+}
+
+// The marker has to open a line. A comment that merely mentions one is prose,
+// and where a run of lines reads as one comment, matching anywhere in it would
+// exempt everything stacked under a header.
+func TestNoticeIsAnchored(t *testing.T) {
+	long := "// One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten.\n" +
+		"// Eleven. Twelve. Thirteen. Fourteen. Fifteen. Sixteen. Seventeen.\n"
+	for _, c := range []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"mentioned mid-sentence", "// We keep the copyright year here. " + strings.TrimPrefix(long, "// "), true},
+		{"opens the line", "// Copyright 2009 The Go Authors.\n" + long, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			// Below the package clause, not above it: a comment heading the
+			// file is exempt from the length rule whatever it says, and this
+			// asks what the notice marker does.
+			src := "package p\n\n" + c.src + "func f() {}\n"
+			found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
+			if got := len(found) > 0; got != c.want {
+				t.Errorf("nudged = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// A licence notice is out of both passes, not just the structural one. The zero
+// verdict from inspect is what hands a comment to the model, so exempting it
+// there would have exempted nothing.
+func TestNoticeSkipsTheModel(t *testing.T) {
+	skipWithoutRuntime(t)
+	src := "package p\n\nfunc f() {\n" +
+		"\t// Copyright 2009 The Go Authors.\n" +
+		"\t// This file is kept for backwards compatibility.\n" +
+		"\tprintln(1)\n}\n"
+	for _, f := range scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}}) {
+		t.Errorf("nudged inside a licence notice: line %d %s %s", f.line, f.class, f.reason)
+	}
+}
+
+// The length rule names three homes for a claim that will not fit: package
+// documentation, symbol documentation, a test. It fires only where one of them
+// exists, and file documentation is already the first of them.
+func TestLengthSpares(t *testing.T) {
+	long := "One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven."
+	t.Run("file documentation", func(t *testing.T) {
+		src := "// Package p does a thing. " + long + "\npackage p\n"
+		if f := only(t, src, golang); f.class == "length" {
+			t.Errorf("nudged the package's own documentation: %s", f.reason)
+		}
+	})
+	t.Run("under a licence header", func(t *testing.T) {
+		src := "// Copyright 2009 The Go Authors.\n\n// Package p does a thing. " + long + "\npackage p\n"
+		for _, f := range scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}}) {
+			if f.class == "length" {
+				t.Errorf("a licence header above it made the package doc reachable: %s", f.reason)
+			}
+		}
+	})
+	t.Run("a symbol still earns it", func(t *testing.T) {
+		src := "package p\n\n// F does a thing. " + long + "\nfunc F() {}\n"
+		found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
+		if len(found) == 0 || found[0].class != "length" {
+			t.Errorf("a symbol's documentation has somewhere to go and should still be nudged: %v", found)
+		}
+	})
+	t.Run("configuration has nowhere to move it", func(t *testing.T) {
+		src := "# " + long + "\nreplicas: 3\n"
+		for _, f := range scan([]byte(src), yaml, []span{{start: 0, end: uint(len(src))}}) {
+			if f.class == "length" {
+				t.Errorf("YAML has no symbol doc and no test to move a claim into: %s", f.reason)
+			}
+		}
+	})
 }
 
 // A comment sharing a line with code is a note about that code. The notation

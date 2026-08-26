@@ -31,14 +31,23 @@ var markers = []string{
 // headers Go carries ask that the notice be preserved — so nudging an agent to
 // shorten one is asking it to strip a licence, and that is not a style call the
 // tool gets to make.
-func notice(text string) bool {
-	lower := strings.ToLower(text)
-	for _, mark := range []string{
-		"copyright", "spdx-license-identifier", "licensed under",
-		"all rights reserved", "permission to use", "permission is hereby granted",
-	} {
-		if strings.Contains(lower, mark) {
-			return true
+//
+// A notice opens a line with its marker. Prose mentions one in the middle of a
+// sentence, and matching that would exempt `# get the copyright year` and, where
+// a run of lines is read as one comment, everything stacked under a header.
+// Anchoring to the line rather than to the comment is what keeps the marker
+// findable in the FreeBSD headers, where it is five lines in.
+func notice(body string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		lower := strings.ToLower(strings.TrimSpace(line))
+		for _, mark := range []string{
+			"copyright", "spdx-license-identifier", "licensed under",
+			"permission to use", "permission is hereby granted",
+			"redistribution and use", "this software is provided",
+		} {
+			if strings.HasPrefix(lower, mark) {
+				return true
+			}
 		}
 	}
 	return false
@@ -108,6 +117,9 @@ var directives = []string{
 	"staticcheck", "gocyclo", "golangci", "eslint-", "@ts-", "ts-ignore",
 	"ts-expect-error", "prettier-", "biome-ignore", "oxlint-", "istanbul", "c8 ",
 	"coverage:", "noqa", "type:", "pylint:", "pyright:", "mypy:", "fmt:",
+	// PEP 263, which survives the marker trim as `coding: utf-8 -*-` because
+	// the dashes go with the markers.
+	"coding:",
 	"shellcheck", "spell-checker", "codegen", "sourcery", "clang-format",
 	"nosec", "gosec", "safety:", "checkov:", "tflint-",
 	"pragma:", "ruff:", "flake8", "isort:", "noinspection", "pytype:", "pyre-",

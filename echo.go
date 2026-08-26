@@ -77,6 +77,19 @@ func echoes(c comment, src []byte) bool {
 	if c.annotates == nil || !oneLine(c.annotates) || !c.buried {
 		return false
 	}
+	// The exemption this function's own doc claims. In Go it held by accident,
+	// since a doc comment sits above a declaration rather than inside a body; a
+	// Python docstring is inside the body it opens, so a one-line docstring over
+	// a one-line function was read as repeating it.
+	if c.doc {
+		return false
+	}
+	// A comment with more code after it in the block is summarising the run
+	// rather than reading back the first line of it — the guard [restates]
+	// already applies, missing here.
+	if !last(c.annotates) {
+		return false
+	}
 	// A comment beside code is a note about that line, and the words it shares
 	// with the line are what the note is about rather than evidence it repeats
 	// one. `num -= old.cap - old.len // preserve memory of old[old.len:old.cap]`

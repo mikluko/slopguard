@@ -590,29 +590,37 @@ func nested(node *tree_sitter.Node) bool {
 // manifest and invisible in the next. Widths are preserved so that every byte
 // offset the parse reports still addresses the file the agent wrote, and the
 // text handed back is the file's own.
+//
+// A `{{` somebody wrote in prose has no closer of its own, so pairing it with
+// the next one anywhere in the file erases every comment between them. An
+// action does not span a blank line, which bounds the search for the closer to
+// the paragraph the opener is in. Bounding it is also what keeps this linear:
+// an unpaired `{{` otherwise scans to the end of the file, and there can be one
+// of those per paragraph.
 func blank(src []byte, lang *language) []byte {
 	if !lang.templated || !bytes.Contains(src, []byte("{{")) {
 		return src
 	}
 	out := append([]byte(nil), src...)
+	// The end of the paragraph holding the last opener looked at. It only ever
+	// moves forward, so the scans that find it cover the file once between them.
+	para := 0
 	for i := 0; i+1 < len(out); {
 		if out[i] != '{' || out[i+1] != '{' {
 			i++
 			continue
 		}
-		end := bytes.Index(out[i:], []byte("}}"))
-		if end < 0 {
-			break
+		if para <= i {
+			para = len(out)
+			if at := bytes.Index(out[i:], []byte("\n\n")); at >= 0 {
+				para = i + at
+			}
 		}
-		// A `{{` somebody wrote in prose has no closer of its own, so the next
-		// one anywhere in the file gets paired with it and every comment
-		// between them is erased. An action does not span a blank line, so one
-		// inside the pair means this `{{` was text.
-		if at := bytes.Index(out[i:i+end], []byte("\n\n")); at >= 0 {
-			// Past the blank line, not one byte on: no `{{` before it can pair
-			// with that `}}` either, and advancing singly re-scans to the end
-			// of the file for every one of them.
-			i += at + 2
+		end := bytes.Index(out[i:para], []byte("}}"))
+		if end < 0 {
+			// Nothing in this paragraph closes it, so it was text. Neither will
+			// anything else before the blank line, so the whole paragraph goes.
+			i = para + 2
 			continue
 		}
 		for k := i; k < i+end+2; k++ {

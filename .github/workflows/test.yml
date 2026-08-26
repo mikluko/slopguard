@@ -30,10 +30,14 @@ jobs:
       - name: test with no library to load
         run: SLOPGUARD_ONNXRUNTIME_LIBRARY=/nonexistent go test ./...
 
+      # The version the thresholds were calibrated against. A different one is
+      # not obviously safe: the head in assets/head.bin holds directions fitted
+      # from this model's output, and a runtime that changes that output by even
+      # a little moves every score against a threshold that did not move.
       - name: install ONNX Runtime
         run: |
-          version=1.20.1
-          curl -sL -o ort.tgz \
+          version=1.29.0
+          curl -sSfL -o ort.tgz \
             "https://github.com/microsoft/onnxruntime/releases/download/v${version}/onnxruntime-linux-x64-${version}.tgz"
           tar xzf ort.tgz
           echo "SLOPGUARD_ONNXRUNTIME_LIBRARY=$PWD/onnxruntime-linux-x64-${version}/lib/libonnxruntime.so" >> "$GITHUB_ENV"

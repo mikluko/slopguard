@@ -344,10 +344,12 @@ twice the shipped tilt, where `TestClear` reports 1 of 75.
 On a production Go service, 11 findings across 115 files of `internal`, `app`
 and `pkg`. On the Go standard library — `find . -name '*.go' -not -name
 '*_test.go' -not -path '*/testdata/*' -not -path '*/vendor/*'` under `GOROOT/src`,
-4065 files — 1363: 869 restatement, 332 length, 142 commented-out code, 20
-self-justification. The largest class is a step comment inside a long function,
-which is the shape this tool is pointed at and the shape that library uses
-most. On
+4065 files — 1034: 872 restatement, 142 commented-out code, 20
+self-justification, and no padding at all. The largest class is a step comment
+inside a long function, which is the shape this tool is pointed at and the shape
+that library uses most. The rule that counted a comment's sentences used to add
+332 findings here and is gone; what replaced it asks whether each sentence earns
+its place, and on that library none fails. On
 9934 YAML files and 5313 Terraform files of an infrastructure repository, 32
 findings between them. On its own source, none.
 

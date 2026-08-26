@@ -5,8 +5,6 @@ import (
 	"strings"
 	"unsafe"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-
 	tsdocker "github.com/alexaandru/go-sitter-forest/dockerfile"
 	tsmake "github.com/alexaandru/go-sitter-forest/make"
 	tshcl "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
@@ -25,7 +23,14 @@ import (
 )
 
 // language binds a grammar to the node kinds slopguard reads out of its trees.
+//
+// It is data and holds no judgment. What decides whether a commented-out
+// fragment is really code differs per language, and those predicates live with
+// the rules that use them, looked up by [language.name] — if this struct held
+// them, the table would depend on the rules and the rules on the table.
 type language struct {
+	// name is the key the per-language predicates are found under. It is the
+	// one field a rule reads.
 	name      string
 	grammar   func() unsafe.Pointer
 	comments  map[string]bool
@@ -33,11 +38,6 @@ type language struct {
 	// strict reports whether prose reliably fails to parse as source in this
 	// language, which is what makes the commented-out-code rule safe to apply.
 	strict bool
-	// evidence decides, for a language whose prose parses as source, whether a
-	// cleanly parsed comment is code somebody commented out or a sentence that
-	// merely reads as code. It is given the comment, the parse of its text, that
-	// text, and the file the comment came from.
-	evidence func(c comment, parsed *tree_sitter.Node, body, src []byte) bool
 	// wrapper puts a fragment where this language's grammar expects statements.
 	// Code is commented out from inside a function far more often than from
 	// file scope, and the two parse by different rules: tree-sitter-go reads
@@ -48,11 +48,6 @@ type language struct {
 	// A language without one is parsed bare, which is what every language here
 	// did before any of them was measured.
 	wrapper func() (prefix, suffix string)
-	// legal reports whether a fragment's statements could have been compiled.
-	// A grammar is context-free and accepts what the language does not: a bare
-	// comparison is a legal parse and an illegal statement, so `// f == g` is a
-	// relation somebody wrote down rather than a line they switched off.
-	legal func(statements []*tree_sitter.Node, body []byte) bool
 	// templated reports whether files in this language are commonly written
 	// through a template whose actions the grammar cannot read.
 	templated bool
@@ -110,7 +105,6 @@ var (
 		functions: set("function_declaration", "method_declaration", "func_literal"),
 		strict:    true,
 		wrapper:   func() (string, string) { return "package p\nfunc _() {\n", "\n}\n" },
-		legal:     goLegal,
 	}
 	// Python prose parses as Python: `in`, `is`, `not`, `and` and `or` are
 	// operators, so "# DEBUG=False in production" is a clean parse and was
@@ -121,7 +115,6 @@ var (
 		grammar:    tspython.Language,
 		comments:   set("comment"),
 		functions:  set("function_definition", "lambda"),
-		evidence:   pythonCode,
 		docstrings: true,
 	}
 	javascript = &language{
@@ -194,7 +187,6 @@ var (
 		grammar:   tsyaml.Language,
 		comments:  set("comment"),
 		functions: set(),
-		evidence:  yamlConfig,
 		templated: true,
 	}
 	// hcl has no function bodies, so every comment in a Terraform file is judged
@@ -214,7 +206,6 @@ var (
 		grammar:   tsdocker.GetLanguage,
 		comments:  set("comment"),
 		functions: set(),
-		evidence:  dockerCode,
 	}
 	makefile = &language{
 		name:      "make",

@@ -15,6 +15,26 @@ import (
 // the label, is a heuristic — Go puts a label on any statement — and it is here
 // because the shape it catches is how a note announces what follows.
 
+// The per-language halves of the commented-out-code rule, found by language
+// name rather than held on the language itself.
+//
+// A predicate needs the comment, the parse of its text, and the file it came
+// from, which is everything the rules already work with. Putting it on the
+// language table instead would make that table name those types, and the table
+// is what the extraction reads to find comments in the first place — so the
+// table would depend on the rules and the rules on the table. Nothing else
+// wanted [language.name]; this is what it is for.
+var (
+	evidence = map[string]func(c comment, parsed *tree_sitter.Node, body, src []byte) bool{
+		"python":     pythonCode,
+		"yaml":       yamlConfig,
+		"dockerfile": dockerCode,
+	}
+	legal = map[string]func(statements []*tree_sitter.Node, body []byte) bool{
+		"go": goLegal,
+	}
+)
+
 // goLegal reports whether every statement in a fragment could have compiled.
 // One that could not is enough to rule the whole fragment out: a run of lines
 // is commented out together, so a single equation among them says the run is

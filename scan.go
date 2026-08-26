@@ -284,7 +284,9 @@ func leftover(c comment, lang *language, src []byte) bool {
 	// language that can say what the compiler would have refused does not need
 	// it, and it costs real findings — `fmt.Println("x")` is a call with an
 	// argument, which no list of leading keywords matches.
-	if lang.evidence == nil && lang.legal == nil && (!lang.strict || !code(c.text)) {
+	evident, decides := evidence[lang.name]
+	compiles, checked := legal[lang.name]
+	if !decides && !checked && (!lang.strict || !code(c.text)) {
 		return false
 	}
 	parser := tree_sitter.NewParser()
@@ -327,8 +329,8 @@ func leftover(c comment, lang *language, src []byte) bool {
 		if root.HasError() {
 			continue
 		}
-		if lang.evidence != nil {
-			return lang.evidence(c, root, []byte(body), src)
+		if decides {
+			return evident(c, root, []byte(body), src)
 		}
 		inside := fragment(root, uint(len(prefix)), uint(len(prefix)+len(body)))
 		if len(inside) == 0 {
@@ -337,7 +339,7 @@ func leftover(c comment, lang *language, src []byte) bool {
 		// The wrapped text, not the fragment: every offset the nodes carry is
 		// into what was parsed, so reading a node's text out of the fragment
 		// alone returns whatever sits len(prefix) bytes further along.
-		return lang.legal == nil || lang.legal(inside, []byte(prefix+body+suffix))
+		return !checked || compiles(inside, []byte(prefix+body+suffix))
 	}
 	return false
 }

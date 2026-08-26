@@ -1,4 +1,4 @@
-package main
+package model
 
 // The corpus is the specification of taste: the classes come from comments an
 // agent wrote into working repositories, preferring the ones a human deleted
@@ -9,7 +9,7 @@ package main
 // than an oversight, and the measurements are in the README under "What it does
 // not catch, and why".
 
-var classes = []class{
+var classes = []Class{
 	{
 		name:   "compat",
 		reason: "justifies the symbol by its own history: state the contract instead, as a Deprecated: note if that is what it is",

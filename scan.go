@@ -11,20 +11,9 @@ import (
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/mikluko/slopguard/internal/lang"
+	"github.com/mikluko/slopguard/internal/model"
 	"github.com/mikluko/slopguard/internal/prose"
 )
-
-// buriedBias is how much less evidence a comment inside a function body needs
-// before the semantic pass names it. Prose is harder to justify there, but a
-// line pointing at a constraint enforced elsewhere still justifies itself, so
-// this tilts the reading rather than deciding it.
-//
-// The sweep in window_test.go prices the tilt: held out, 0.03 catches one more
-// comment than no tilt at all and still nudges nothing, while 0.06 catches
-// three more and nudges one piece of contract prose, and 0.09 catches four and
-// nudges two. This is the last setting at which every contract reading is
-// perfect.
-const buriedBias = 0.03
 
 // docSentences was the length rule's threshold, set at the last percent of a
 // 90,000-comment distribution. It is gone, and nothing replaced it with a
@@ -188,21 +177,24 @@ func weigh(candidates []comment, language *lang.Language, src []byte) []finding 
 			texts[j] = prose.Opening(prose.Split(candidates[i].text))
 			position := 0.0
 			if !candidates[i].doc && candidates[i].buried {
-				position = buriedBias
+				position = model.BuriedBias
 			}
-			bias[j] = allowance(position, len(texts[j]))
+			bias[j] = model.Allowance(position, len(texts[j]))
 		}
-		for j, v := range judge(texts, bias) {
+		// What the model hands back is what it recognised. Turning that into a
+		// verdict is this layer's job, and the next few lines are why the two
+		// are separate: a reading alone is not a finding.
+		for j, read := range model.Judge(texts, bias) {
 			// Restatement is a relation, so the model's reading of one is
 			// taken only where the code supports it: a single line below, at
 			// least two content words, and at least one of them already
 			// spelled by that line. A section banner — "User data" over
 			// `ami_type` — shares nothing with what it heads and restates
 			// nothing, whatever it reads like on its own.
-			if v.class == "tautology" && !restates(candidates[pending[j]], src) {
+			if read.Class == "tautology" && !restates(candidates[pending[j]], src) {
 				continue
 			}
-			verdicts[pending[j]] = v
+			verdicts[pending[j]] = verdict{read.Reason, read.Score, read.Class}
 		}
 	}
 	var out []finding
@@ -239,7 +231,7 @@ func inspect(c comment, language *lang.Language, src []byte) verdict {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
 	if echoes(c, src) {
-		return verdict{reasonFor("tautology"), 0.95, "echo"}
+		return verdict{model.ReasonFor("tautology"), 0.95, "echo"}
 	}
 	if empty := hollows(c, src); len(empty) > 0 && wordy(c, language) {
 		return verdict{

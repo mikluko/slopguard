@@ -1,9 +1,11 @@
-package main
+package model
 
 import (
 	"fmt"
 	"sort"
 	"testing"
+
+	"github.com/mikluko/slopguard/internal/prose"
 )
 
 // The held-out table is mined from repositories that had no part in tuning:
@@ -321,9 +323,9 @@ func TestHeldOut(t *testing.T) {
 
 	comments := make([][]string, len(heldout))
 	for i, r := range heldout {
-		comments[i] = split(r.text)
+		comments[i] = prose.Split(r.text)
 	}
-	reasons := judge(comments, make([]float64, len(heldout)))
+	reasons := Judge(comments, make([]float64, len(heldout)))
 
 	names := []string{""}
 	for _, c := range classes {
@@ -356,7 +358,7 @@ func TestHeldOut(t *testing.T) {
 	}
 	var misses []miss
 	for i, r := range heldout {
-		got := classOf(reasons[i].reason)
+		got := classOf(reasons[i].Reason)
 		w, ok := index[r.class]
 		if !ok {
 			t.Fatalf("row %d carries an unknown label %q", i, r.class)
@@ -376,7 +378,7 @@ func TestHeldOut(t *testing.T) {
 			m := miss{text: r.text, want: r.class, got: got}
 			for ci, c := range classes {
 				if c.name == named {
-					m.score = dot(vectors[i], fitted.directions[ci])
+					m.score = Dot(vectors[i], fitted.directions[ci])
 					m.floor = fitted.thresholds[ci]
 				}
 			}
@@ -452,7 +454,7 @@ func TestHeldOut(t *testing.T) {
 	// the one a labelled row holds.
 	buried := make([]float64, len(heldout))
 	for i := range buried {
-		buried[i] = allowance(buriedBias, len(comments[i]))
+		buried[i] = Allowance(BuriedBias, len(comments[i]))
 	}
 	check := func(name string, left, contract int) {
 		rate := float64(left) / float64(contract)
@@ -463,11 +465,11 @@ func TestHeldOut(t *testing.T) {
 		}
 	}
 	for _, pass := range []struct {
-		name    string
-		verdict []verdict
+		name string
+		read []Reading
 	}{
 		{"above a declaration", reasons},
-		{"inside a function body", judge(comments, buried)},
+		{"inside a function body", Judge(comments, buried)},
 	} {
 		contract, left := 0, 0
 		for i, r := range heldout {
@@ -475,7 +477,7 @@ func TestHeldOut(t *testing.T) {
 				continue
 			}
 			contract++
-			if pass.verdict[i].reason == "" {
+			if pass.read[i].Reason == "" {
 				left++
 			}
 		}
@@ -498,11 +500,11 @@ func TestHeldOut(t *testing.T) {
 	}
 	bias := make([]float64, len(docs))
 	for i := range bias {
-		bias[i] = allowance(buriedBias, len(docs[i]))
+		bias[i] = Allowance(BuriedBias, len(docs[i]))
 	}
 	left := 0
-	for _, v := range judge(docs, bias) {
-		if v.reason == "" {
+	for _, v := range Judge(docs, bias) {
+		if v.Reason == "" {
 			left++
 		}
 	}

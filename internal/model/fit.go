@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"encoding/binary"
@@ -33,14 +33,14 @@ const precision = 0.85
 // centroid alone cannot give. The threshold is the lowest score at which the
 // class still fires at the required precision, on this same labelled corpus.
 func fit(vectors [][]float32, labels []string) head {
-	return fitAt(vectors, labels, precision)
+	return FitAt(vectors, labels, precision)
 }
 
-func fitAt(vectors [][]float32, labels []string, precision float64) head {
-	return fitWith(vectors, labels, precision, marginWindow)
+func FitAt(vectors [][]float32, labels []string, precision float64) head {
+	return FitWith(vectors, labels, precision, marginWindow)
 }
 
-func fitWith(vectors [][]float32, labels []string, precision, window float64) head {
+func FitWith(vectors [][]float32, labels []string, precision, window float64) head {
 	out := head{
 		directions: make([][]float32, len(classes)),
 		thresholds: make([]float64, len(classes)),
@@ -125,7 +125,7 @@ func cut(vectors [][]float32, labels []string, name string, direction []float32,
 	}
 	var scores []scored
 	for i, v := range vectors {
-		scores = append(scores, scored{dot(v, direction), labels[i] == name})
+		scores = append(scores, scored{Dot(v, direction), labels[i] == name})
 	}
 	slices.SortFunc(scores, func(a, b scored) int {
 		switch {
@@ -163,7 +163,7 @@ func cut(vectors [][]float32, labels []string, name string, direction []float32,
 	return best
 }
 
-func dot(a, b []float32) float64 {
+func Dot(a, b []float32) float64 {
 	var sum float64
 	for i := range a {
 		sum += float64(a[i]) * float64(b[i])
@@ -171,9 +171,9 @@ func dot(a, b []float32) float64 {
 	return sum
 }
 
-// encodeHead renders a fitted head as the asset, behind the fingerprint of the
+// EncodeHead renders a fitted head as the asset, behind the fingerprint of the
 // labelled text it was fitted from.
-func encodeHead(h head, mark uint64) []byte {
+func EncodeHead(h head, mark uint64) []byte {
 	out := make([]byte, 0, 16+len(h.directions)*(dimensions*4+8))
 	out = binary.LittleEndian.AppendUint64(out, mark)
 	out = binary.LittleEndian.AppendUint32(out, uint32(len(h.directions)))
@@ -187,9 +187,9 @@ func encodeHead(h head, mark uint64) []byte {
 	return out
 }
 
-// decodeHead reads the asset back, and reports false when it was fitted from
+// DecodeHead reads the asset back, and reports false when it was fitted from
 // text this binary no longer carries.
-func decodeHead(blob []byte, mark uint64) (head, bool) {
+func DecodeHead(blob []byte, mark uint64) (head, bool) {
 	if len(blob) < 16 || binary.LittleEndian.Uint64(blob) != mark {
 		return head{}, false
 	}

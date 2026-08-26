@@ -1,8 +1,9 @@
-package main
+package model
 
 import (
-	"os"
 	"testing"
+
+	"github.com/mikluko/slopguard/internal/prose"
 )
 
 // The semantic table is the specification for what the model is asked to
@@ -54,9 +55,9 @@ func TestJudge(t *testing.T) {
 	}
 	comments := make([][]string, len(texts))
 	for i, text := range texts {
-		comments[i] = split(text)
+		comments[i] = prose.Split(text)
 	}
-	reasons := judge(comments, make([]float64, len(texts)))
+	reasons := Judge(comments, make([]float64, len(texts)))
 
 	// Two directions, judged differently. Nudging prose that states a contract
 	// is the failure this tool cannot afford, so it fails the test. Missing a
@@ -65,14 +66,14 @@ func TestJudge(t *testing.T) {
 	// enforce would only be the recall on the sentences it already contains.
 	missed := 0
 	for i, r := range readings {
-		fired := reasons[i].reason != ""
+		fired := reasons[i].Reason != ""
 		switch {
 		case r.class == "" && fired:
-			t.Errorf("nudged contract prose: %q\n  %s", r.text, reasons[i].reason)
+			t.Errorf("nudged contract prose: %q\n  %s", r.text, reasons[i].Reason)
 		case r.class != "" && !fired:
 			missed++
 			t.Logf("missed %-10s %s", r.class, r.text)
-		case r.class != "" && reasons[i].reason != reasonFor(r.class):
+		case r.class != "" && reasons[i].Reason != ReasonFor(r.class):
 			t.Logf("read %-10s as another class: %s", r.class, r.text)
 		}
 	}
@@ -98,11 +99,7 @@ func TestLiteralFallback(t *testing.T) {
 // can be absent: no library to load, or the semantic pass switched off.
 func skipWithoutRuntime(t *testing.T) {
 	t.Helper()
-	if os.Getenv(disableEnv) != "" {
-		t.Skip(disableEnv + " is set")
-	}
-	path := library()
-	if _, err := os.Stat(path); err != nil {
-		t.Skip("no ONNX Runtime at " + path)
+	if why := Absent(); why != "" {
+		t.Skip(why)
 	}
 }

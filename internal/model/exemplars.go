@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	_ "embed"
@@ -9,11 +9,11 @@ import (
 // threshold per class, a few kilobytes, computed once when the corpus changes.
 
 //go:embed assets/head.bin
-var headBytes []byte
+var HeadBytes []byte
 
-// exemplars returns every labelled comment in corpus order: each class in turn,
+// Exemplars returns every labelled comment in corpus order: each class in turn,
 // then the contract set. The labels follow in the same order.
-func exemplars() ([]string, []string) {
+func Exemplars() ([]string, []string) {
 	var texts, labels []string
 	add := func(label string, from []string) {
 		for _, text := range from {
@@ -30,12 +30,12 @@ func exemplars() ([]string, []string) {
 	return texts, labels
 }
 
-// fingerprint identifies the labelled text this binary carries, so that an
+// Fingerprint identifies the labelled text this binary carries, so that an
 // edited exemplar is noticed rather than silently scored against a direction
 // fitted from the old wording.
-func fingerprint() uint64 {
+func Fingerprint() uint64 {
 	h := fnv.New64a()
-	texts, labels := exemplars()
+	texts, labels := Exemplars()
 	for i, text := range texts {
 		h.Write([]byte(labels[i]))
 		h.Write([]byte{'='})

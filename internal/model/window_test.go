@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ func TestWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	corpus, labels := exemplars()
+	corpus, labels := Exemplars()
 	corpusVectors, err := e.embed(corpus)
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func TestWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, width := range []float64{0.0, 0.01, 0.02, 0.03, 0.05, 0.08} {
-		h := fitWith(corpusVectors, labels, precision, width)
+		h := FitWith(corpusVectors, labels, precision, width)
 		line, wrong := "", 0
 		for ci, c := range classes {
 			fired, right := 0, 0
@@ -87,14 +87,14 @@ func TestPerDraw(t *testing.T) {
 
 	for _, step := range []float64{0.0, 0.005, 0.01, 0.02, 0.04} {
 		left := 0
-		for _, v := range judge(docs, biasFor(docs, step)) {
-			if v.reason == "" {
+		for _, v := range Judge(docs, biasFor(docs, step)) {
+			if v.Reason == "" {
 				left++
 			}
 		}
 		caught := 0
-		for _, v := range judge(padded, biasFor(padded, step)) {
-			if v.reason != "" {
+		for _, v := range Judge(padded, biasFor(padded, step)) {
+			if v.Reason != "" {
 				caught++
 			}
 		}
@@ -108,7 +108,7 @@ func TestPerDraw(t *testing.T) {
 func biasFor(comments [][]string, step float64) []float64 {
 	out := make([]float64, len(comments))
 	for i, sentences := range comments {
-		out[i] = buriedBias - float64(len(sentences)-1)*step
+		out[i] = BuriedBias - float64(len(sentences)-1)*step
 	}
 	return out
 }
@@ -143,7 +143,7 @@ func TestClear(t *testing.T) {
 				}
 				best, over := -1, floor
 				for k := range classes {
-					if s := dot(v, fitted.directions[k]) - (fitted.thresholds[k] - bias); s > over {
+					if s := Dot(v, fitted.directions[k]) - (fitted.thresholds[k] - bias); s > over {
 						best, over = k, s
 					}
 				}
@@ -166,7 +166,7 @@ func TestClear(t *testing.T) {
 func fires(vector []float32, h head) int {
 	best, over := -1, clear
 	for k := range classes {
-		if s := dot(vector, h.directions[k]) - h.thresholds[k]; s > over {
+		if s := Dot(vector, h.directions[k]) - h.thresholds[k]; s > over {
 			best, over = k, s
 		}
 	}

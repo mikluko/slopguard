@@ -1,4 +1,4 @@
-package main
+package model
 
 // The mined corpus: comments harvested from repositories that took no part in
 // writing corpus.go, labelled by hand, and cut in two. This half fits the

@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/mikluko/slopguard/internal/model"
 )
 
 // The table is the specification: a case names the language, the file as
@@ -464,12 +466,7 @@ func TestScan(t *testing.T) {
 // rules — commented-out code, the identifier echo, documentation running long —
 // answer on any machine, and a case expecting silence has to hold on both.
 func judged(want string) bool {
-	for _, c := range classes {
-		if want != "" && strings.Contains(c.reason, want) {
-			return true
-		}
-	}
-	return false
+	return model.Speaks(want)
 }
 
 // A comment outside the text the tool call wrote is somebody else's problem.

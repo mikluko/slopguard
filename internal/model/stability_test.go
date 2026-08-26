@@ -1,4 +1,4 @@
-package main
+package model
 
 import "testing"
 
@@ -26,7 +26,7 @@ func TestStability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	texts, labels := exemplars()
+	texts, labels := Exemplars()
 	vectors, err := e.embed(texts)
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ func TestStability(t *testing.T) {
 		}
 		first := unit(difference(centroid(even, evenLabels, c.name), centroid(even, evenLabels, "")))
 		second := unit(difference(centroid(odd, oddLabels, c.name), centroid(odd, oddLabels, "")))
-		agreement := dot(first, second)
+		agreement := Dot(first, second)
 		t.Logf("%-10s %3d examples   halves agree at cos %+.3f", c.name, seen, agreement)
 		if agreement < converges {
 			t.Errorf("%s does not converge: halves agree at %+.3f, below %.2f — it is learning subjects, not a shape",

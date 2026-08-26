@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"cmp"
@@ -107,6 +107,24 @@ func library() string {
 		}
 	}
 	return libraryPaths[len(libraryPaths)-1]
+}
+
+// Absent reports why the semantic pass cannot run, or "" when it can: the pass
+// was switched off, or ONNX Runtime is not where anything looks for it.
+//
+// It exists for the tests, which is unusual enough to say why. Every rule this
+// tool ships has to hold with the model absent — that is a supported way to run
+// it, not a degraded one — so a test that needs the model has to skip rather
+// than fail, and the question is this package's to answer.
+func Absent() string {
+	if os.Getenv(disableEnv) != "" {
+		return disableEnv + " is set"
+	}
+	path := library()
+	if _, err := os.Stat(path); err != nil {
+		return "no ONNX Runtime at " + path
+	}
+	return ""
 }
 
 func load() (*embedder, error) {

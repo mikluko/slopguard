@@ -1,4 +1,4 @@
-package main
+package model
 
 import "testing"
 
@@ -31,7 +31,7 @@ func TestScores(t *testing.T) {
 	for i, v := range vectors {
 		line := ""
 		for c := range classes {
-			line += " " + classes[c].name[:4] + fmtScore(dot(v, fitted.directions[c])-fitted.thresholds[c])
+			line += " " + classes[c].name[:4] + fmtScore(Dot(v, fitted.directions[c])-fitted.thresholds[c])
 		}
 		t.Logf("%s  %s", line, texts[i])
 	}

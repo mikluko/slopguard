@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ func TestCalibrate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	corpus, labels := exemplars()
+	corpus, labels := Exemplars()
 	corpusVectors, err := e.embed(corpus)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestCalibrate(t *testing.T) {
 
 	t.Logf("fitting corpus %d comments, held out %d", len(corpus), len(texts))
 	for _, p := range []float64{0.70, 0.75, 0.80, 0.85, 0.90, 0.95} {
-		h := fitAt(corpusVectors, labels, p)
+		h := FitAt(corpusVectors, labels, p)
 		line := fmt.Sprintf("precision %.2f  ", p)
 		wrong, missed := 0, 0
 		for ci, c := range classes {
@@ -56,7 +56,7 @@ func TestCalibrate(t *testing.T) {
 				// different rule justifies nothing.
 				best, over := -1, clear
 				for k := range classes {
-					if s := dot(v, h.directions[k]) - h.thresholds[k]; s > over {
+					if s := Dot(v, h.directions[k]) - h.thresholds[k]; s > over {
 						best, over = k, s
 					}
 				}

@@ -113,18 +113,17 @@ func biasFor(comments [][]string, step float64) []float64 {
 	return out
 }
 
-// TestClear reports what each noise floor costs and buys, at both thresholds a
-// comment can meet: above a declaration, and inside a function body where the
-// bar is lower. It is how clear was chosen, and the two rows behave differently
-// enough that a number quoted from one of them says little about the other.
+// TestClear reports what each noise floor costs and buys, across the range of
+// thresholds a comment can meet: above a declaration at bias 0, and inside a
+// function body where the bar is lower. It is how clear and buriedBias were
+// both chosen, and the rows behave differently enough that a number quoted from
+// one of them says little about another.
 func TestClear(t *testing.T) {
 	skipWithoutRuntime(t)
-	e, err := model()
-	if err != nil {
-		t.Fatal(err)
-	}
 	texts, want := heldOut()
-	vectors, err := e.embed(texts)
+	// embedAll rather than the embedder directly: it is what loads the head
+	// this reads, and running alone there is nothing else to have loaded it.
+	vectors, err := embedAll(texts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +131,7 @@ func TestClear(t *testing.T) {
 	for _, c := range classes {
 		live[c.name] = true
 	}
-	for _, bias := range []float64{0, buriedBias} {
+	for _, bias := range []float64{0, 0.03, buriedBias, 0.09} {
 		for _, floor := range []float64{0.0, 0.005, 0.01, 0.02, 0.04} {
 			caught, nudged, catchable := 0, 0, 0
 			for i, v := range vectors {

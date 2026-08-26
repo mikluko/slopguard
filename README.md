@@ -30,7 +30,7 @@ comes back as context, and what the agent does about it is the agent's business.
 | restatement | `// close the connection` above `conn.Close()` |
 | self-justification | `// kept for backwards compatibility` |
 | commented-out code | a comment that parses as source, or as YAML config |
-| length | documentation running past five sentences |
+| length | documentation running past eight sentences |
 
 The first two are read by the model. The last two are structural, and so is half
 of restatement: a comment whose content words are already spelled by the
@@ -265,9 +265,18 @@ prose is left alone
 function body meets, and 25 of 25 when those rows are read three to a comment,
 which is the unit a real doc comment arrives in. All three are asserted.
 
-On a production Go service, 27 findings across `internal`, `app` and `pkg`. On
+On a production Go service, 19 findings across `internal`, `app` and `pkg`. On
 9934 YAML files and 5313 Terraform files of an infrastructure repository, 32
 findings between them. On its own source, none.
+
+The length rule is set against what documentation does rather than what a style
+guide says it should: `go test -v -run TestLengthDistribution
+SLOPGUARD_CORPUS=<repos>` counts sentences across a corpus, and in 90,000
+comments from four repositories written on purpose, half are one sentence, 95%
+are four or fewer and 99% are eight or fewer. Eight flags that last percent. The
+rule this tool exists to serve is stricter — one sentence, a second when it is
+earned — and enforcing it literally would flag one comment in five, which is a
+disagreement with the author rather than a finding.
 
 One caveat on the held-out numbers, because they are what decides whether this
 tool is worth running: the held-out half and the fitting half were split row by

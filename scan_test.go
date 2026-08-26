@@ -48,9 +48,12 @@ func double(v int) int { return v * 2 }
 // Negative values are doubled as they are.
 // Zero is returned unchanged.
 // The result is never smaller than v for positive v.
+// Overflow is checked before the multiply, not after.
+// The check costs one comparison.
+// None of this is worth nine sentences.
 func double(v int) int { return v * 2 }
 `,
-		want: "6 sentences",
+		want: "9 sentences",
 	},
 	{
 		name: "go comment restating the code",
@@ -185,7 +188,8 @@ DEBUG = True
     """Double v.
 
     This walks through what it does. First it checks the input. Then it doubles
-    the value. Then it returns. It also does nothing else. It never raises.
+    the value. Then it returns. It also does nothing else. It never raises. It
+    has no side effects. It does not log. It is not concurrent.
     """
     return v * 2
 `,

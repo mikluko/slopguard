@@ -15,13 +15,26 @@ import (
 // before the semantic pass names it. Prose is harder to justify there, but a
 // line pointing at a constraint enforced elsewhere still justifies itself, so
 // this tilts the reading rather than deciding it.
-const buriedBias = 0.06
+//
+// The sweep in window_test.go prices the tilt: held out, 0.03 catches one more
+// comment than no tilt at all and still nudges nothing, while 0.06 catches
+// three more and nudges one piece of contract prose, and 0.09 catches four and
+// nudges two. This is the last setting at which every contract reading is
+// perfect.
+const buriedBias = 0.03
 
 // docSentences is how long documentation runs before its length alone is worth
-// a word. One sentence is the rule and a second is earned; the floor sits well
-// above both, because a doc carrying a real constraint often needs the room and
-// a nudge on every third sentence would be noise.
-const docSentences = 5
+// a word.
+//
+// It is set against what documentation actually does rather than against what a
+// style guide says it should. Across 90,000 comments in four repositories
+// written on purpose (TestLengthDistribution measures it): half are one
+// sentence, 81% are two or fewer, 95% four or fewer, and 99% eight or fewer.
+// A threshold of five flags one comment in thirty-five, which on a densely
+// documented repository is 386 findings and drowns everything else the tool
+// has to say; at eight it flags the last percent, which is documentation that
+// has genuinely run away.
+const docSentences = 8
 
 // span is a byte range of a file that the tool call just wrote.
 type span struct{ start, end uint }

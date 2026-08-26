@@ -55,14 +55,17 @@ func lookup(path string) *language {
 	if lang := byName[name]; lang != nil {
 		return lang
 	}
-	if extension := strings.ToLower(filepath.Ext(name)); extension != "" {
-		if lang := byExtension[extension]; lang != nil {
-			return lang
-		}
+	extension := strings.ToLower(filepath.Ext(name))
+	if lang := byExtension[extension]; lang != nil {
+		return lang
+	}
+	if formats[extension] {
+		return nil
 	}
 	// A named file keeps its language when it is qualified: Dockerfile.dev and
 	// api.Dockerfile are both Dockerfiles, and Makefile.local is a Makefile.
-	// The extension is asked first, so Makefile.md is the markdown it is.
+	// An extension that names a format of its own wins first, so Makefile.md is
+	// the markdown it is rather than a Makefile with a suffix.
 	for _, named := range qualified {
 		if strings.HasPrefix(name, named+".") || strings.HasSuffix(name, "."+named) {
 			return byName[named]
@@ -73,6 +76,16 @@ func lookup(path string) *language {
 
 // qualified is byName's keys in a fixed order, since a map's is not one.
 var qualified = []string{"Dockerfile", "Containerfile", "Makefile", "makefile", "GNUmakefile"}
+
+// formats are the extensions that carry a format this tool does not read. They
+// are listed rather than inferred because the alternative is reading a
+// Makefile.md as a Makefile, which is what happens when an unknown extension is
+// taken for a variant tag.
+var formats = map[string]bool{
+	".md": true, ".markdown": true, ".rst": true, ".txt": true, ".adoc": true,
+	".html": true, ".htm": true, ".xml": true, ".json": true, ".csv": true,
+	".lock": true, ".sum": true, ".pdf": true, ".png": true, ".svg": true,
+}
 
 var (
 	golang = &language{

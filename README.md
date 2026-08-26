@@ -298,6 +298,12 @@ floor is process start: the binary is 111 MB, since the model is embedded in it.
 - A comment run that opens with a licence line pardons every line stacked under
   it, because a run reads as one comment and any of its lines can carry the
   marker.
+- A contract stated in the words of its own signature reads as padding when
+  several of them stand together. `java.time.zone.ZoneOffsetTransitionRule`
+  documents three enum constants in parallel — "The STANDARD type uses the
+  standard offset" — over a method whose parameters are `standardOffset` and
+  `wallOffset`, so every word is one the declaration spells. Two findings in
+  15,605 JDK files, and the shape has no tell beyond being right.
 - Rust documentation never reaches the padding rule. tree-sitter-rust ends a
   `line_comment` on the row after it starts, so a `///` run is never grouped and
   87,016 of 91,667 Rust comments arrive as one sentence, which the rule declines.

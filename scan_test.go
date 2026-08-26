@@ -68,7 +68,7 @@ func double(v int) int { return v * 2 }
 // The implementation is simple and easy to read.
 func double(v int) int { return v * 2 }
 `,
-		want: "earn no place",
+		want: "padded documentation",
 	},
 	{
 		name: "go comment restating the code",
@@ -209,7 +209,7 @@ DEBUG = True
     """
     return v * 2
 `,
-		want: "earn no place",
+		want: "padded documentation",
 	},
 	{
 		name: "python docstring stating a contract",

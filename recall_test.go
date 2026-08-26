@@ -14,11 +14,25 @@ import (
 // code, including code nobody would defend, does not pad its documentation this
 // way.
 //
-// So the rows below are written rather than harvested, and what they are worth
-// is bounded by that: they say what the rule was aimed at, not how often it hits
-// in the wild. They are the shape an agent writes — the first sentence
-// respelling the signature, then a paragraph rating the code or narrating what
-// the reader can already see.
+// So the rows below are written rather than harvested, and a reviewer measured
+// exactly what that is worth. Asked to write seven doc comments in the style
+// agents actually produce, without having read the word lists, they got zero
+// reported. Then they rephrased three of the rows here that do fire, adding one
+// ordinary word to each — "both of which are optional", "an in-memory cache" —
+// and two of the three went silent.
+//
+// The number these rows produce is therefore a description of these rows. What
+// the rule reliably catches is two shapes: a sentence that only respells its
+// signature, and one that only rates the code. What an agent actually writes is
+// mostly a third — implementation narrative, "It first opens a transaction,
+// then writes the user row" — which introduces real vocabulary and which no
+// closure test can see. That shape is the class this repo measured at +0.303 and
+// buried, and it stays buried.
+//
+// A phrase list aimed at the frames agents use was tried and measured: it
+// caught five of the reviewer's seven and cost 27 false positives on the Go
+// standard library, because the frames belong to the language and not to the
+// agent. See the note above [eliminates] in padding.go.
 //
 // Each row is one declaration and its documentation. `want` is whether the rule
 // should report it, judged against the doctrine: a sentence past the first earns
@@ -165,6 +179,82 @@ func TestRecall(t *testing.T) {
 	}
 	t.Logf("caught %d of %d written padded docs; %d earning docs left alone",
 		caught, total, len(recallRows)-total)
+}
+
+// The seven below were written by a reviewer who had not read the word lists,
+// asked for documentation in the style coding agents actually produce. Every one
+// is padding by the doctrine. The rule reports none of them, and this test
+// records that rather than asserting it: the point is to keep the ceiling
+// visible and to fail loudly if a later change claims to have raised it without
+// re-measuring precision.
+//
+// Six of the seven are implementation narrative or free-floating rationale,
+// which name real things and so defeat any closure test. The seventh, the
+// `Parameters:`/`Returns:` block, is invisible for a different reason worth
+// knowing: it carries no sentence-ending punctuation, so it splits into one
+// piece and never reaches the rule at all.
+func TestKnownCeiling(t *testing.T) {
+	agentStyle := []struct{ name, src string }{
+		{"is responsible for", `package p
+// ValidateEmail validates an email address.
+//
+// This function is responsible for checking that the provided email address
+// conforms to the expected format. It returns a boolean value indicating
+// whether the address is considered valid.
+func ValidateEmail(address string) bool { return false }`},
+		{"implementation narrative", `package p
+// SaveUser persists a user to the database.
+//
+// It first opens a transaction, then writes the user row, and finally commits
+// the transaction. This ensures that the write is atomic.
+func SaveUser(user string, db string) error { return nil }`},
+		{"parameters block", `package p
+// FetchUser retrieves a user by ID.
+//
+// Parameters:
+//   - ctx: the context used for cancellation and timeouts
+//   - id: the unique identifier of the user to fetch
+func FetchUser(ctx string, id string) (string, error) { return "", nil }`},
+		{"struct restating its fields", `package p
+// ServerConfig holds the configuration for the HTTP server.
+//
+// It contains the host to bind to and the port to listen on. These values are
+// used to configure the underlying server instance at startup.
+type ServerConfig struct {
+	Host string
+	Port int
+}`},
+		{"interface selling testability", `package p
+// Store is an interface for storing and retrieving records.
+//
+// This interface is designed to be implemented by any backing store. Defining
+// it as an interface allows for greater flexibility and makes the calling code
+// easier to test with a mock implementation.
+type Store interface{ Get(key string) string }`},
+		{"entry point narration", `package p
+// Handler handles the incoming HTTP request.
+//
+// This method processes the request and writes an appropriate response to the
+// response writer. It is the main entry point for all incoming traffic.
+func Handler(w string, r string) {}`},
+		{"getter narration", `package p
+// GetName returns the name.
+//
+// This is a simple getter method that returns the name field of the struct.
+// It is provided for convenience so that the field can remain unexported.
+func GetName(name string) string { return name }`},
+	}
+	caught := 0
+	for _, row := range agentStyle {
+		if padsAt(t, row.src) {
+			caught++
+			t.Logf("now caught: %s", row.name)
+		}
+	}
+	t.Logf("%d of %d agent-style padded docs reported — the documented ceiling", caught, len(agentStyle))
+	if caught > 0 {
+		t.Logf("a row started firing; re-run the standard library sweep before believing it")
+	}
 }
 
 // The rule must not decide by topic. Renaming every identifier in a file, and

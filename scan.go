@@ -229,9 +229,9 @@ func inspect(c comment, lang *language, src []byte) verdict {
 	}
 	if empty := hollows(c, src); len(empty) > 0 && wordy(c, lang) {
 		return verdict{
-			strconv.Itoa(len(empty)) + " of its sentences earn no place in it: sentence " +
-				strconv.Itoa(empty[0].at) + " " + hollowReasons[empty[0].why] +
-				". A sentence past the first is earned by a precondition, an invariant, a failure mode, or a cost",
+			"padded documentation: cut " + strconv.Quote(empty[0].text) + ", which " +
+				hollowReasons[empty[0].why] +
+				". A sentence past the first is earned by a precondition, an invariant the caller must hold, a failure mode, or a cost the signature cannot show",
 			0.4 + 0.3*float64(len(empty))/float64(sentences(c.text)),
 			"hollow",
 		}

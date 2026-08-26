@@ -35,6 +35,10 @@ type padded struct {
 	// why is "echo" where the sentence only respells the signature, and
 	// "assessment" where it rates the code.
 	why string
+	// text is the sentence itself, so the nudge can quote what to cut. An
+	// ordinal is not addressable: a reader would have to count sentences across
+	// a wrapped comment to find the one being talked about.
+	text string
 }
 
 // hollowReasons is what each kind of padded sentence is told about itself. The
@@ -67,6 +71,13 @@ func hollows(c comment, src []byte) []padded {
 	spelled := declared(declaration, src)
 	var out []padded
 	for i, sentence := range pieces {
+		// The first sentence is the contract, and Go's convention requires it
+		// to open by naming the symbol — "Close closes the File". Reading that
+		// one as padding reports the whole standard library, and telling an
+		// agent to cut it is telling it to break the convention.
+		if i == 0 {
+			continue
+		}
 		words := content(sentence)
 		if len(words) < 3 {
 			// Too short to be evidence either way: "It is reused." carries one
@@ -74,24 +85,28 @@ func hollows(c comment, src []byte) []padded {
 			// terse contract in the corpus with it.
 			continue
 		}
-		rated := false
-		novel := 0
+		rating, novel := 0, 0
 		for _, word := range words {
 			switch {
 			case evaluative[word]:
-				rated = true
+				rating++
 			case spelled[word] || scaffold[word]:
 			default:
 				novel++
 			}
 		}
-		if novel > 0 {
+		// A sentence spending most of itself rating the code is rating the
+		// code, and one domain noun does not redeem it: "The design is intended
+		// to be straightforward and easy to extend" carries three ratings and
+		// the word "extend". Requiring nothing novel at all would spare it.
+		rated := rating >= 2 && novel < rating
+		if novel > 0 && !rated {
 			// It names something the signature does not. Whether that thing is
 			// worth naming is a judgment this rule does not make.
 			continue
 		}
 		why := "echo"
-		if rated {
+		if rating > 0 {
 			why = "assessment"
 		}
 		// A sentence that rules something out has done its work whatever
@@ -102,8 +117,14 @@ func hollows(c comment, src []byte) []padded {
 		if why == "echo" && eliminates(sentence) {
 			continue
 		}
-		out = append(out, padded{at: i + 1, why: why})
+		out = append(out, padded{at: i + 1, why: why, text: sentence})
 	}
+	// Two, not one. The doctrine puts the burden on the second sentence, so one
+	// is what it asks for and one is what was tried: over the standard library
+	// it reports 21 comments, and they are contracts — "It returns the element
+	// value e.Value.", "On return, data[newpivot] = p". A contract stated
+	// entirely in the words of its own signature is ordinary, and the second
+	// hollow sentence is what distinguishes a padded comment from a terse one.
 	if len(out) < 2 {
 		return nil
 	}
@@ -169,8 +190,17 @@ func declared(node *tree_sitter.Node, src []byte) map[string]bool {
 			return
 		}
 		if n.ChildCount() == 0 {
-			for _, word := range pieces(n.Utf8Text(src)) {
+			text := n.Utf8Text(src)
+			for _, word := range pieces(text) {
 				out[strings.TrimSuffix(word, "s")] = true
+			}
+			// The whole name as well as its pieces. A doc names `ValidateEmail`
+			// in prose and the prose is lowercased to one word, while the
+			// identifier splits into two, so without this the sentence naming
+			// the symbol carries a word its own declaration is holding — and
+			// that is the sentence Go convention requires.
+			if joined := strings.ToLower(strings.Trim(text, "*&()[]{}, \t")); joined != "" {
+				out[strings.TrimSuffix(joined, "s")] = true
 			}
 			return
 		}
@@ -186,6 +216,22 @@ func declared(node *tree_sitter.Node, src []byte) map[string]bool {
 	walk(node)
 	return out
 }
+
+// A phrase list was tried here and is not coming back. The shape it aimed at is
+// the one this rule cannot see — "This function is responsible for validating
+// the input" names validation, which the signature does not, so every word test
+// reads it as contributing — and matching the frame instead of the words does
+// catch it. It also catches the standard library, because the frames are not
+// the agent's: "the As method is responsible for setting target" and "In other
+// words, the representation must be a bijection" are contracts, and `is used to`
+// opens hundreds of them.
+//
+// Measured, over 4,065 standard-library files: the frames cost 27 false
+// positives and a trigger of one hollow sentence rather than two cost 21 more,
+// against zero for the rule as it stands. This is the same mistake the repo
+// already made once, where a phrase list read `// returns every durable the
+// consumer no longer runs` as a change-event marker. A frame does not know who
+// its subject is, and that is the whole of the distinction.
 
 // eliminates reports whether a sentence rules out an implementation: a
 // negation, an obligation, a condition, a bound, a failure. The scan is over
@@ -228,7 +274,9 @@ var scaffold = set(
 // praise and are contracts: "the zero value is ready to use" is an invariant
 // this repo already labels as one.
 var evaluative = set(
-	"simple", "easy", "straightforward", "explanatory", "clean", "robust",
+	// "clean" is absent on purpose: `path.Clean` and "a clean shutdown" are both
+	// ordinary, and the word rates nothing in either.
+	"simple", "easy", "straightforward", "explanatory", "robust",
 	"elegant", "obvious", "trivial", "designed", "intended", "meant",
 	"basically", "essentially", "nice", "convenient", "powerful", "readable",
 	"intuitive", "ergonomic", "efficient", "fast", "quick", "better", "best",

@@ -44,13 +44,43 @@ func main() {
 		clones     = flag.String("clones", filepath.Join(os.TempDir(), "slopguard-harvest"), "where the repositories were cloned")
 		sweep      = flag.Bool("sweep", true, "trace the curve as well as the shipped operating point")
 		dump       = flag.String("dump", "", "print every row this class fired on, with its label; \"all\" prints them for every class")
+		maxLife    = flag.Float64("maxlife", 0, "keep only deletions this many days old or younger; zero keeps all of them")
 	)
 	flag.Parse()
 
-	if err := run(*corpusPath, *clones, *sweep, *dump); err != nil {
+	if err := run(*corpusPath, *clones, *sweep, *dump, *maxLife); err != nil {
 		fmt.Fprintln(os.Stderr, "score:", err)
 		os.Exit(1)
 	}
+}
+
+// recent drops the deletions older than days, leaving the survived rows alone.
+//
+// It exists because how long a comment stood before somebody removed it is the
+// best single predictor of whether the removal was a judgement about the
+// comment. Hand-reading forty deletions spread across the whole corpus, about
+// half were good comments removed for other reasons: JSDoc blocks that moved to
+// a generator, pragmas, contract notes carried off by a restructuring. Reading
+// thirty from the rows deleted within ninety days, that share fell to between
+// one in ten and one in five, and what remained were TODOs, FIXMEs,
+// commented-out lines and step narration.
+//
+// The reason is that an old comment and its code drift apart, so an old
+// deletion is more often a consequence of the code changing than a verdict on
+// the prose. A young one is somebody reading what was just written and taking
+// it out.
+func recent(rows []corpus.Row, days float64) []corpus.Row {
+	if days <= 0 {
+		return rows
+	}
+	kept := make([]corpus.Row, 0, len(rows))
+	for _, row := range rows {
+		if row.Label == corpus.Deleted && (row.LifetimeDays <= 0 || row.LifetimeDays > days) {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	return kept
 }
 
 // A verdict is what one build made of one row.
@@ -80,11 +110,12 @@ func (m misses) String() string {
 		m.repo, m.blob, m.language, m.unmatched)
 }
 
-func run(corpusPath, clones string, sweep bool, dump string) error {
+func run(corpusPath, clones string, sweep bool, dump string, maxLife float64) error {
 	rows, err := corpus.Load(corpusPath)
 	if err != nil {
 		return err
 	}
+	rows = recent(rows, maxLife)
 	offsets := []float64{0}
 	if sweep {
 		offsets = tilts

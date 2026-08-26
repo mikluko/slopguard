@@ -1,4 +1,12 @@
-package main
+// Package lang is the table of languages this tool reads: which grammar parses
+// each one, and which node kinds in that grammar are a comment, a function, or
+// a docstring.
+//
+// It is data and holds no judgment. What decides whether a commented-out
+// fragment is really code differs per language and lives with the rules, found
+// by [Language.Name] — a table holding those predicates would depend on the
+// rules, and the rules already depend on the table.
+package lang
 
 import (
 	"path/filepath"
@@ -22,23 +30,18 @@ import (
 	tsts "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 )
 
-// language binds a grammar to the node kinds slopguard reads out of its trees.
-//
-// It is data and holds no judgment. What decides whether a commented-out
-// fragment is really code differs per language, and those predicates live with
-// the rules that use them, looked up by [language.name] — if this struct held
-// them, the table would depend on the rules and the rules on the table.
-type language struct {
-	// name is the key the per-language predicates are found under. It is the
+// Language binds a grammar to the node kinds slopguard reads out of its trees.
+type Language struct {
+	// Name is the key the per-language predicates are found under. It is the
 	// one field a rule reads.
-	name      string
-	grammar   func() unsafe.Pointer
-	comments  map[string]bool
-	functions map[string]bool
-	// strict reports whether prose reliably fails to parse as source in this
+	Name      string
+	Grammar   func() unsafe.Pointer
+	Comments  map[string]bool
+	Functions map[string]bool
+	// Strict reports whether prose reliably fails to parse as source in this
 	// language, which is what makes the commented-out-code rule safe to apply.
-	strict bool
-	// wrapper puts a fragment where this language's grammar expects statements.
+	Strict bool
+	// Wrapper puts a fragment where this language's grammar expects statements.
 	// Code is commented out from inside a function far more often than from
 	// file scope, and the two parse by different rules: tree-sitter-go reads
 	// `fmt.Println("x")` at file scope as a conversion and inside a function as
@@ -47,20 +50,20 @@ type language struct {
 	//
 	// A language without one is parsed bare, which is what every language here
 	// did before any of them was measured.
-	wrapper func() (prefix, suffix string)
-	// templated reports whether files in this language are commonly written
+	Wrapper func() (prefix, suffix string)
+	// Templated reports whether files in this language are commonly written
 	// through a template whose actions the grammar cannot read.
-	templated bool
-	// docstrings reports whether this language documents with a string in
+	Templated bool
+	// Docstrings reports whether this language documents with a string in
 	// statement position rather than with a comment. Python does, and it is
 	// where essentially all of its standing documentation lives.
-	docstrings bool
+	Docstrings bool
 }
 
-// lookup returns the language to parse path as, or nil when nothing here reads
+// Lookup returns the language to parse path as, or nil when nothing here reads
 // it. A file with no useful extension is looked up by name, which is the only
 // way a Dockerfile or a Makefile is ever identified.
-func lookup(path string) *language {
+func Lookup(path string) *Language {
 	name := filepath.Base(path)
 	if lang := byName[name]; lang != nil {
 		return lang
@@ -98,184 +101,184 @@ var formats = map[string]bool{
 }
 
 var (
-	golang = &language{
-		name:      "go",
-		grammar:   tsgo.Language,
-		comments:  set("comment"),
-		functions: set("function_declaration", "method_declaration", "func_literal"),
-		strict:    true,
-		wrapper:   func() (string, string) { return "package p\nfunc _() {\n", "\n}\n" },
+	Go = &Language{
+		Name:      "go",
+		Grammar:   tsgo.Language,
+		Comments:  set("comment"),
+		Functions: set("function_declaration", "method_declaration", "func_literal"),
+		Strict:    true,
+		Wrapper:   func() (string, string) { return "package p\nfunc _() {\n", "\n}\n" },
 	}
 	// Python prose parses as Python: `in`, `is`, `not`, `and` and `or` are
 	// operators, so "# DEBUG=False in production" is a clean parse and was
 	// being reported as commented-out code. It is judged by structure instead,
 	// like YAML, and needs a statement rather than a bare expression.
-	python = &language{
-		name:       "python",
-		grammar:    tspython.Language,
-		comments:   set("comment"),
-		functions:  set("function_definition", "lambda"),
-		docstrings: true,
+	Python = &Language{
+		Name:       "python",
+		Grammar:    tspython.Language,
+		Comments:   set("comment"),
+		Functions:  set("function_definition", "lambda"),
+		Docstrings: true,
 	}
-	javascript = &language{
-		name:     "javascript",
-		grammar:  tsjs.Language,
-		comments: set("comment"),
-		functions: set("function_declaration", "function_expression", "arrow_function",
+	JavaScript = &Language{
+		Name:     "javascript",
+		Grammar:  tsjs.Language,
+		Comments: set("comment"),
+		Functions: set("function_declaration", "function_expression", "arrow_function",
 			"method_definition", "generator_function", "generator_function_declaration"),
-		strict: true,
+		Strict: true,
 	}
-	typescript = &language{
-		name:     "typescript",
-		grammar:  tsts.LanguageTypescript,
-		comments: set("comment"),
-		functions: set("function_declaration", "function_expression", "arrow_function",
+	TypeScript = &Language{
+		Name:     "typescript",
+		Grammar:  tsts.LanguageTypescript,
+		Comments: set("comment"),
+		Functions: set("function_declaration", "function_expression", "arrow_function",
 			"method_definition", "generator_function", "generator_function_declaration"),
-		strict: true,
+		Strict: true,
 	}
-	tsx = &language{
-		name:      "tsx",
-		grammar:   tsts.LanguageTSX,
-		comments:  typescript.comments,
-		functions: typescript.functions,
-		strict:    true,
+	TSX = &Language{
+		Name:      "tsx",
+		Grammar:   tsts.LanguageTSX,
+		Comments:  TypeScript.Comments,
+		Functions: TypeScript.Functions,
+		Strict:    true,
 	}
-	rust = &language{
-		name:      "rust",
-		grammar:   tsrust.Language,
-		comments:  set("line_comment", "block_comment"),
-		functions: set("function_item", "closure_expression"),
-		strict:    true,
+	Rust = &Language{
+		Name:      "rust",
+		Grammar:   tsrust.Language,
+		Comments:  set("line_comment", "block_comment"),
+		Functions: set("function_item", "closure_expression"),
+		Strict:    true,
 	}
-	bash = &language{
-		name:      "bash",
-		grammar:   tsbash.Language,
-		comments:  set("comment"),
-		functions: set("function_definition"),
+	Bash = &Language{
+		Name:      "bash",
+		Grammar:   tsbash.Language,
+		Comments:  set("comment"),
+		Functions: set("function_definition"),
 	}
-	clang = &language{
-		name:      "c",
-		grammar:   tsc.Language,
-		comments:  set("comment"),
-		functions: set("function_definition"),
-		strict:    true,
+	C = &Language{
+		Name:      "c",
+		Grammar:   tsc.Language,
+		Comments:  set("comment"),
+		Functions: set("function_definition"),
+		Strict:    true,
 	}
-	cpp = &language{
-		name:      "c++",
-		grammar:   tscpp.Language,
-		comments:  set("comment"),
-		functions: set("function_definition", "lambda_expression"),
-		strict:    true,
+	CPP = &Language{
+		Name:      "c++",
+		Grammar:   tscpp.Language,
+		Comments:  set("comment"),
+		Functions: set("function_definition", "lambda_expression"),
+		Strict:    true,
 	}
-	java = &language{
-		name:      "java",
-		grammar:   tsjava.Language,
-		comments:  set("line_comment", "block_comment"),
-		functions: set("method_declaration", "constructor_declaration", "lambda_expression"),
-		strict:    true,
+	Java = &Language{
+		Name:      "java",
+		Grammar:   tsjava.Language,
+		Comments:  set("line_comment", "block_comment"),
+		Functions: set("method_declaration", "constructor_declaration", "lambda_expression"),
+		Strict:    true,
 	}
-	ruby = &language{
-		name:      "ruby",
-		grammar:   tsruby.Language,
-		comments:  set("comment"),
-		functions: set("method", "singleton_method", "block", "do_block", "lambda"),
+	Ruby = &Language{
+		Name:      "ruby",
+		Grammar:   tsruby.Language,
+		Comments:  set("comment"),
+		Functions: set("method", "singleton_method", "block", "do_block", "lambda"),
 	}
 	// yaml carries no functions, so a Kubernetes manifest, a chart, or a values
 	// file is judged on its documentation and on the config left commented out.
-	yaml = &language{
-		name:      "yaml",
-		grammar:   tsyaml.Language,
-		comments:  set("comment"),
-		functions: set(),
-		templated: true,
+	YAML = &Language{
+		Name:      "yaml",
+		Grammar:   tsyaml.Language,
+		Comments:  set("comment"),
+		Functions: set(),
+		Templated: true,
 	}
 	// hcl has no function bodies, so every comment in a Terraform file is judged
 	// as documentation of the block it sits in.
-	hcl = &language{
-		name:      "hcl",
-		grammar:   tshcl.Language,
-		comments:  set("comment"),
-		functions: set(),
-		strict:    true,
+	HCL = &Language{
+		Name:      "hcl",
+		Grammar:   tshcl.Language,
+		Comments:  set("comment"),
+		Functions: set(),
+		Strict:    true,
 	}
 	// A Dockerfile and a Makefile are named rather than extended, and both are
 	// written by agents constantly. Neither has function bodies; a Makefile's
 	// recipes are shell, which this does not descend into.
-	dockerfile = &language{
-		name:      "dockerfile",
-		grammar:   tsdocker.GetLanguage,
-		comments:  set("comment"),
-		functions: set(),
+	Dockerfile = &Language{
+		Name:      "dockerfile",
+		Grammar:   tsdocker.GetLanguage,
+		Comments:  set("comment"),
+		Functions: set(),
 	}
-	makefile = &language{
-		name:      "make",
-		grammar:   tsmake.GetLanguage,
-		comments:  set("comment"),
-		functions: set(),
+	Makefile = &Language{
+		Name:      "make",
+		Grammar:   tsmake.GetLanguage,
+		Comments:  set("comment"),
+		Functions: set(),
 	}
-	php = &language{
-		name:     "php",
-		grammar:  tsphp.LanguagePHP,
-		comments: set("comment"),
-		functions: set("function_definition", "method_declaration",
+	PHP = &Language{
+		Name:     "php",
+		Grammar:  tsphp.LanguagePHP,
+		Comments: set("comment"),
+		Functions: set("function_definition", "method_declaration",
 			"anonymous_function_creation_expression", "anonymous_function", "arrow_function"),
-		strict: true,
+		Strict: true,
 	}
 )
 
-var byExtension = map[string]*language{
-	".go":   golang,
-	".py":   python,
-	".pyi":  python,
-	".js":   javascript,
-	".mjs":  javascript,
-	".cjs":  javascript,
-	".jsx":  javascript,
-	".ts":   typescript,
-	".mts":  typescript,
-	".cts":  typescript,
-	".tsx":  tsx,
-	".rs":   rust,
-	".sh":   bash,
-	".bash": bash,
-	".c":    clang,
-	".h":    clang,
-	".cc":   cpp,
-	".cpp":  cpp,
-	".cxx":  cpp,
-	".hpp":  cpp,
-	".hh":   cpp,
-	".java": java,
-	".rb":   ruby,
-	".php":  php,
-	".yaml": yaml,
-	".yml":  yaml,
+var byExtension = map[string]*Language{
+	".go":   Go,
+	".py":   Python,
+	".pyi":  Python,
+	".js":   JavaScript,
+	".mjs":  JavaScript,
+	".cjs":  JavaScript,
+	".jsx":  JavaScript,
+	".ts":   TypeScript,
+	".mts":  TypeScript,
+	".cts":  TypeScript,
+	".tsx":  TSX,
+	".rs":   Rust,
+	".sh":   Bash,
+	".bash": Bash,
+	".c":    C,
+	".h":    C,
+	".cc":   CPP,
+	".cpp":  CPP,
+	".cxx":  CPP,
+	".hpp":  CPP,
+	".hh":   CPP,
+	".java": Java,
+	".rb":   Ruby,
+	".php":  PHP,
+	".yaml": YAML,
+	".yml":  YAML,
 	// A chart's helpers and a helmfile are YAML written through a template, and
 	// the grammar reads them once the actions are blanked. Skipping them by
 	// extension left `templates/_helpers.tpl` unread in every chart.
-	".tpl":    yaml,
-	".gotmpl": yaml,
-	".tftpl":  yaml,
+	".tpl":    YAML,
+	".gotmpl": YAML,
+	".tftpl":  YAML,
 	// A .j2 or a .tftpl is usually not YAML at all — a systemd unit, an nftables
 	// ruleset, redis.conf. It is read as YAML anyway because `#` opens a comment
 	// in all of them and the rule that runs here parses the comment's own text,
 	// not the file's. What keeps it honest is that a unit file's `# Description=`
 	// reads as a heading and `# description: the egress gateway` reads as prose,
 	// so neither becomes a finding. Measured across 114 such files: none did.
-	".j2":     yaml,
-	".tf":     hcl,
-	".tfvars": hcl,
-	".hcl":    hcl,
-	".mk":     makefile,
+	".j2":     YAML,
+	".tf":     HCL,
+	".tfvars": HCL,
+	".hcl":    HCL,
+	".mk":     Makefile,
 }
 
 // byName reads the files that carry their language in their name.
-var byName = map[string]*language{
-	"Dockerfile":    dockerfile,
-	"Containerfile": dockerfile,
-	"Makefile":      makefile,
-	"makefile":      makefile,
-	"GNUmakefile":   makefile,
+var byName = map[string]*Language{
+	"Dockerfile":    Dockerfile,
+	"Containerfile": Dockerfile,
+	"Makefile":      Makefile,
+	"makefile":      Makefile,
+	"GNUmakefile":   Makefile,
 }
 
 func set(names ...string) map[string]bool {

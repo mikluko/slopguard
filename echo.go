@@ -5,6 +5,8 @@ import (
 	"unicode"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/mikluko/slopguard/internal/prose"
 )
 
 // Whether a comment restates the code is a fact about the pair, not about the
@@ -100,7 +102,7 @@ func echoes(c comment, src []byte) bool {
 	}
 	// A comment that goes on to say something else is not reading the line
 	// back, whatever its opening sentence shares with it.
-	if sentences(c.text) > 1 {
+	if prose.Sentences(c.text) > 1 {
 		return false
 	}
 	words := content(c.text)
@@ -134,7 +136,7 @@ func restates(c comment, src []byte) bool {
 	// whatever its opening sentence reads like on its own. "Find the field
 	// start and end indices" is a restatement until the three sentences after
 	// it explain why the pass is separate.
-	if sentences(c.text) > 1 {
+	if prose.Sentences(c.text) > 1 {
 		return false
 	}
 	words := content(c.text)
@@ -178,7 +180,7 @@ func oneLine(node *tree_sitter.Node) bool {
 // dropped, singularised crudely so that "items" matches "item".
 func content(text string) []string {
 	var out []string
-	for _, word := range strings.Fields(normalize(text)) {
+	for _, word := range strings.Fields(prose.Normalize(text)) {
 		if empty[word] || len(word) < 3 {
 			continue
 		}

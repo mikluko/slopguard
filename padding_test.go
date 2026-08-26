@@ -64,7 +64,7 @@ func declOf(t *testing.T, source string) (*tree_sitter.Node, []byte) {
 	t.Helper()
 	src := []byte(source)
 	parser := tree_sitter.NewParser()
-	if err := parser.SetLanguage(tree_sitter.NewLanguage(golang.grammar())); err != nil {
+	if err := parser.SetLanguage(tree_sitter.NewLanguage(golang.Grammar())); err != nil {
 		t.Fatal(err)
 	}
 	tree := parser.Parse(src, nil)
@@ -103,7 +103,7 @@ func TestAttribution(t *testing.T) {
 	}
 	parser := tree_sitter.NewParser()
 	defer parser.Close()
-	if err := parser.SetLanguage(tree_sitter.NewLanguage(lang.grammar())); err != nil {
+	if err := parser.SetLanguage(tree_sitter.NewLanguage(lang.Grammar())); err != nil {
 		t.Fatal(err)
 	}
 	tree := parser.Parse(blank(src, lang), nil)

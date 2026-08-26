@@ -2,7 +2,10 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"sync"
+
+	"github.com/mikluko/slopguard/internal/prose"
 )
 
 // A class is something the semantic pass recognises a comment as, and the nudge
@@ -52,6 +55,36 @@ func judge(comments [][]string, bias []float64) []verdict {
 		}
 	}
 	return out
+}
+
+// literal is the degraded reading of a comment, used where ONNX Runtime is
+// missing and the semantic pass cannot run. It matches phrases rather than
+// meaning, so it catches the common wording of a self-justification and nothing
+// beyond it.
+//
+// It sits beside the pass it stands in for rather than with the text
+// primitives. There it named the wording each class speaks with, and the class
+// list is here, so the two files each reached into the other.
+func literal(text string) string {
+	if compat(text) {
+		return reasonFor("compat")
+	}
+	return ""
+}
+
+// compat reports whether a comment justifies a symbol by its own history rather
+// than by its contract.
+func compat(text string) bool {
+	haystack := prose.Normalize(text)
+	for _, phrase := range []string{
+		"backwards compatibility", "backward compatibility", "for compatibility",
+		"kept for", "left for", "legacy callers", "old callers",
+	} {
+		if strings.Contains(haystack, " "+phrase+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // reasonFor returns the nudge a named class carries, so that one class speaks

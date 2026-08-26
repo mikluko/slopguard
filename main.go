@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mikluko/slopguard/internal/lang"
 )
 
 const (
@@ -109,8 +111,8 @@ func review(in payload) []finding {
 	default:
 		return nil
 	}
-	lang := lookup(in.ToolInput.FilePath)
-	if lang == nil {
+	language := lang.Lookup(in.ToolInput.FilePath)
+	if language == nil {
 		return nil
 	}
 	src, err := readable(in.ToolInput.FilePath)
@@ -121,7 +123,7 @@ func review(in payload) []finding {
 	if len(added) == 0 {
 		return nil
 	}
-	findings := scan(src, lang, added)
+	findings := scan(src, language, added)
 	said, before, remember := spoken(in.SessionID, in.ToolInput.FilePath)
 	repeat = before
 	kept := findings[:0]
@@ -186,10 +188,11 @@ func record(path string, findings []finding) {
 // from a script in somebody's scratch directory.
 func sweepFiles(paths []string, verbose bool) {
 	for _, path := range paths {
-		lang := lookup(path)
-		if lang == nil {
+		language := lang.Lookup(path)
+		if language == nil {
 			continue
 		}
+
 		src, err := readable(path)
 		if err != nil {
 			continue
@@ -198,7 +201,7 @@ func sweepFiles(paths []string, verbose bool) {
 		if verbose {
 			lines = bytes.Split(src, []byte("\n"))
 		}
-		for _, f := range scan(src, lang, []span{{start: 0, end: uint(len(src))}}) {
+		for _, f := range scan(src, language, []span{{start: 0, end: uint(len(src))}}) {
 			fmt.Printf("%s:%d\t%s\t%.3f\t%s\n", path, f.line, f.class, f.score, f.reason)
 			for _, text := range quoted(lines, f.line) {
 				fmt.Printf("\t| %s\n", text)

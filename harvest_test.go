@@ -66,7 +66,7 @@ func TestHarvestSentences(t *testing.T) {
 			}
 			parser := tree_sitter.NewParser()
 			defer parser.Close()
-			if parser.SetLanguage(tree_sitter.NewLanguage(lang.grammar())) != nil {
+			if parser.SetLanguage(tree_sitter.NewLanguage(lang.Grammar())) != nil {
 				return nil
 			}
 			tree := parser.Parse(blank(src, lang), nil)

@@ -412,7 +412,7 @@ func padsAt(t *testing.T, source string) bool {
 func treeOf(t *testing.T, src []byte) *tree_sitter.Node {
 	t.Helper()
 	parser := tree_sitter.NewParser()
-	if err := parser.SetLanguage(tree_sitter.NewLanguage(golang.grammar())); err != nil {
+	if err := parser.SetLanguage(tree_sitter.NewLanguage(golang.Grammar())); err != nil {
 		t.Fatal(err)
 	}
 	tree := parser.Parse(src, nil)

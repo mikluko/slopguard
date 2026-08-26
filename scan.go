@@ -9,6 +9,9 @@ import (
 	"strings"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/mikluko/slopguard/internal/lang"
+	"github.com/mikluko/slopguard/internal/prose"
 )
 
 // buriedBias is how much less evidence a comment inside a function body needs
@@ -36,6 +39,17 @@ const buriedBias = 0.03
 
 // span is a byte range of a file that the tool call just wrote.
 type span struct{ start, end uint }
+
+// set builds a lookup from a list of names. Every package here keeps its own:
+// it is six lines, and importing another package for it would couple them over
+// nothing.
+func set(names ...string) map[string]bool {
+	out := make(map[string]bool, len(names))
+	for _, name := range names {
+		out[name] = true
+	}
+	return out
+}
 
 // finding is one comment slopguard objects to, at the line it starts on. The
 // score ranks findings against each other, so that a nudge naming three carries
@@ -111,20 +125,20 @@ func after(node *tree_sitter.Node, src []byte) bool {
 // scan parses src and reports the comments inside added that the
 // explanation-placement rules turn away. A file that does not parse yields
 // nothing: a broken tree is not evidence of a comment.
-func scan(src []byte, lang *language, added []span) []finding {
+func scan(src []byte, language *lang.Language, added []span) []finding {
 	parser := tree_sitter.NewParser()
 	defer parser.Close()
-	if err := parser.SetLanguage(tree_sitter.NewLanguage(lang.grammar())); err != nil {
+	if err := parser.SetLanguage(tree_sitter.NewLanguage(language.Grammar())); err != nil {
 		return nil
 	}
-	tree := parser.Parse(blank(src, lang), nil)
+	tree := parser.Parse(blank(src, language), nil)
 	if tree == nil {
 		return nil
 	}
 	defer tree.Close()
 	var candidates []comment
 	root := tree.RootNode()
-	for _, c := range group(root, collect(root, lang, false), src) {
+	for _, c := range group(root, collect(root, language, false), src) {
 		if c.within(added) && !c.pragma() {
 			// Deferred to here rather than done in [group]: locating the code
 			// under a comment walks the tree from the root, and a file of
@@ -138,7 +152,7 @@ func scan(src []byte, lang *language, added []span) []finding {
 			break
 		}
 	}
-	return weigh(candidates, lang, src)
+	return weigh(candidates, language, src)
 }
 
 // weigh runs the structural rules over the candidates and hands whatever they
@@ -148,7 +162,7 @@ func scan(src []byte, lang *language, added []span) []finding {
 // Sitting inside a function body is a bias, not a verdict. A line that points
 // outward, at a constraint enforced somewhere the reader cannot see, earns its
 // place there; only what the semantic pass recognises is nudged.
-func weigh(candidates []comment, lang *language, src []byte) []finding {
+func weigh(candidates []comment, language *lang.Language, src []byte) []finding {
 	verdicts := make([]verdict, len(candidates))
 	var pending []int
 	for i, c := range candidates {
@@ -160,10 +174,10 @@ func weigh(candidates []comment, lang *language, src []byte) []finding {
 		// opening any line of it pardons every line stacked under it, and a
 		// licence header buried in a body is a commented-out block that happens
 		// to start with one. Nothing legitimate puts a notice there.
-		if notice(c.body) && !c.buried {
+		if prose.Notice(c.body) && !c.buried {
 			continue
 		}
-		if verdicts[i] = inspect(c, lang, src); verdicts[i].reason == "" {
+		if verdicts[i] = inspect(c, language, src); verdicts[i].reason == "" {
 			pending = append(pending, i)
 		}
 	}
@@ -171,7 +185,7 @@ func weigh(candidates []comment, lang *language, src []byte) []finding {
 		texts := make([][]string, len(pending))
 		bias := make([]float64, len(pending))
 		for j, i := range pending {
-			texts[j] = opening(split(candidates[i].text))
+			texts[j] = prose.Opening(prose.Split(candidates[i].text))
 			position := 0.0
 			if !candidates[i].doc && candidates[i].buried {
 				position = buriedBias
@@ -220,19 +234,19 @@ type verdict struct {
 // inspect returns why the shape of a comment rules it out, or the zero verdict
 // to leave that judgment to the semantic pass. The first rule that fires wins:
 // one line of nudge per comment.
-func inspect(c comment, lang *language, src []byte) verdict {
-	if leftover(c, lang, src) {
+func inspect(c comment, language *lang.Language, src []byte) verdict {
+	if leftover(c, language, src) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
 	if echoes(c, src) {
 		return verdict{reasonFor("tautology"), 0.95, "echo"}
 	}
-	if empty := hollows(c, src); len(empty) > 0 && wordy(c, lang) {
+	if empty := hollows(c, src); len(empty) > 0 && wordy(c, language) {
 		return verdict{
 			"padded documentation: cut " + strconv.Quote(empty[0].text) + ", which " +
 				hollowReasons[empty[0].why] +
 				". A sentence past the first is earned by a precondition, an invariant the caller must hold, a failure mode, or a cost the signature cannot show",
-			0.4 + 0.3*float64(len(empty))/float64(sentences(c.text)),
+			0.4 + 0.3*float64(len(empty))/float64(prose.Sentences(c.text)),
 			"hollow",
 		}
 	}
@@ -250,8 +264,8 @@ func inspect(c comment, lang *language, src []byte) verdict {
 // And a language with no function has no symbol to document and no test to move
 // a claim into: in YAML and HCL the nudge resolves to "delete it", which on the
 // only record of a constraint is worse than saying nothing.
-func wordy(c comment, lang *language) bool {
-	return !c.heads && len(lang.functions) > 0
+func wordy(c comment, language *lang.Language) bool {
+	return !c.heads && len(language.Functions) > 0
 }
 
 // site identifies a comment by what it says rather than by where it sits, so
@@ -259,7 +273,7 @@ func wordy(c comment, lang *language) bool {
 // still recognised as the same comment.
 func site(text string) uint64 {
 	h := fnv.New64a()
-	h.Write([]byte(normalize(text)))
+	h.Write([]byte(prose.Normalize(text)))
 	return h.Sum64()
 }
 
@@ -274,7 +288,7 @@ func site(text string) uint64 {
 // that line; a comment after a live statement is a note about it, and the
 // notation those notes use is the notation this rule reads as source —
 // `x2 := Sqrt(x1) // x2 = sqrt(1 - x*x)` says what the variable now holds.
-func leftover(c comment, lang *language, src []byte) bool {
+func leftover(c comment, language *lang.Language, src []byte) bool {
 	if c.doc || c.trailing {
 		return false
 	}
@@ -284,14 +298,14 @@ func leftover(c comment, lang *language, src []byte) bool {
 	// language that can say what the compiler would have refused does not need
 	// it, and it costs real findings — `fmt.Println("x")` is a call with an
 	// argument, which no list of leading keywords matches.
-	evident, decides := evidence[lang.name]
-	compiles, checked := legal[lang.name]
-	if !decides && !checked && (!lang.strict || !code(c.text)) {
+	evident, decides := evidence[language.Name]
+	compiles, checked := legal[language.Name]
+	if !decides && !checked && (!language.Strict || !prose.Code(c.text)) {
 		return false
 	}
 	parser := tree_sitter.NewParser()
 	defer parser.Close()
-	if err := parser.SetLanguage(tree_sitter.NewLanguage(lang.grammar())); err != nil {
+	if err := parser.SetLanguage(tree_sitter.NewLanguage(language.Grammar())); err != nil {
 		return false
 	}
 	// The newline is not cosmetic: some grammars, Dockerfile's among them,
@@ -305,8 +319,8 @@ func leftover(c comment, lang *language, src []byte) bool {
 	if len(c.body) > parsedBytes {
 		return false
 	}
-	body := dedent(c.body) + "\n"
-	if lang.wrapper != nil {
+	body := prose.Dedent(c.body) + "\n"
+	if language.Wrapper != nil {
 		// A run of commented-out lines is usually cut out of a larger block, so
 		// it opens braces it never closes. Closing them is what makes the rest
 		// of the fragment readable at all, and needing to is itself evidence:
@@ -318,7 +332,7 @@ func leftover(c comment, lang *language, src []byte) bool {
 	// But a whole function, a method or an import is commented out at file
 	// scope and is an error inside a body — that is the canonical shape of dead
 	// Go, and trying only the one scope makes the rule silent on it.
-	for _, wrap := range scopes(lang) {
+	for _, wrap := range scopes(language) {
 		prefix, suffix := wrap()
 		tree := parser.Parse([]byte(prefix+body+suffix), nil)
 		if tree == nil {
@@ -347,12 +361,12 @@ func leftover(c comment, lang *language, src []byte) bool {
 // scopes returns the positions a fragment is tried in, in the order to try
 // them. A language with no wrapper is parsed as a file and nothing else, which
 // is what every language did before any of them was measured.
-func scopes(lang *language) []func() (string, string) {
+func scopes(language *lang.Language) []func() (string, string) {
 	bare := func() (string, string) { return "", "" }
-	if lang.wrapper == nil {
+	if language.Wrapper == nil {
 		return []func() (string, string){bare}
 	}
-	return []func() (string, string){lang.wrapper, bare}
+	return []func() (string, string){language.Wrapper, bare}
 }
 
 // balance returns the closing delimiters a fragment leaves open, innermost
@@ -599,8 +613,8 @@ func nested(node *tree_sitter.Node) bool {
 // the paragraph the opener is in. Bounding it is also what keeps this linear:
 // an unpaired `{{` otherwise scans to the end of the file, and there can be one
 // of those per paragraph.
-func blank(src []byte, lang *language) []byte {
-	if !lang.templated || !bytes.Contains(src, []byte("{{")) {
+func blank(src []byte, language *lang.Language) []byte {
+	if !language.Templated || !bytes.Contains(src, []byte("{{")) {
 		return src
 	}
 	out := append([]byte(nil), src...)
@@ -666,7 +680,7 @@ type found struct {
 // counting from the first child, so a loop over the children of one node is
 // quadratic in how many it has, and a file whose top level is forty thousand
 // comment lines is exactly that shape.
-func collect(root *tree_sitter.Node, lang *language, buried bool) []found {
+func collect(root *tree_sitter.Node, language *lang.Language, buried bool) []found {
 	cursor := root.Walk()
 	defer cursor.Close()
 	var out []found
@@ -676,10 +690,10 @@ func collect(root *tree_sitter.Node, lang *language, buried bool) []found {
 	for {
 		node := cursor.Node()
 		inside := depths[len(depths)-1]
-		if lang.comments[node.Kind()] || (lang.docstrings && docstring(node)) {
+		if language.Comments[node.Kind()] || (language.Docstrings && docstring(node)) {
 			out = append(out, found{node: node, buried: inside})
 		} else if cursor.GotoFirstChild() {
-			depths = append(depths, inside || lang.functions[node.Kind()])
+			depths = append(depths, inside || language.Functions[node.Kind()])
 			continue
 		}
 		for !cursor.GotoNextSibling() {
@@ -744,7 +758,7 @@ func group(root *tree_sitter.Node, nodes []found, src []byte) []comment {
 func joined(raw []string) (string, string) {
 	var prosed, bodied strings.Builder
 	for i, line := range raw {
-		if piece := prose(line); piece != "" {
+		if piece := plain(line); piece != "" {
 			if prosed.Len() > 0 {
 				prosed.WriteByte(' ')
 			}
@@ -802,7 +816,7 @@ func (c comment) within(added []span) bool {
 func (c comment) pragma() bool {
 	for _, line := range c.raw {
 		for _, one := range strings.Split(line, "\n") {
-			if strings.TrimSpace(strip(one)) != "" && !directive(one) {
+			if strings.TrimSpace(prose.Strip(one)) != "" && !prose.Directive(one) {
 				return false
 			}
 		}
@@ -811,10 +825,10 @@ func (c comment) pragma() bool {
 }
 
 // prose renders a raw comment as the text it reads as, markers removed.
-func prose(raw string) string {
+func plain(raw string) string {
 	var out string
 	for _, line := range strings.Split(raw, "\n") {
-		out = join(out, strip(line))
+		out = join(out, prose.Strip(line))
 	}
 	return out
 }
@@ -824,7 +838,7 @@ func prose(raw string) string {
 func body(raw string) string {
 	lines := strings.Split(raw, "\n")
 	for i, line := range lines {
-		lines[i] = indented(line)
+		lines[i] = prose.Indented(line)
 	}
 	return strings.Join(lines, "\n")
 }

@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/mikluko/slopguard/internal/prose"
 )
 
 // Counting a doc comment's sentences measures how long it is. What the rule
@@ -63,7 +65,7 @@ func hollows(c comment, src []byte) []padded {
 	if declaration == nil {
 		return nil
 	}
-	pieces := split(c.text)
+	pieces := prose.Split(c.text)
 	if len(pieces) < 2 {
 		// One sentence is the doctrine's own default and is nobody's business.
 		return nil
@@ -302,7 +304,7 @@ func eliminates(sentence string, spelled map[string]bool) bool {
 	if strings.Contains(sentence, "O(") {
 		return true
 	}
-	for _, word := range strings.Fields(normalize(sentence)) {
+	for _, word := range strings.Fields(prose.Normalize(sentence)) {
 		word = strings.Trim(word, ".,;:()")
 		if eliminators[word] && !spelled[strings.TrimSuffix(word, "s")] {
 			return true

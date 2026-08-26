@@ -95,6 +95,47 @@ func TestLiteralFallback(t *testing.T) {
 	}
 }
 
+// Go requires a declaration comment to end in a period and PEP 257 requires it
+// of a docstring, so the two spellings below are one comment as far as any
+// reader is concerned and the class has to score them alike.
+func TestTerminatorDoesNotMoveTheScore(t *testing.T) {
+	skipWithoutRuntime(t)
+	for _, claim := range []string{
+		"kept for backwards compatibility with older callers",
+		"legacy field, do not use it in new code",
+		"increment the counter",
+		"the returned slice is valid only until the next call on this reader",
+	} {
+		readings := Judge([][]string{{claim}, {claim + "."}}, []float64{0, 0})
+		plain, stopped := readings[0], readings[1]
+		if plain.Class != stopped.Class {
+			t.Errorf("%q read as %q and %q with a period", claim, plain.Class, stopped.Class)
+			continue
+		}
+		if delta := plain.Score - stopped.Score; delta > 0.0005 || delta < -0.0005 {
+			t.Errorf("%q scored %.4f and %.4f with a period, a gap of %.4f",
+				claim, plain.Score, stopped.Score, delta)
+		}
+	}
+}
+
+// bare has to leave the words alone. Trimming into the sentence would change
+// what is embedded rather than how it is spelled.
+func TestBareKeepsTheWords(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"kept for backwards compatibility.", "kept for backwards compatibility"},
+		{"is it ready?", "is it ready"},
+		{"  spaced out  ", "spaced out"},
+		{"no terminator here", "no terminator here"},
+		{"ends in an ellipsis...", "ends in an ellipsis"},
+		{"a version like 1.2.3 stays", "a version like 1.2.3 stays"},
+	} {
+		if got := bare(pair[0]); got != pair[1] {
+			t.Errorf("bare(%q) = %q, want %q", pair[0], got, pair[1])
+		}
+	}
+}
+
 // skipWithoutRuntime skips a test that needs the model, for either reason it
 // can be absent: no library to load, or the semantic pass switched off.
 func skipWithoutRuntime(t *testing.T) {

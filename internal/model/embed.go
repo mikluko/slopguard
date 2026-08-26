@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -182,7 +183,7 @@ func (e *embedder) embed(texts []string) ([][]float32, error) {
 		end := min(start+chunk, len(order))
 		batch := make([]string, 0, end-start)
 		for _, i := range order[start:end] {
-			batch = append(batch, texts[i])
+			batch = append(batch, bare(texts[i]))
 		}
 		vectors, err := e.forward(batch)
 		if err != nil {
@@ -208,6 +209,24 @@ func (e *embedder) embed(texts []string) ([][]float32, error) {
 // budget of 256, and the densest gives 1250, while the worst case costs about a
 // seventh of what 4096 did. The quadratic is still there, bounded lower.
 const budgetBytes = 1536
+
+// bare drops a sentence's terminal punctuation, so that two spellings of one
+// claim embed to the same place.
+//
+// It is here, at the one funnel every embedding passes through, rather than in
+// prose: what it has to guarantee is that the exemplars a class is fitted from
+// and the comments that class is asked about arrive in the same register.
+// Applied anywhere the two could diverge, it would not.
+//
+// The register they used to differ in was not arbitrary. Every exemplar in
+// corpus.go is written as a bare clause, and [prose.Split] hands back sentences
+// with their terminators attached, while Go's own convention requires a
+// declaration comment to end in a period and PEP 257 requires it of docstrings.
+// So the fitted centroids sat where no real doc comment does, and the direction
+// is a difference of centroids, which does not cancel a shift they share.
+func bare(text string) string {
+	return strings.TrimRight(strings.TrimSpace(text), " .!?;:,")
+}
 
 // clip cuts text to [budgetBytes] on a rune boundary.
 func clip(text string) string {

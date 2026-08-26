@@ -8,6 +8,31 @@ import (
 	"github.com/mikluko/slopguard/internal/prose"
 )
 
+// The labelled comments no part of the fit has seen, and the one test that
+// holds this package to a number on them. Every diagnostic in
+// zz_calibration_test.go reads the same table, which is why it sits above them
+// rather than beside any one of them.
+
+// heldOut returns the labelled comments no part of the fit has seen. A row
+// moved into mined.go to fit the thresholds leaves the evaluation set by that
+// fact alone, so there is one copy of the labelling rather than two that can
+// drift.
+func heldOut() (texts, classes []string) {
+	inCorpus := map[string]bool{}
+	for _, mined := range mined {
+		for _, text := range mined {
+			inCorpus[text] = true
+		}
+	}
+	for _, r := range labelled {
+		if !inCorpus[r.text] {
+			texts = append(texts, r.text)
+			classes = append(classes, r.class)
+		}
+	}
+	return texts, classes
+}
+
 // The held-out table is mined from repositories that had no part in tuning:
 // none of its comments contributed an exemplar to corpus.go, a row to
 // semantic_test.go, or a floor. Each text is one comment's prose with the

@@ -5,12 +5,71 @@ import (
 	"testing"
 )
 
+// Nothing here asserts anything. Each of these is the procedure a constant in
+// this package was chosen by — the required precision and the margin window in
+// fit.go, and clear, perDraw and BuriedBias in semantic.go — and what it prints
+// is what those choices have to stay defensible against. A run that prints
+// numbers nobody likes is a reason to move a constant, not a failure.
+//
+// They are gathered here, and prefixed, because a file that can only log is a
+// different kind of thing from a file that states a contract. The contracts are
+// in fit_test.go and semantic_test.go, and they fail.
+
+// TestCalibrate fits the head at a range of required precisions and reports
+// what each costs on the comments the fit never saw.
+func TestCalibrate(t *testing.T) {
+	skipWithoutRuntime(t)
+	e, err := model()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	corpus, labels := Exemplars()
+	corpusVectors, err := e.embed(corpus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts, want := heldOut()
+	vectors, err := e.embed(texts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("fitting corpus %d comments, held out %d", len(corpus), len(texts))
+	for _, p := range []float64{0.70, 0.75, 0.80, 0.85, 0.90, 0.95} {
+		h := FitAt(corpusVectors, labels, p)
+		line := fmt.Sprintf("precision %.2f  ", p)
+		wrong, missed := 0, 0
+		for ci, c := range classes {
+			fired, right, labelledAs := 0, 0, 0
+			for i, v := range vectors {
+				if want[i] == c.name {
+					labelledAs++
+				}
+				// The same rule the binary runs, margin included: a procedure
+				// that justifies a threshold by measuring a different rule
+				// justifies nothing.
+				if fires(v, h) != ci {
+					continue
+				}
+				fired++
+				if want[i] == c.name {
+					right++
+				}
+			}
+			wrong += fired - right
+			missed += labelledAs - right
+			line += fmt.Sprintf("%s %d/%d  ", c.name[:4], right, fired)
+		}
+		t.Logf("%s wrong %d  missed %d", line, wrong, missed)
+	}
+}
+
 // TestWindow reports what each candidate margin window costs and buys on the
-// comments the fit never saw. It asserts nothing: it is how the constant in
-// fit.go was chosen, and 0.02 was chosen because the band from 0.01 to 0.02
-// nudges no contract prose at all and still reaches the most true positives —
-// wider throws recall away for nothing, and narrower nudges prose that was
-// right.
+// comments the fit never saw. 0.02 was chosen because the band from 0.01 to
+// 0.02 nudges no contract prose at all and still reaches the most true
+// positives — wider throws recall away for nothing, and narrower nudges prose
+// that was right.
 func TestWindow(t *testing.T) {
 	skipWithoutRuntime(t)
 	e, err := model()
@@ -103,7 +162,7 @@ func TestPerDraw(t *testing.T) {
 	}
 }
 
-// biasFor is [allowance] with the step under test, for a set of comments read
+// biasFor is [Allowance] with the step under test, for a set of comments read
 // inside a function body.
 func biasFor(comments [][]string, step float64) []float64 {
 	out := make([]float64, len(comments))
@@ -115,7 +174,7 @@ func biasFor(comments [][]string, step float64) []float64 {
 
 // TestClear reports what each noise floor costs and buys, across the range of
 // thresholds a comment can meet: above a declaration at bias 0, and inside a
-// function body where the bar is lower. It is how clear and buriedBias were
+// function body where the bar is lower. It is how clear and BuriedBias were
 // both chosen, and the rows behave differently enough that a number quoted from
 // one of them says little about another.
 func TestClear(t *testing.T) {
@@ -132,7 +191,7 @@ func TestClear(t *testing.T) {
 		live[c.name] = true
 	}
 	// Literals, not the constant this fits: a grid written in terms of
-	// buriedBias prints its row twice and drops whichever alternative the
+	// BuriedBias prints its row twice and drops whichever alternative the
 	// constant used to hold, which is the row a reader came for.
 	for _, bias := range []float64{0, 0.03, 0.06, 0.09} {
 		for _, floor := range []float64{0.0, 0.005, 0.01, 0.02, 0.04} {
@@ -173,19 +232,46 @@ func fires(vector []float32, h head) int {
 	return best
 }
 
-// heldOut returns the labelled comments no part of the fit has seen.
-func heldOut() (texts, classes []string) {
-	inCorpus := map[string]bool{}
-	for _, mined := range mined {
-		for _, text := range mined {
-			inCorpus[text] = true
-		}
+// probes are sentences under examination right now: what a test expects and
+// the tool no longer says, or the other way round.
+var probes = []string{
+	"previously this pointed at the docker hub mirror",
+	"Twice is kept for backwards compatibility",
+	"kept for backwards compatibility",
+	"we swapped the map for a slice here",
+	"multiply it by two",
+}
+
+// TestScores prints where a sentence falls along each class direction, against
+// the threshold fitted for that class. It is what a threshold, an exemplar or a
+// test expectation is chosen from.
+func TestScores(t *testing.T) {
+	skipWithoutRuntime(t)
+	texts := append([]string{}, probes...)
+	for _, r := range readings {
+		texts = append(texts, r.text)
 	}
-	for _, r := range labelled {
-		if !inCorpus[r.text] {
-			texts = append(texts, r.text)
-			classes = append(classes, r.class)
-		}
+	vectors, err := embedAll(texts)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return texts, classes
+	for i, c := range classes {
+		t.Logf("%-10s threshold %+.3f", c.name, fitted.thresholds[i])
+	}
+	for i, v := range vectors {
+		line := ""
+		for c := range classes {
+			line += " " + classes[c].name[:4] + fmtScore(Dot(v, fitted.directions[c])-fitted.thresholds[c])
+		}
+		t.Logf("%s  %s", line, texts[i])
+	}
+}
+
+// fmtScore reports what the binary would do with a score, margin included: a
+// diagnostic that models a rule the tool does not run explains nothing.
+func fmtScore(v float64) string {
+	if v > clear {
+		return " FIRES"
+	}
+	return " ....."
 }

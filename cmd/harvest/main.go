@@ -98,7 +98,10 @@ func fetch(repo Repo, dir string, depth int) error {
 		_, err := corpus.Git(dir, "fetch", "--quiet", "origin")
 		return err
 	}
-	args := []string{"clone", "--quiet", "--single-branch", "--no-tags"}
+	// No template directory. A mining clone is read-only, so the sample hooks
+	// git copies in are dead weight, and an environment that refuses to let
+	// anything write a git hook refuses the whole clone over them.
+	args := []string{"clone", "--quiet", "--single-branch", "--no-tags", "--template="}
 	if depth > 0 {
 		args = append(args, "--depth", strconv.Itoa(depth))
 	}

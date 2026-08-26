@@ -1,4 +1,4 @@
-package main
+package comment
 
 import (
 	"os"
@@ -8,7 +8,13 @@ import (
 	"testing"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/mikluko/slopguard/internal/lang"
+	"github.com/mikluko/slopguard/internal/prose"
 )
+
+// Asserts nothing, and needs a corpus nobody has by default. It is a
+// measurement rather than a contract, which is what the prefix says.
 
 // TestLengthDistribution reports how long documentation actually runs in code
 // somebody wrote on purpose, which is what a length threshold has to be set
@@ -25,30 +31,30 @@ func TestLengthDistribution(t *testing.T) {
 			if err != nil || entry.IsDir() || strings.Contains(path, "/.git/") {
 				return nil
 			}
-			lang := lookup(path)
-			if lang == nil {
+			language := lang.Lookup(path)
+			if language == nil {
 				return nil
 			}
 			src, err := os.ReadFile(path)
-			if err != nil || len(src) > ceiling {
+			if err != nil || len(src) > 2<<20 {
 				return nil
 			}
 			parser := tree_sitter.NewParser()
 			defer parser.Close()
-			if parser.SetLanguage(tree_sitter.NewLanguage(lang.Grammar())) != nil {
+			if parser.SetLanguage(tree_sitter.NewLanguage(language.Grammar())) != nil {
 				return nil
 			}
-			tree := parser.Parse(blank(src, lang), nil)
+			tree := parser.Parse(blank(src, language), nil)
 			if tree == nil {
 				return nil
 			}
 			defer tree.Close()
 			root := tree.RootNode()
-			for _, c := range group(root, collect(root, lang, false), src) {
+			for _, c := range group(root, collect(root, language, false), src) {
 				if c.pragma() {
 					continue
 				}
-				if n := sentences(c.text); n > 0 {
+				if n := prose.Sentences(c.Text); n > 0 {
 					counts[n]++
 					total++
 				}

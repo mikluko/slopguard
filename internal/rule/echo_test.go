@@ -1,6 +1,10 @@
-package main
+package rule
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mikluko/slopguard/internal/comment"
+)
 
 // Whether a comment restates the code is a fact about the pair, so the table
 // carries both halves. No case here reaches the model: the words are already
@@ -88,8 +92,8 @@ func TestEchoes(t *testing.T) {
 				skipWithoutRuntime(t)
 			}
 			found := false
-			for _, f := range scan([]byte(c.src), c.lang, []span{{start: 0, end: uint(len(c.src))}}) {
-				if f.class == "echo" || f.class == "tautology" {
+			for _, f := range scan([]byte(c.src), c.lang, []comment.Span{{Start: 0, End: uint(len(c.src))}}) {
+				if f.Class == "echo" || f.Class == "tautology" {
 					found = true
 				}
 			}

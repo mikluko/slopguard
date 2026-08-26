@@ -1,4 +1,4 @@
-package main
+package rule
 
 import (
 	"os"
@@ -8,6 +8,10 @@ import (
 	"testing"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/mikluko/slopguard/internal/comment"
+	"github.com/mikluko/slopguard/internal/lang"
+	"github.com/mikluko/slopguard/internal/prose"
 )
 
 // declared reads a signature, and what counts as the signature differs by what
@@ -97,31 +101,24 @@ func TestAttribution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lang := lookup(source)
-	if lang == nil {
+	language := lang.Lookup(source)
+	if language == nil {
 		t.Fatalf("no grammar reads %s", source)
 	}
-	parser := tree_sitter.NewParser()
-	defer parser.Close()
-	if err := parser.SetLanguage(tree_sitter.NewLanguage(lang.Grammar())); err != nil {
-		t.Fatal(err)
-	}
-	tree := parser.Parse(blank(src, lang), nil)
-	defer tree.Close()
-	root := tree.RootNode()
 
 	only := os.Getenv("SLOPGUARD_ATTRIBUTE_LINE")
-	for _, c := range group(root, collect(root, lang, false), src) {
-		c.annotates = annotated(root, c.nodes[len(c.nodes)-1], src)
+	comments, release := comment.Scan(src, language, []comment.Span{{Start: 0, End: uint(len(src))}})
+	defer release()
+	for _, c := range comments {
 		declaration := documents(c, src)
-		if declaration == nil || c.trailing || c.heads {
+		if declaration == nil || c.Trailing || c.Heads {
 			continue
 		}
-		pieces := split(c.text)
+		pieces := prose.Split(c.Text)
 		if len(pieces) < 2 {
 			continue
 		}
-		if only != "" && only != strconv.FormatUint(uint64(c.line), 10) {
+		if only != "" && only != strconv.FormatUint(uint64(c.Line), 10) {
 			continue
 		}
 		spelled := declared(declaration, src)
@@ -129,7 +126,7 @@ func TestAttribution(t *testing.T) {
 		if body := declaration.ChildByFieldName("body"); body != nil {
 			inside = identifiers(body, src)
 		}
-		t.Logf("line %d  %s", c.line, firstLine(declaration.Utf8Text(src)))
+		t.Logf("line %d  %s", c.Line, firstLine(declaration.Utf8Text(src)))
 		for i, sentence := range pieces {
 			var novel, covered []string
 			for _, word := range content(sentence) {

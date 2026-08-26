@@ -1,12 +1,31 @@
-package main
+package rule
 
 import (
 	"testing"
 
+	"github.com/mikluko/slopguard/internal/comment"
 	"github.com/mikluko/slopguard/internal/lang"
 	"github.com/mikluko/slopguard/internal/model"
 	"github.com/mikluko/slopguard/internal/prose"
 )
+
+// What every test file here reads: the skip for a machine with no model, the
+// leaf-package functions under short names, and the language table's entries
+// under the names the spec tables give them. The prefix sorts it above the
+// tests, which is for the reader rather than the compiler: a file of fixtures
+// asserts nothing.
+
+// scan runs the whole pipeline over one file, which is what a spec table hands
+// it. The table's case is a file that was just written, so the span is all of
+// it.
+func scan(src []byte, language *lang.Language, added []comment.Span) []Finding {
+	return Judge(src, language, added)
+}
+
+// whole is the span covering a source file entire.
+func whole(src []byte) []comment.Span {
+	return []comment.Span{{Start: 0, End: uint(len(src))}}
+}
 
 // skipWithoutRuntime skips a test that needs the model, for either reason it can
 // be absent: no library to load, or the semantic pass switched off.

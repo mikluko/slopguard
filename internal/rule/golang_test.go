@@ -1,9 +1,12 @@
-package main
+package rule
 
 import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mikluko/slopguard/internal/comment"
+	"github.com/mikluko/slopguard/internal/lang"
 )
 
 // The commented-out-code rule reads a comment as source, and a tree-sitter
@@ -72,9 +75,9 @@ func TestGoLeftoverAtFileScope(t *testing.T) {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
 			src := "package p\n\n" + c.body + "\n\nfunc g() {}\n"
-			found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
+			found := scan([]byte(src), golang, []comment.Span{{Start: 0, End: uint(len(src))}})
 			for _, f := range found {
-				if f.class == "leftover" {
+				if f.Class == "leftover" {
 					return
 				}
 			}
@@ -87,9 +90,9 @@ func TestGoLeftover(t *testing.T) {
 	for _, c := range goLeftovers {
 		t.Run(c.name, func(t *testing.T) {
 			found := only(t, inBody(c.body), golang)
-			if got := found.class == "leftover"; got != c.want {
+			if got := found.Class == "leftover"; got != c.want {
 				t.Errorf("leftover = %v, want %v\n  %s\n  read as: %s %s",
-					got, c.want, c.body, found.class, found.reason)
+					got, c.want, c.body, found.Class, found.Reason)
 			}
 		})
 	}
@@ -107,12 +110,12 @@ func inBody(body string) string {
 
 // only scans a whole file and returns the first finding, or the zero finding
 // where nothing fired.
-func only(t *testing.T, src string, lang *language) finding {
+func only(t *testing.T, src string, language *lang.Language) Finding {
 	t.Helper()
-	if found := scan([]byte(src), lang, []span{{start: 0, end: uint(len(src))}}); len(found) > 0 {
+	if found := scan([]byte(src), language, []comment.Span{{Start: 0, End: uint(len(src))}}); len(found) > 0 {
 		return found[0]
 	}
-	return finding{}
+	return Finding{}
 }
 
 // A licence notice is exempt from every rule: some of them ask in their own
@@ -124,8 +127,8 @@ func TestNoticeIsExempt(t *testing.T) {
 		"// One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven.\n" +
 		"// Twelve. Thirteen. Fourteen. Fifteen. Sixteen. Seventeen. Eighteen.\n" +
 		"package p\n"
-	if f := only(t, src, golang); f.reason != "" {
-		t.Errorf("nudged a licence notice: %s %s", f.class, f.reason)
+	if f := only(t, src, golang); f.Reason != "" {
+		t.Errorf("nudged a licence notice: %s %s", f.Class, f.Reason)
 	}
 }
 
@@ -150,7 +153,7 @@ func TestNoticeIsAnchored(t *testing.T) {
 			// file is exempt whatever it says, and this asks what the notice
 			// marker does.
 			src := "package p\n\n" + c.src + "func double(value int) int { return value * 2 }\n"
-			found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
+			found := scan([]byte(src), golang, []comment.Span{{Start: 0, End: uint(len(src))}})
 			if got := len(found) > 0; got != c.want {
 				t.Errorf("nudged = %v, want %v (%v)", got, c.want, found)
 			}
@@ -166,8 +169,8 @@ func TestNoticeSkipsTheModel(t *testing.T) {
 	src := "// Copyright 2009 The Go Authors.\n" +
 		"// This file is kept for backwards compatibility.\n" +
 		"package p\n"
-	for _, f := range scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}}) {
-		t.Errorf("nudged inside a licence notice: line %d %s %s", f.line, f.class, f.reason)
+	for _, f := range scan([]byte(src), golang, []comment.Span{{Start: 0, End: uint(len(src))}}) {
+		t.Errorf("nudged inside a licence notice: line %d %s %s", f.Line, f.Class, f.Reason)
 	}
 }
 
@@ -190,9 +193,9 @@ func TestNoticeIsNotABodyPardon(t *testing.T) {
 		"    # DEBUG = True\n" +
 		"    # SECRET = \"hunter2\"\n" +
 		"    return 1\n"
-	found := scan([]byte(src), python, []span{{start: 0, end: uint(len(src))}})
+	found := scan([]byte(src), python, []comment.Span{{Start: 0, End: uint(len(src))}})
 	for _, f := range found {
-		if f.class == "leftover" {
+		if f.Class == "leftover" {
 			return
 		}
 	}
@@ -210,31 +213,31 @@ func TestPaddingSpares(t *testing.T) {
 
 	t.Run("file documentation", func(t *testing.T) {
 		src := "// Package p does a thing. " + padded + "\npackage p\n"
-		if f := only(t, src, golang); f.class == "hollow" {
-			t.Errorf("nudged the package's own documentation: %s", f.reason)
+		if f := only(t, src, golang); f.Class == "hollow" {
+			t.Errorf("nudged the package's own documentation: %s", f.Reason)
 		}
 	})
 	t.Run("under a licence header", func(t *testing.T) {
 		src := "// Copyright 2009 The Go Authors.\n\n// Package p does a thing. " + padded + "\npackage p\n"
-		for _, f := range scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}}) {
-			if f.class == "hollow" {
-				t.Errorf("a licence header above it made the package doc reachable: %s", f.reason)
+		for _, f := range scan([]byte(src), golang, []comment.Span{{Start: 0, End: uint(len(src))}}) {
+			if f.Class == "hollow" {
+				t.Errorf("a licence header above it made the package doc reachable: %s", f.Reason)
 			}
 		}
 	})
 	t.Run("a symbol still earns it", func(t *testing.T) {
 		src := "package p\n\n// Double returns the value twice over. " + padded +
 			"\nfunc Double(value int) int { return value * 2 }\n"
-		found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
-		if len(found) == 0 || found[0].class != "hollow" {
+		found := scan([]byte(src), golang, []comment.Span{{Start: 0, End: uint(len(src))}})
+		if len(found) == 0 || found[0].Class != "hollow" {
 			t.Errorf("a symbol's documentation has somewhere to go and should still be nudged: %v", found)
 		}
 	})
 	t.Run("configuration has nowhere to move it", func(t *testing.T) {
 		src := "# " + padded + "\nreplicas: 3\n"
-		for _, f := range scan([]byte(src), yaml, []span{{start: 0, end: uint(len(src))}}) {
-			if f.class == "hollow" {
-				t.Errorf("YAML has no symbol doc and no test to move a claim into: %s", f.reason)
+		for _, f := range scan([]byte(src), yaml, []comment.Span{{Start: 0, End: uint(len(src))}}) {
+			if f.Class == "hollow" {
+				t.Errorf("YAML has no symbol doc and no test to move a claim into: %s", f.Reason)
 			}
 		}
 	})
@@ -254,7 +257,7 @@ func TestHugeCommentRunIsBounded(t *testing.T) {
 
 	done := make(chan int, 1)
 	go func() {
-		done <- len(scan(src, golang, []span{{start: 0, end: uint(len(src))}}))
+		done <- len(scan(src, golang, []comment.Span{{Start: 0, End: uint(len(src))}}))
 	}()
 	select {
 	case <-done:
@@ -268,10 +271,10 @@ func TestHugeCommentRunIsBounded(t *testing.T) {
 func TestTrailingNote(t *testing.T) {
 	src := "package p\n\nfunc f(x1 float64) float64 {\n" +
 		"\tx2 := Sqrt(x1) // x2 = sqrt(1 - x*x)\n\treturn x2\n}\n"
-	found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
+	found := scan([]byte(src), golang, []comment.Span{{Start: 0, End: uint(len(src))}})
 	for _, f := range found {
-		if f.class == "leftover" {
-			t.Errorf("read a trailing note as commented-out code: line %d", f.line)
+		if f.Class == "leftover" {
+			t.Errorf("read a trailing note as commented-out code: line %d", f.Line)
 		}
 	}
 }

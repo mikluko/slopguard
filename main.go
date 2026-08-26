@@ -18,7 +18,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mikluko/slopguard/internal/comment"
 	"github.com/mikluko/slopguard/internal/lang"
+	"github.com/mikluko/slopguard/internal/rule"
+	"github.com/mikluko/slopguard/internal/session"
 )
 
 const (
@@ -105,7 +108,7 @@ func main() {
 // review returns what slopguard objects to in the file the payload just wrote.
 // It fails open: an unknown tool, an extension carrying no grammar, a file it
 // cannot read, and text it cannot locate all yield nothing.
-func review(in payload) []finding {
+func review(in payload) []rule.Finding {
 	switch in.ToolName {
 	case "Write", "Edit", "MultiEdit":
 	default:
@@ -123,12 +126,12 @@ func review(in payload) []finding {
 	if len(added) == 0 {
 		return nil
 	}
-	findings := scan(src, language, added)
-	said, before, remember := spoken(in.SessionID, in.ToolInput.FilePath)
+	findings := rule.Judge(src, language, added)
+	said, before, remember := session.Spoken(in.SessionID, in.ToolInput.FilePath)
 	repeat = before
 	kept := findings[:0]
 	for _, f := range findings {
-		if !said[f.key] {
+		if !said[f.Key] {
 			kept = append(kept, f)
 		}
 	}
@@ -136,7 +139,11 @@ func review(in payload) []finding {
 	if len(findings) > budget {
 		findings = findings[:budget]
 	}
-	remember(findings)
+	keys := make([]uint64, len(findings))
+	for i, f := range findings {
+		keys[i] = f.Key
+	}
+	remember(keys)
 	return findings
 }
 
@@ -162,7 +169,7 @@ var errNotWorthReading = errors.New("not a regular file, or too large to judge")
 // record appends what was found to the log, when one is asked for. A week of
 // real use is the only honest measure of how often this tool is wrong, and
 // nothing else in the process writes it down.
-func record(path string, findings []finding) {
+func record(path string, findings []rule.Finding) {
 	name := os.Getenv(logEnv)
 	if name == "" || len(findings) == 0 {
 		return
@@ -176,9 +183,9 @@ func record(path string, findings []finding) {
 		json.NewEncoder(handle).Encode(map[string]any{
 			"at":    time.Now().UTC().Format(time.RFC3339),
 			"file":  path,
-			"line":  f.line,
-			"class": f.class,
-			"score": f.score,
+			"line":  f.Line,
+			"class": f.Class,
+			"score": f.Score,
 		})
 	}
 }
@@ -201,9 +208,9 @@ func sweepFiles(paths []string, verbose bool) {
 		if verbose {
 			lines = bytes.Split(src, []byte("\n"))
 		}
-		for _, f := range scan(src, language, []span{{start: 0, end: uint(len(src))}}) {
-			fmt.Printf("%s:%d\t%s\t%.3f\t%s\n", path, f.line, f.class, f.score, f.reason)
-			for _, text := range quoted(lines, f.line) {
+		for _, f := range rule.Judge(src, language, []comment.Span{{Start: 0, End: uint(len(src))}}) {
+			fmt.Printf("%s:%d\t%s\t%.3f\t%s\n", path, f.Line, f.Class, f.Score, f.Reason)
+			for _, text := range quoted(lines, f.Line) {
 				fmt.Printf("\t| %s\n", text)
 			}
 		}
@@ -252,16 +259,16 @@ func continues(head, text string) bool {
 // carried along. Where the changed bytes occur more than once, every occurrence
 // is claimed: nothing in the payload tells the copies apart, and [spanBudget]
 // bounds how many a call may claim.
-func written(src []byte, in payload) []span {
+func written(src []byte, in payload) []comment.Span {
 	if in.ToolName == "Write" {
-		return []span{{start: 0, end: uint(len(src))}}
+		return []comment.Span{{Start: 0, End: uint(len(src))}}
 	}
 	type edit struct{ old, new string }
 	edits := []edit{{in.ToolInput.OldString, in.ToolInput.NewString}}
 	for _, e := range in.ToolInput.Edits {
 		edits = append(edits, edit{e.OldString, e.NewString})
 	}
-	var out []span
+	var out []comment.Span
 	for _, e := range edits {
 		if e.new == "" || len(out) >= spanBudget {
 			continue
@@ -281,18 +288,18 @@ func written(src []byte, in payload) []span {
 // exactly as it was, and claiming all of it would attribute untouched comments
 // to this write. It reports false when nothing changed inside the occurrence,
 // which is what a pure deletion looks like from here.
-func narrow(s span, prefix, suffix int) (span, bool) {
-	start := s.start + uint(prefix)
-	end := s.end - uint(suffix)
-	if prefix+suffix >= int(s.end-s.start) || start >= end {
-		return span{}, false
+func narrow(s comment.Span, prefix, suffix int) (comment.Span, bool) {
+	start := s.Start + uint(prefix)
+	end := s.End - uint(suffix)
+	if prefix+suffix >= int(s.End-s.Start) || start >= end {
+		return comment.Span{}, false
 	}
-	return span{start: start, end: end}, true
+	return comment.Span{Start: start, End: end}, true
 }
 
 // locate returns every occurrence of text in src, up to [spanBudget].
-func locate(src []byte, text string) []span {
-	var out []span
+func locate(src []byte, text string) []comment.Span {
+	var out []comment.Span
 	needle := []byte(text)
 	for offset := 0; len(out) < spanBudget; {
 		i := bytes.Index(src[offset:], needle)
@@ -300,7 +307,7 @@ func locate(src []byte, text string) []span {
 			break
 		}
 		start := offset + i
-		out = append(out, span{start: uint(start), end: uint(start + len(needle))})
+		out = append(out, comment.Span{Start: uint(start), End: uint(start + len(needle))})
 		offset = start + len(needle)
 	}
 	return out
@@ -326,11 +333,11 @@ var repeat bool
 // report is the work handed back to the agent: which lines, which rule, and
 // what to do about each. It names the tool and the file, because a nudge that
 // does not ask for an edit is read as commentary and answered in prose.
-func report(name string, findings []finding, in payload) string {
+func report(name string, findings []rule.Finding, in payload) string {
 	var b strings.Builder
 	b.WriteString("Edit " + name + " before your next step: these comments it just gained say things that belong elsewhere.\n\n")
 	for _, f := range findings {
-		b.WriteString("  line " + strconv.FormatUint(uint64(f.line), 10) + "  " + f.reason + "\n")
+		b.WriteString("  line " + strconv.FormatUint(uint64(f.Line), 10) + "  " + f.Reason + "\n")
 	}
 	// The long form is worth its tokens once. After that the agent has read
 	// it, and re-sending it every time is the one place this tool spends
@@ -363,7 +370,7 @@ func anchor(in payload) string {
 	return ""
 }
 
-func summary(name string, findings []finding) string {
+func summary(name string, findings []rule.Finding) string {
 	count := strconv.Itoa(len(findings)) + " comment"
 	if len(findings) != 1 {
 		count += "s"

@@ -1,9 +1,10 @@
-package main
+package rule
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/mikluko/slopguard/internal/comment"
 	"github.com/mikluko/slopguard/internal/model"
 )
 
@@ -441,22 +442,22 @@ func TestScan(t *testing.T) {
 			if judged(c.want) {
 				skipWithoutRuntime(t)
 			}
-			findings := scan([]byte(c.src), c.lang, []span{{start: 0, end: uint(len(c.src))}})
+			findings := scan([]byte(c.src), c.lang, []comment.Span{{Start: 0, End: uint(len(c.src))}})
 			if c.gap != "" {
-				if len(findings) > 0 && strings.Contains(findings[0].reason, c.want) {
+				if len(findings) > 0 && strings.Contains(findings[0].Reason, c.want) {
 					t.Fatalf("this case is marked as a gap and now passes: drop the mark. %s", c.gap)
 				}
 				t.Skip(c.gap)
 			}
 			switch {
 			case c.want == "" && len(findings) > 0:
-				t.Fatalf("nudged an acceptable comment: %s", findings[0].reason)
+				t.Fatalf("nudged an acceptable comment: %s", findings[0].Reason)
 			case c.want == "":
 				return
 			case len(findings) == 0:
 				t.Fatalf("missed a comment that should carry %q", c.want)
-			case !strings.Contains(findings[0].reason, c.want):
-				t.Fatalf("reason %q does not carry %q", findings[0].reason, c.want)
+			case !strings.Contains(findings[0].Reason, c.want):
+				t.Fatalf("reason %q does not carry %q", findings[0].Reason, c.want)
 			}
 		})
 	}
@@ -481,11 +482,11 @@ func double(v int) int {
 }
 `
 	added := strings.Index(src, "\t// multiply")
-	findings := scan([]byte(src), golang, []span{{start: uint(added), end: uint(len(src))}})
+	findings := scan([]byte(src), golang, []comment.Span{{Start: uint(added), End: uint(len(src))}})
 	if len(findings) != 1 {
 		t.Fatalf("want the one comment inside the added text, got %d", len(findings))
 	}
-	if !strings.Contains(findings[0].reason, "restates what the code") {
-		t.Fatalf("unexpected reason: %s", findings[0].reason)
+	if !strings.Contains(findings[0].Reason, "restates what the code") {
+		t.Fatalf("unexpected reason: %s", findings[0].Reason)
 	}
 }

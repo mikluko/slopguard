@@ -1,10 +1,11 @@
-package main
+package rule
 
 import (
 	"strings"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
+	"github.com/mikluko/slopguard/internal/comment"
 	"github.com/mikluko/slopguard/internal/prose"
 )
 
@@ -57,15 +58,15 @@ var hollowReasons = map[string]string{
 // an opening sentence that names the symbol — "Close closes the File" — and
 // reading that one alone as hollow reports the whole standard library. A second
 // hollow sentence is what says the comment is padded rather than conventional.
-func hollows(c comment, src []byte) []padded {
-	if c.trailing || c.heads {
+func hollows(c comment.Comment, src []byte) []padded {
+	if c.Trailing || c.Heads {
 		return nil
 	}
 	declaration := documents(c, src)
 	if declaration == nil {
 		return nil
 	}
-	pieces := prose.Split(c.text)
+	pieces := prose.Split(c.Text)
 	if len(pieces) < 2 {
 		// One sentence is the doctrine's own default and is nobody's business.
 		return nil
@@ -142,25 +143,25 @@ func hollows(c comment, src []byte) []padded {
 // Two shapes, and which one a language uses decides where to look. A comment
 // stands above what it documents in Go, C, Java and JavaScript, so the
 // declaration is the node after it. A Python docstring sits inside the body it
-// opens, so the declaration is the node around it — and there `annotates` is
+// opens, so the declaration is the node around it — and there Annotates is
 // the next statement of the body, which is the wrong node rather than no node.
 //
-// A note inside a body documents nothing. What `annotates` returns for one is
-// as often a closing brace as a statement, and a brace spells nothing, so every
+// A note inside a body documents nothing. What Annotates holds for one is as
+// often a closing brace as a statement, and a brace spells nothing, so every
 // word of the note reads as already covered.
-func documents(c comment, src []byte) *tree_sitter.Node {
-	if c.doc {
-		for at := c.nodes[0].Parent(); at != nil; at = at.Parent() {
+func documents(c comment.Comment, src []byte) *tree_sitter.Node {
+	if c.Doc {
+		for at := c.Nodes[0].Parent(); at != nil; at = at.Parent() {
 			if definitions[at.Kind()] {
 				return at
 			}
 		}
 		return nil
 	}
-	if c.buried || c.annotates == nil {
+	if c.Buried || c.Annotates == nil {
 		return nil
 	}
-	at := c.annotates
+	at := c.Annotates
 	// A JavaScript or TypeScript doc sits above `export function f()`, and what
 	// follows it is the export rather than the function. Left unwrapped the rule
 	// reached 2,423 declarations and missed 39,097.

@@ -1,25 +1,34 @@
-package main
-
-import (
-	"bufio"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-	"time"
-)
-
-// A comment already named once is not named again in the same session.
+// Package session remembers what one agent session has already been told, so
+// that a comment named once is not named again.
 //
 // The agent's answer to a nudge is an edit, that edit re-enters the hook, and
 // the rewritten comment is inside the new text. Without a memory the same line
 // can be nudged until the agent finds the one move that reliably ends it, which
 // is deleting the comment — the behaviour the nudge's own wording argues
-// against. What is remembered is the comment's prose rather than its line, so
-// an edit above it does not make it a new site.
+// against.
+//
+// What it stores is opaque numbers against a path. What they identify is the
+// caller's business, and keeping it that way is what lets this package be about
+// a file on disk rather than about comments.
+package session
+
+import (
+	"bufio"
+	"hash/fnv"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/mikluko/slopguard/internal/prose"
+)
+
 const (
-	// memoryEnv points the memory somewhere else, and empty turns it off.
-	memoryEnv = "SLOPGUARD_STATE"
+	// MemoryEnv points the memory somewhere else, and empty turns it off. It is
+	// exported because switching the memory off is a supported way to run the
+	// tool, so the name is part of what this package promises.
+	MemoryEnv = "SLOPGUARD_STATE"
 	// stale is how long a session's memory outlives its last write.
 	stale = 24 * time.Hour
 	// remembered bounds one session's file. A session that nudges more than
@@ -27,15 +36,20 @@ const (
 	remembered = 4096
 )
 
-// spoken returns the keys this session has already been nudged about for path,
+// Spoken returns the keys this session has already been nudged about for path,
 // whether it has been nudged about anything at all, and a function that records
 // what is about to be named. It fails open in both directions: an unreadable
 // store nudges as if nothing were remembered, and an unwritable one forgets.
-func spoken(session, path string) (map[uint64]bool, bool, func([]finding)) {
-	seen := map[uint64]bool{}
-	file := store(session)
+//
+// The key is the caller's: what a nudge is remembered by has to survive the
+// edit that answers it, and only the caller knows what that means. Hashing the
+// comment's prose rather than its line is what makes an edit above it the same
+// site rather than a new one.
+func Spoken(id, path string) (seen map[uint64]bool, spoken bool, record func(keys []uint64)) {
+	seen = map[uint64]bool{}
+	file := store(id)
 	if file == "" {
-		return seen, false, func([]finding) {}
+		return seen, false, func([]uint64) {}
 	}
 	prefix := site(path)
 	lines := 0
@@ -56,8 +70,8 @@ func spoken(session, path string) (map[uint64]bool, bool, func([]finding)) {
 		}
 		handle.Close()
 	}
-	return seen, lines > 0, func(findings []finding) {
-		if len(findings) == 0 || lines > remembered {
+	return seen, lines > 0, func(keys []uint64) {
+		if len(keys) == 0 || lines > remembered {
 			return
 		}
 		handle, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
@@ -65,17 +79,27 @@ func spoken(session, path string) (map[uint64]bool, bool, func([]finding)) {
 			return
 		}
 		defer handle.Close()
-		for _, f := range findings {
-			handle.WriteString(strconv.FormatUint(prefix, 36) + " " + strconv.FormatUint(f.key, 36) + "\n")
+		for _, key := range keys {
+			handle.WriteString(strconv.FormatUint(prefix, 36) + " " + strconv.FormatUint(key, 36) + "\n")
 		}
 	}
+}
+
+// site identifies a file by its path, and a session by its id. The rules hash a
+// comment's prose the same way to identify the comment; the two share nothing
+// but the hash, so each package keeps its own five lines rather than exporting
+// one for the other.
+func site(text string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(prose.Normalize(text)))
+	return h.Sum64()
 }
 
 // store names this session's memory file, creating the directory and sweeping
 // out the sessions that have gone quiet. It returns "" when there is nowhere to
 // keep one, or when the memory is switched off.
-func store(session string) string {
-	dir, ok := os.LookupEnv(memoryEnv)
+func store(id string) string {
+	dir, ok := os.LookupEnv(MemoryEnv)
 	if ok && dir == "" {
 		return ""
 	}
@@ -90,10 +114,10 @@ func store(session string) string {
 		return ""
 	}
 	sweep(dir)
-	if session == "" {
-		session = "unnamed"
+	if id == "" {
+		id = "unnamed"
 	}
-	return filepath.Join(dir, strconv.FormatUint(site(session), 36))
+	return filepath.Join(dir, strconv.FormatUint(site(id), 36))
 }
 
 // sweep removes the memories of sessions that have not written in a day.

@@ -1,4 +1,4 @@
-package main
+package rule
 
 import (
 	"strings"
@@ -6,6 +6,7 @@ import (
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
+	"github.com/mikluko/slopguard/internal/comment"
 	"github.com/mikluko/slopguard/internal/prose"
 )
 
@@ -21,50 +22,6 @@ import (
 // code below is a single line, because a comment over a block is summarising it
 // rather than repeating it.
 
-// annotated returns the code a comment sits above, found by position rather
-// than by sibling: a comment inside a Go block is a sibling of the whole
-// statement list, not of the statement under it, and every grammar arranges
-// this differently.
-func annotated(root, node *tree_sitter.Node, src []byte) *tree_sitter.Node {
-	at := int(node.EndByte())
-	for at < len(src) && (src[at] == ' ' || src[at] == '\t' || src[at] == '\n' || src[at] == '\r') {
-		at++
-	}
-	if at >= len(src) {
-		return nil
-	}
-	found := root.NamedDescendantForByteRange(uint(at), uint(at))
-	if found == nil || strings.Contains(found.Kind(), "comment") {
-		return nil
-	}
-	// The smallest node at that byte may be a bare identifier; the statement is
-	// what encloses it while still beginning there. Climbing stops at a
-	// container, which holds the statements rather than being one.
-	for {
-		parent := found.Parent()
-		if parent == nil || parent.StartByte() != found.StartByte() || container(parent.Kind()) {
-			return found
-		}
-		found = parent
-	}
-}
-
-// container reports whether a node kind holds a run of statements rather than
-// being one. Every grammar spells it differently and all of them spell it in
-// the name.
-//
-// "list" alone is too broad: Go puts the left side of `total := 0` in an
-// expression_list, so climbing would stop at the identifier and the statement
-// would never be seen.
-func container(kind string) bool {
-	for _, mark := range []string{"statement_list", "statements", "block", "body", "suite", "source_file", "program", "module", "document"} {
-		if strings.Contains(kind, mark) {
-			return true
-		}
-	}
-	return false
-}
-
 // echoes reports whether a comment's own words are already spelled by the
 // identifiers of the code it sits above.
 //
@@ -75,8 +32,8 @@ func container(kind string) bool {
 // A doc comment is exempt whatever it repeats: naming the symbol it documents
 // is what a doc does, and a one-line function makes its whole body available to
 // be echoed. Only prose inside a body is read this way.
-func echoes(c comment, src []byte) bool {
-	if c.annotates == nil || !oneLine(c.annotates) || !c.buried {
+func echoes(c comment.Comment, src []byte) bool {
+	if c.Annotates == nil || !oneLine(c.Annotates) || !c.Buried {
 		return false
 	}
 	// The exemption this function's own doc claims. In Go it held by accident,
@@ -89,7 +46,7 @@ func echoes(c comment, src []byte) bool {
 	// read as a gate it takes the plainest case there is: four consecutive
 	// restatements of four trivial lines leave one finding, because only the
 	// last of them has nothing after it.
-	if c.doc {
+	if c.Doc {
 		return false
 	}
 	// A comment beside code is a note about that line, and the words it shares
@@ -97,19 +54,19 @@ func echoes(c comment, src []byte) bool {
 	// one. `num -= old.cap - old.len // preserve memory of old[old.len:old.cap]`
 	// names the same fields to say what the subtraction is for. The cost is
 	// `i++ // increment i`, which nothing else here catches.
-	if c.trailing {
+	if c.Trailing {
 		return false
 	}
 	// A comment that goes on to say something else is not reading the line
 	// back, whatever its opening sentence shares with it.
-	if prose.Sentences(c.text) > 1 {
+	if prose.Sentences(c.Text) > 1 {
 		return false
 	}
-	words := content(c.text)
+	words := content(c.Text)
 	if len(words) < 2 {
 		return false
 	}
-	spelled := identifiers(c.annotates, src)
+	spelled := identifiers(c.Annotates, src)
 	hits := 0
 	for _, word := range words {
 		if spelled[word] {
@@ -128,18 +85,18 @@ func echoes(c comment, src []byte) bool {
 // the setting under it. Inside a body there are no headings, and requiring a
 // shared word there would lose the plainest case there is: "multiply it by two"
 // over `return v * 2`, which repeats the line in words rather than in symbols.
-func restates(c comment, src []byte) bool {
-	if c.annotates == nil || !oneLine(c.annotates) || c.trailing || c.doc {
+func restates(c comment.Comment, src []byte) bool {
+	if c.Annotates == nil || !oneLine(c.Annotates) || c.Trailing || c.Doc {
 		return false
 	}
 	// A comment that goes on to say something else is not repeating the line,
 	// whatever its opening sentence reads like on its own. "Find the field
 	// start and end indices" is a restatement until the three sentences after
 	// it explain why the pass is separate.
-	if prose.Sentences(c.text) > 1 {
+	if prose.Sentences(c.Text) > 1 {
 		return false
 	}
-	words := content(c.text)
+	words := content(c.Text)
 	if len(words) < 2 {
 		return false
 	}
@@ -149,10 +106,10 @@ func restates(c comment, src []byte) bool {
 	// it has only the one line to be about, which is where "multiply it by
 	// two" over `return v * 2` lives — a restatement in words rather than in
 	// symbols, and one no shared-word test would ever catch.
-	if c.buried && last(c.annotates) {
+	if c.Buried && last(c.Annotates) {
 		return true
 	}
-	spelled := identifiers(c.annotates, src)
+	spelled := identifiers(c.Annotates, src)
 	for _, word := range words {
 		if spelled[word] {
 			return true

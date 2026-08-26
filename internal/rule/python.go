@@ -1,9 +1,11 @@
-package main
+package rule
 
 import (
 	"strings"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/mikluko/slopguard/internal/comment"
 )
 
 // Python is the language where prose parses. `in`, `is`, `not`, `and` and `or`
@@ -17,7 +19,7 @@ import (
 // when what it assigns is a value: `TIMEOUT = 30` is a setting somebody
 // commented out, and `on_delete=CASCADE is deliberate` assigns a comparison,
 // which is a sentence wearing an equals sign.
-func pythonCode(c comment, root *tree_sitter.Node, body, src []byte) bool {
+func pythonCode(c comment.Comment, root *tree_sitter.Node, body, src []byte) bool {
 	found := false
 	var walk func(*tree_sitter.Node)
 	walk = func(node *tree_sitter.Node) {
@@ -64,7 +66,7 @@ func settable(kind string) bool {
 // "copy the buffer before the write" parses as a clean COPY. What separates
 // them is the case. Every Dockerfile in the world writes its instructions in
 // capitals, and no comment writes prose that way.
-func dockerCode(c comment, root *tree_sitter.Node, body, src []byte) bool {
+func dockerCode(c comment.Comment, root *tree_sitter.Node, body, src []byte) bool {
 	head := strings.Fields(string(body))
 	if len(head) == 0 || head[0] != strings.ToUpper(head[0]) {
 		return false
@@ -82,30 +84,4 @@ func dockerCode(c comment, root *tree_sitter.Node, body, src []byte) bool {
 	}
 	walk(root)
 	return found
-}
-
-// docstring reports whether a node is a documentation string: a bare string in
-// statement position, opening a module, a class or a function body.
-//
-// It is where essentially all of Python's standing documentation lives, so a
-// tool that reads only `#` comments is blind to the place its own rules are
-// most often broken — a fourteen-line Args/Returns/Raises block passes while
-// the same prose in Go is nudged.
-func docstring(node *tree_sitter.Node) bool {
-	if node.Kind() != "expression_statement" || node.NamedChildCount() != 1 {
-		return false
-	}
-	if node.NamedChild(0).Kind() != "string" {
-		return false
-	}
-	parent := node.Parent()
-	if parent == nil {
-		return false
-	}
-	switch parent.Kind() {
-	case "module", "block":
-	default:
-		return false
-	}
-	return parent.NamedChild(0) != nil && parent.NamedChild(0).Equals(*node)
 }

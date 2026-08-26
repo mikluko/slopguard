@@ -1,10 +1,10 @@
-package main
+package rule
 
 import (
 	"strings"
 	"testing"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+	"github.com/mikluko/slopguard/internal/comment"
 )
 
 // The padding rule has no corpus to be measured against, because the shape it
@@ -161,8 +161,8 @@ func TestRecall(t *testing.T) {
 	for _, row := range recallRows {
 		src := []byte(row.src + "\n")
 		fired := false
-		for _, f := range scan(src, golang, []span{{start: 0, end: uint(len(src))}}) {
-			if f.class == "hollow" {
+		for _, f := range scan(src, golang, []comment.Span{{Start: 0, End: uint(len(src))}}) {
+			if f.Class == "hollow" {
 				fired = true
 			}
 		}
@@ -379,9 +379,9 @@ func Slerp(from Quaternion, to Quaternion, at float64) Quaternion { return from 
 func rated(t *testing.T, source string) int {
 	t.Helper()
 	src := []byte(source + "\n")
-	root := treeOf(t, src)
-	for _, c := range group(root, collect(root, golang, false), src) {
-		c.annotates = annotated(root, c.nodes[len(c.nodes)-1], src)
+	comments, release := comment.Scan(src, golang, []comment.Span{{Start: 0, End: uint(len(src))}})
+	defer release()
+	for _, c := range comments {
 		hits := 0
 		for _, p := range hollows(c, src) {
 			if p.why == "assessment" {
@@ -399,25 +399,10 @@ func rated(t *testing.T, source string) int {
 func padsAt(t *testing.T, source string) bool {
 	t.Helper()
 	src := []byte(source + "\n")
-	for _, f := range scan(src, golang, []span{{start: 0, end: uint(len(src))}}) {
-		if f.class == "hollow" {
+	for _, f := range scan(src, golang, []comment.Span{{Start: 0, End: uint(len(src))}}) {
+		if f.Class == "hollow" {
 			return true
 		}
 	}
 	return false
-}
-
-// treeOf parses Go source and returns its root. The tree is deliberately left
-// open: closing it invalidates every node taken out of it.
-func treeOf(t *testing.T, src []byte) *tree_sitter.Node {
-	t.Helper()
-	parser := tree_sitter.NewParser()
-	if err := parser.SetLanguage(tree_sitter.NewLanguage(golang.Grammar())); err != nil {
-		t.Fatal(err)
-	}
-	tree := parser.Parse(src, nil)
-	if tree == nil {
-		t.Fatal("source did not parse")
-	}
-	return tree.RootNode()
 }

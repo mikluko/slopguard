@@ -1,4 +1,4 @@
-package main
+package rule
 
 import (
 	"encoding/json"
@@ -7,8 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+	"github.com/mikluko/slopguard/internal/comment"
+	"github.com/mikluko/slopguard/internal/lang"
+	"github.com/mikluko/slopguard/internal/prose"
 )
+
+// Asserts nothing, and needs a corpus nobody has by default. It is how the
+// labelled sentences were gathered, which is a procedure rather than a
+// contract.
 
 // A length threshold asks how many sentences a comment has. What the rule it
 // serves asks is which of them earn their place, and that is a judgment about
@@ -56,49 +62,39 @@ func TestHarvestSentences(t *testing.T) {
 			if err != nil || entry.IsDir() || strings.Contains(path, "/.git/") {
 				return nil
 			}
-			lang := lookup(path)
-			if lang == nil {
+			language := lang.Lookup(path)
+			if language == nil {
 				return nil
 			}
 			src, err := os.ReadFile(path)
-			if err != nil || len(src) > ceiling {
+			if err != nil || len(src) > 2<<20 {
 				return nil
 			}
-			parser := tree_sitter.NewParser()
-			defer parser.Close()
-			if parser.SetLanguage(tree_sitter.NewLanguage(lang.Grammar())) != nil {
-				return nil
-			}
-			tree := parser.Parse(blank(src, lang), nil)
-			if tree == nil {
-				return nil
-			}
-			defer tree.Close()
-			root := tree.RootNode()
-			for _, c := range group(root, collect(root, lang, false), src) {
-				if c.pragma() || c.trailing || notice(c.body) {
+			found, release := comment.Scan(src, language, []comment.Span{{Start: 0, End: uint(len(src))}})
+			defer release()
+			for _, c := range found {
+				if c.Trailing || prose.Notice(c.Body) {
 					continue
 				}
-				// Documentation, not a note inside a body: the length rule
-				// reaches a comment heading a file or standing above a
-				// declaration, and those are the two this has to judge.
-				c.annotates = annotated(root, c.nodes[len(c.nodes)-1], src)
-				if c.buried && !c.doc {
+				// Documentation, not a note inside a body: what is harvested is
+				// a comment heading a file or standing above a declaration, and
+				// those are the two the padding rule has to judge.
+				if c.Buried && !c.Doc {
 					continue
 				}
-				pieces := split(c.text)
+				pieces := prose.Split(c.Text)
 				if len(pieces) == 0 {
 					continue
 				}
 				comments++
 				decl := ""
-				if c.annotates != nil {
-					decl = firstLine(c.annotates.Utf8Text(src))
+				if c.Annotates != nil {
+					decl = firstLine(c.Annotates.Utf8Text(src))
 				}
 				for i, sentence := range pieces {
 					if err := encoder.Encode(harvested{
 						Path:     path,
-						Line:     c.line,
+						Line:     c.Line,
 						At:       i + 1,
 						Of:       len(pieces),
 						Decl:     decl,

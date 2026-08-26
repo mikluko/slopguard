@@ -1,7 +1,9 @@
-package main
+package rule
 
 import (
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/mikluko/slopguard/internal/comment"
 )
 
 // A tree-sitter grammar is context-free, and Go is not. The grammar accepts
@@ -23,9 +25,9 @@ import (
 // language table instead would make that table name those types, and the table
 // is what the extraction reads to find comments in the first place — so the
 // table would depend on the rules and the rules on the table. Nothing else
-// wanted [language.name]; this is what it is for.
+// wanted [lang.Language.Name]; this is what it is for.
 var (
-	evidence = map[string]func(c comment, parsed *tree_sitter.Node, body, src []byte) bool{
+	evidence = map[string]func(c comment.Comment, parsed *tree_sitter.Node, body, src []byte) bool{
 		"python":     pythonCode,
 		"yaml":       yamlConfig,
 		"dockerfile": dockerCode,

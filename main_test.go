@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mikluko/slopguard/internal/session"
 )
 
 const source = `package p
@@ -18,7 +20,7 @@ func double(v int) int {
 // A Write is reviewed whole: every comment in the file is new.
 func TestReviewWrite(t *testing.T) {
 	skipWithoutRuntime(t)
-	t.Setenv(memoryEnv, t.TempDir())
+	t.Setenv(session.MemoryEnv, t.TempDir())
 	in := payload{ToolName: "Write"}
 	in.ToolInput.FilePath = file(t, "double.go", source)
 	in.ToolInput.Content = source
@@ -26,8 +28,8 @@ func TestReviewWrite(t *testing.T) {
 	if len(findings) != 1 {
 		t.Fatalf("want one finding, got %d", len(findings))
 	}
-	if findings[0].line != 4 {
-		t.Fatalf("want the comment on line 4, got line %d", findings[0].line)
+	if findings[0].Line != 4 {
+		t.Fatalf("want the comment on line 4, got line %d", findings[0].Line)
 	}
 }
 
@@ -35,7 +37,7 @@ func TestReviewWrite(t *testing.T) {
 // landed in.
 func TestReviewEdit(t *testing.T) {
 	skipWithoutRuntime(t)
-	t.Setenv(memoryEnv, t.TempDir())
+	t.Setenv(session.MemoryEnv, t.TempDir())
 	in := payload{ToolName: "Edit"}
 	in.ToolInput.FilePath = file(t, "double.go", source)
 	in.ToolInput.NewString = "\t// multiply it by two\n\treturn v * 2"
@@ -43,8 +45,8 @@ func TestReviewEdit(t *testing.T) {
 	if len(findings) != 1 {
 		t.Fatalf("want one finding, got %d", len(findings))
 	}
-	if !strings.Contains(findings[0].reason, "restates what the code") {
-		t.Fatalf("unexpected reason: %s", findings[0].reason)
+	if !strings.Contains(findings[0].Reason, "restates what the code") {
+		t.Fatalf("unexpected reason: %s", findings[0].Reason)
 	}
 }
 
@@ -53,7 +55,7 @@ func TestReviewEdit(t *testing.T) {
 // and only the copy the edit inserted a comment into is this write's.
 func TestReviewCreditsOnlyWhatChanged(t *testing.T) {
 	skipWithoutRuntime(t)
-	t.Setenv(memoryEnv, t.TempDir())
+	t.Setenv(session.MemoryEnv, t.TempDir())
 
 	const both = `package p
 
@@ -74,7 +76,7 @@ func second(v int) int {
 
 	if findings := review(in); len(findings) != 0 {
 		t.Fatalf("an edit that changed nothing claimed %d comments, at line %d",
-			len(findings), findings[0].line)
+			len(findings), findings[0].Line)
 	}
 }
 
@@ -99,9 +101,67 @@ func TestReviewFailsOpen(t *testing.T) {
 			var in payload
 			c.in(&in)
 			if findings := review(in); len(findings) != 0 {
-				t.Fatalf("want silence, got %q", findings[0].reason)
+				t.Fatalf("want silence, got %q", findings[0].Reason)
 			}
 		})
+	}
+}
+
+// A comment named once is not named again in the same session, however the
+// file moves under it. What the memory is and where it lives is
+// [session]'s; what is asserted here is that the command consults it.
+func TestReviewSilencesARepeat(t *testing.T) {
+	skipWithoutRuntime(t)
+	t.Setenv(session.MemoryEnv, t.TempDir())
+
+	in := payload{SessionID: "a-session", ToolName: "Write"}
+	in.ToolInput.FilePath = file(t, "double.go", source)
+	if findings := review(in); len(findings) != 1 {
+		t.Fatalf("want one finding on the first write, got %d", len(findings))
+	}
+	if findings := review(in); len(findings) != 0 {
+		t.Fatalf("want silence on the second, got %q", findings[0].Reason)
+	}
+}
+
+// The memory is per session and per comment, not per file: another session
+// hears it, and so does another comment in the same file.
+func TestReviewMemoryIsNarrow(t *testing.T) {
+	skipWithoutRuntime(t)
+	t.Setenv(session.MemoryEnv, t.TempDir())
+
+	path := file(t, "double.go", source)
+	first := payload{SessionID: "a-session", ToolName: "Write"}
+	first.ToolInput.FilePath = path
+	review(first)
+
+	second := payload{SessionID: "another-session", ToolName: "Write"}
+	second.ToolInput.FilePath = path
+	if findings := review(second); len(findings) != 1 {
+		t.Fatalf("another session should hear it, got %d findings", len(findings))
+	}
+
+	moved := strings.Replace(source, "// multiply it by two", "// close the connection", 1)
+	if err := os.WriteFile(path, []byte(moved), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if findings := review(first); len(findings) != 1 {
+		t.Fatalf("a different comment should be heard, got %d findings", len(findings))
+	}
+}
+
+// Nothing is remembered when the store is switched off.
+func TestReviewMemoryOff(t *testing.T) {
+	skipWithoutRuntime(t)
+	t.Setenv(session.MemoryEnv, "")
+
+	in := payload{SessionID: "a-session", ToolName: "Write"}
+	in.ToolInput.FilePath = file(t, "double.go", source)
+	if findings := review(in); len(findings) != 1 {
+		t.Fatalf("want one finding, got %d", len(findings))
+	}
+	if findings := review(in); len(findings) != 1 {
+		t.Fatalf("want the same finding again, got %d", len(findings))
 	}
 }
 

@@ -3,6 +3,22 @@
 A Claude Code `PostToolUse` hook that reads the comments a write just added and says which of them belong somewhere
 else: in the commit message, in a test, or nowhere.
 
+## TL;DR
+
+**Why.** An agent writes comments that read fine today and mislead after the next commit: notes about what changed,
+restatements of the line below, prose walking through what a test should have asserted. Nobody re-checks a comment, so
+they rot in place and the next reader believes them. slopguard reads every comment a write adds and names the ones whose
+claim belongs elsewhere, at the moment it is cheapest to move. It objects and never blocks.
+
+**How.**
+
+```sh
+brew install mikluko/tap/slopguard
+```
+
+Then add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and restart the
+session.
+
 ## Why
 
 An agent writes comments the way it writes prose, and most of them decay. A line saying *we now use the pooled client*

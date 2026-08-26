@@ -58,6 +58,13 @@ type finding struct {
 // them costs a forward pass per sentence and changes nothing.
 const examined = 64
 
+// parsedBytes bounds what the commented-out-code rule will hand to a parser.
+// The cost is linear in the bytes and the constant is the grammar's error
+// recovery over prose, which is about seven microseconds a byte, so the bound
+// is what keeps a pathological comment from holding the hook: 16 KB is 0.1
+// seconds where 1.75 MB was 14.7.
+const parsedBytes = 16 << 10
+
 // comment is a run of comment nodes that reads as one piece of prose: a block
 // comment, or the consecutive single-line comments above a declaration.
 type comment struct {
@@ -288,6 +295,14 @@ func leftover(c comment, lang *language, src []byte) bool {
 	// The newline is not cosmetic: some grammars, Dockerfile's among them,
 	// require a line ending and report a MISSING node without one, which reads
 	// as a broken parse and stops this rule before it starts.
+	// Parsing prose as source runs the grammar's error recovery over every byte
+	// of it, at roughly seven microseconds each, and a comment is not bounded
+	// by anything the way a file is. A 1.75 MB run of them held the hook for 23
+	// seconds. Nobody comments out this much in one run and then wants three
+	// lines of nudge back, so past the bound the rule declines.
+	if len(c.body) > parsedBytes {
+		return false
+	}
 	body := dedent(c.body) + "\n"
 	if lang.wrapper != nil {
 		// A run of commented-out lines is usually cut out of a larger block, so
@@ -593,8 +608,11 @@ func blank(src []byte, lang *language) []byte {
 		// one anywhere in the file gets paired with it and every comment
 		// between them is erased. An action does not span a blank line, so one
 		// inside the pair means this `{{` was text.
-		if bytes.Contains(out[i:i+end], []byte("\n\n")) {
-			i++
+		if at := bytes.Index(out[i:i+end], []byte("\n\n")); at >= 0 {
+			// Past the blank line, not one byte on: no `{{` before it can pair
+			// with that `}}` either, and advancing singly re-scans to the end
+			// of the file for every one of them.
+			i += at + 2
 			continue
 		}
 		for k := i; k < i+end+2; k++ {
@@ -633,20 +651,43 @@ type found struct {
 
 // collect returns the comment nodes of a tree in document order, each carrying
 // whether it sits inside a function body.
-func collect(node *tree_sitter.Node, lang *language, buried bool) []found {
-	if lang.comments[node.Kind()] || (lang.docstrings && docstring(node)) {
-		return []found{{node: node, buried: buried}}
-	}
-	buried = buried || lang.functions[node.Kind()]
+//
+// The walk is a cursor rather than an index. tree-sitter answers Child(i) by
+// counting from the first child, so a loop over the children of one node is
+// quadratic in how many it has, and a file whose top level is forty thousand
+// comment lines is exactly that shape.
+func collect(root *tree_sitter.Node, lang *language, buried bool) []found {
+	cursor := root.Walk()
+	defer cursor.Close()
 	var out []found
-	for i := uint(0); i < node.ChildCount(); i++ {
-		out = append(out, collect(node.Child(i), lang, buried)...)
+	// depths[i] is whether the node at depth i+1 was inside a function body,
+	// carried down so that the answer is never asked for on the way back up.
+	depths := []bool{buried}
+	for {
+		node := cursor.Node()
+		inside := depths[len(depths)-1]
+		if lang.comments[node.Kind()] || (lang.docstrings && docstring(node)) {
+			out = append(out, found{node: node, buried: inside})
+		} else if cursor.GotoFirstChild() {
+			depths = append(depths, inside || lang.functions[node.Kind()])
+			continue
+		}
+		for !cursor.GotoNextSibling() {
+			if !cursor.GotoParent() {
+				return out
+			}
+			depths = depths[:len(depths)-1]
+		}
 	}
-	return out
 }
 
 // group merges the single-line comments of one run into a single comment, so
 // that a doc comment written as four `//` lines is judged as one piece of prose.
+//
+// A comment sharing a line with code is never merged. Each one is a note about
+// its own line, and a constant table's column of them is not one comment: forty
+// trailing notes in the same column read as a single comment of forty
+// sentences, which the length rule then has something to say about.
 func group(root *tree_sitter.Node, nodes []found, src []byte) []comment {
 	var out []comment
 	// Everything before this byte is whitespace and comments, so a comment
@@ -660,27 +701,53 @@ func group(root *tree_sitter.Node, nodes []found, src []byte) []comment {
 		if opens {
 			heading = f.node.EndByte()
 		}
-		if n := len(out); n > 0 && adjacent(out[n-1].nodes[len(out[n-1].nodes)-1], f.node) {
+		trailing := after(f.node, src)
+		if n := len(out); n > 0 && !trailing && !out[n-1].trailing &&
+			adjacent(out[n-1].nodes[len(out[n-1].nodes)-1], f.node) {
 			out[n-1].nodes = append(out[n-1].nodes, f.node)
 			out[n-1].raw = append(out[n-1].raw, raw)
-			out[n-1].text = join(out[n-1].text, prose(raw))
-			out[n-1].body += "\n" + body(raw)
 			continue
 		}
 		out = append(out, comment{
 			nodes:    []*tree_sitter.Node{f.node},
 			raw:      []string{raw},
-			text:     prose(raw),
-			body:     body(raw),
 			line:     f.node.StartPosition().Row + 1,
 			doc:      docstring(f.node),
 			buried:   f.buried,
-			trailing: after(f.node, src),
+			trailing: trailing,
 			heads:    opens,
 			root:     root,
 		})
 	}
+	// The prose is built once a run is closed rather than extended line by
+	// line: appending to a string per line copies the run so far each time,
+	// which is quadratic in a run's length and is what a file of forty thousand
+	// stacked comment lines costs.
+	for i := range out {
+		out[i].text, out[i].body = joined(out[i].raw)
+	}
 	return out
+}
+
+// joined returns a run's prose on one line and its body with the line breaks
+// kept, from the raw text of each of its lines.
+func joined(raw []string) (string, string) {
+	var prosed, bodied strings.Builder
+	for i, line := range raw {
+		if piece := prose(line); piece != "" {
+			if prosed.Len() > 0 {
+				prosed.WriteByte(' ')
+			}
+			prosed.WriteString(piece)
+		}
+		if i > 0 {
+			bodied.WriteByte('\n')
+		}
+		// body, not indented: one entry of a run is a whole block comment where
+		// the language has them, and its own line breaks have to survive.
+		bodied.WriteString(body(line))
+	}
+	return prosed.String(), bodied.String()
 }
 
 // clean reports whether the bytes between two offsets are all whitespace.

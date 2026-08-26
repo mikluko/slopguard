@@ -1,0 +1,54 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: vet
+        run: go vet ./...
+
+      # ONNX Runtime is dlopen'd at run time, so the two environments where it
+      # is missing are the ones a user is most likely to hit first. The model
+      # tests skip there rather than failing, and the structural rules must
+      # still pass.
+      - name: test without the model
+        run: SLOPGUARD_NO_MODEL=1 go test ./...
+
+      - name: test with no library to load
+        run: SLOPGUARD_ONNXRUNTIME_LIBRARY=/nonexistent go test ./...
+
+      - name: install ONNX Runtime
+        run: |
+          version=1.20.1
+          curl -sL -o ort.tgz \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${version}/onnxruntime-linux-x64-${version}.tgz"
+          tar xzf ort.tgz
+          echo "SLOPGUARD_ONNXRUNTIME_LIBRARY=$PWD/onnxruntime-linux-x64-${version}/lib/libonnxruntime.so" >> "$GITHUB_ENV"
+
+      # The whole suite, which is also the check that assets/head.bin still
+      # matches the corpus it was fitted from: editing corpus.go or mined.go
+      # without `go test -run TestHeadAsset -update` fails here rather than
+      # shipping a binary that judges along a stale direction.
+      - name: test
+        run: go test ./...
+
+      # A tool that objects to comments has no business carrying the ones it
+      # objects to.
+      - name: judge its own source
+        run: |
+          go build -o slopguard .
+          found=$(./slopguard *.go)
+          test -z "$found" || { echo "$found"; exit 1; }

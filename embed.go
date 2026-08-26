@@ -186,9 +186,9 @@ func (e *embedder) embed(texts []string) ([][]float32, error) {
 // killed. No sentence worth reading survives past this many bytes anyway.
 //
 // It is set from what the tokenizer yields rather than from four bytes to a
-// token: at 1536 bytes the thinnest input measured still gives 214 ids against
-// a budget of 256, and the densest gives 834, while the worst case costs a
-// twentieth of what 4096 did. The quadratic is still there, bounded lower.
+// token: at 1536 bytes the thinnest input measured gives 321 ids against a
+// budget of 256, and the densest gives 1250, while the worst case costs about a
+// seventh of what 4096 did. The quadratic is still there, bounded lower.
 const budgetBytes = 1536
 
 // clip cuts text to [budgetBytes] on a rune boundary.

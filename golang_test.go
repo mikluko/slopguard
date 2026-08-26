@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // The commented-out-code rule reads a comment as source, and a tree-sitter
@@ -225,6 +226,29 @@ func TestLengthSpares(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Parsing prose as source runs the grammar's error recovery over every byte,
+// and a comment is bounded by nothing. A run of them held the hook for 23
+// seconds before the rule stopped reading past a bound.
+func TestHugeCommentRunIsBounded(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("package p\n\nfunc f() {\n")
+	for i := 0; i < 40000; i++ {
+		b.WriteString("\t// the quick brown fox jumps over the lazy dog and keeps going\n")
+	}
+	b.WriteString("\tprintln(1)\n}\n")
+	src := []byte(b.String())
+
+	done := make(chan int, 1)
+	go func() {
+		done <- len(scan(src, golang, []span{{start: 0, end: uint(len(src))}}))
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("scanning %d bytes of comment took longer than 5s", len(src))
+	}
 }
 
 // A comment sharing a line with code is a note about that code. The notation

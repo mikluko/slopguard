@@ -210,18 +210,35 @@ func sweepFiles(paths []string, verbose bool) {
 // quoted returns the comment at a one-based line and the first line of code
 // under it, for a sweep being read by someone deciding whether the finding is
 // right. It returns nothing when the sweep is not printing them.
+//
+// A comment several lines long is reported at its first line, so the line after
+// that one is usually still the comment. What the reader came for is the code,
+// so the run is skipped by the marker it opens with.
 func quoted(lines [][]byte, at uint) []string {
 	if len(lines) == 0 || at == 0 || int(at) > len(lines) {
 		return nil
 	}
-	out := []string{printable(strings.TrimSpace(string(lines[at-1])))}
+	head := strings.TrimSpace(string(lines[at-1]))
+	out := []string{printable(head)}
 	for _, line := range lines[at:] {
-		if text := strings.TrimSpace(string(line)); text != "" {
-			out = append(out, printable(text))
-			break
+		text := strings.TrimSpace(string(line))
+		if text == "" || continues(head, text) {
+			continue
 		}
+		out = append(out, printable(text))
+		break
 	}
 	return out
+}
+
+// continues reports whether a line is more of the comment that another opens.
+func continues(head, text string) bool {
+	for _, marker := range []string{"///", "//!", "//", "#", "--", "*", "/*"} {
+		if strings.HasPrefix(head, marker) {
+			return strings.HasPrefix(text, marker) || strings.HasPrefix(text, "*")
+		}
+	}
+	return false
 }
 
 // written returns the byte ranges of src that this tool call authored: the

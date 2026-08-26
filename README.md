@@ -245,11 +245,11 @@ parsing; needing to is evidence rather than a disqualification.
 The directions are fitted at build time into `assets/head.bin`, three kilobytes,
 so an invocation embeds only the sentences in front of it. Re-embedding the
 corpus on every hook call was most of what a run used to cost: a write with
-nothing for the model to read now returns in about 5 ms warm, and one that
-reaches the model pays around 115 ms, most of it opening the ONNX session. The
-first call after a build is slower — the binary is 111 MB, since the model is
-embedded in it — and a cold one has been measured at 15 ms with no comments to
-read at all.
+nothing for the model to read now returns in single-digit to low-teens
+milliseconds, and one that reaches the model pays 115 to 145 ms, most of it
+opening the ONNX session. Both ends of those ranges were measured on this
+machine, warm, and the spread is what the measurement is worth. Most of the
+floor is process start: the binary is 111 MB, since the model is embedded in it.
 
 ## Known limits
 
@@ -293,8 +293,10 @@ read at all.
 - A comment run that opens with a licence line pardons every line stacked under
   it, because a run reads as one comment and any of its lines can carry the
   marker.
-- The classes are named `tautology` and `compat` everywhere the tests print
-  them, which is restatement and self-justification here.
+- The classes are named `tautology`, `echo` and `compat` everywhere the tests
+  and the sweep print them. `tautology` and `echo` are the model's reading of
+  restatement and the structural one, they carry the same wording, and this file
+  counts them together as restatement. `compat` is self-justification.
 
 ## Calibration
 
@@ -331,9 +333,9 @@ twice the shipped tilt, where `TestClear` reports 1 of 75.
 On a production Go service, 11 findings across 115 files of `internal`, `app`
 and `pkg`. On the Go standard library — `find . -name '*.go' -not -name
 '*_test.go' -not -path '*/testdata/*' -not -path '*/vendor/*'` under `GOROOT/src`,
-4065 files — 1041, of which 352 are length and 341 restatement. The largest
-class was a step comment inside a long function until the guards below landed;
-it is now the length of package-level documentation. On
+4065 files — 1420, of which 899 are restatement and 352 length. The largest
+class is a step comment inside a long function, which is the shape this tool is
+pointed at and the shape that library uses most. On
 9934 YAML files and 5313 Terraform files of an infrastructure repository, 32
 findings between them. On its own source, none.
 

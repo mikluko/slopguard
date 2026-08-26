@@ -265,6 +265,12 @@ var byExtension = map[string]*language{
 	".tpl":    yaml,
 	".gotmpl": yaml,
 	".tftpl":  yaml,
+	// A .j2 or a .tftpl is usually not YAML at all — a systemd unit, an nftables
+	// ruleset, redis.conf. It is read as YAML anyway because `#` opens a comment
+	// in all of them and the rule that runs here parses the comment's own text,
+	// not the file's. What keeps it honest is that a unit file's `# Description=`
+	// reads as a heading and `# description: the egress gateway` reads as prose,
+	// so neither becomes a finding. Measured across 114 such files: none did.
 	".j2":     yaml,
 	".tf":     hcl,
 	".tfvars": hcl,

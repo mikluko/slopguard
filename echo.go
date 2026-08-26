@@ -81,13 +81,13 @@ func echoes(c comment, src []byte) bool {
 	// since a doc comment sits above a declaration rather than inside a body; a
 	// Python docstring is inside the body it opens, so a one-line docstring over
 	// a one-line function was read as repeating it.
+	//
+	// What does not belong beside it is a test on what follows the line. The
+	// same test in [restates] accepts a comment, it does not turn one away, and
+	// read as a gate it takes the plainest case there is: four consecutive
+	// restatements of four trivial lines leave one finding, because only the
+	// last of them has nothing after it.
 	if c.doc {
-		return false
-	}
-	// A comment with more code after it in the block is summarising the run
-	// rather than reading back the first line of it — the guard [restates]
-	// already applies, missing here.
-	if !last(c.annotates) {
 		return false
 	}
 	// A comment beside code is a note about that line, and the words it shares
@@ -127,7 +127,7 @@ func echoes(c comment, src []byte) bool {
 // shared word there would lose the plainest case there is: "multiply it by two"
 // over `return v * 2`, which repeats the line in words rather than in symbols.
 func restates(c comment, src []byte) bool {
-	if c.annotates == nil || !oneLine(c.annotates) || c.trailing {
+	if c.annotates == nil || !oneLine(c.annotates) || c.trailing || c.doc {
 		return false
 	}
 	// A comment that goes on to say something else is not repeating the line,

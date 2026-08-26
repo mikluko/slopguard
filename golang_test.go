@@ -42,6 +42,8 @@ var goLeftovers = []struct {
 	{"conversion", "// int64(x)", false},
 	{"builtin length", "// len(b)", false},
 	{"builtin new", "// new(T)", false},
+	{"conversion to any", "// any(x)", false},
+	{"unsafe size", "// unsafe.Sizeof(x)", false},
 
 	{"disabled if", "// if initmap != nil {", true},
 	{"disabled assignment", "// cr  = buildReg(\"CR\")", true},
@@ -66,6 +68,7 @@ func TestGoLeftoverAtFileScope(t *testing.T) {
 		{"import", "// import \"fmt\""},
 		{"method", "// func (t *T) M() {\n//\tt.x = 1\n// }"},
 	} {
+		c := c
 		t.Run(c.name, func(t *testing.T) {
 			src := "package p\n\n" + c.body + "\n\nfunc g() {}\n"
 			found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
@@ -157,13 +160,35 @@ func TestNoticeIsAnchored(t *testing.T) {
 // there would have exempted nothing.
 func TestNoticeSkipsTheModel(t *testing.T) {
 	skipWithoutRuntime(t)
-	src := "package p\n\nfunc f() {\n" +
-		"\t// Copyright 2009 The Go Authors.\n" +
-		"\t// This file is kept for backwards compatibility.\n" +
-		"\tprintln(1)\n}\n"
+	src := "// Copyright 2009 The Go Authors.\n" +
+		"// This file is kept for backwards compatibility.\n" +
+		"package p\n"
 	for _, f := range scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}}) {
 		t.Errorf("nudged inside a licence notice: line %d %s %s", f.line, f.class, f.reason)
 	}
+}
+
+// A licence header inside a function body is a commented-out block that happens
+// to open with one. A run reads as one comment, so a marker on any of its lines
+// would otherwise pardon every line stacked under it.
+//
+// The pardon this closes is the one over prose. A commented-out block opening
+// with a marker is pardoned by something else — the marker line does not parse
+// as source, so the run does not either, and the rule declines before reaching
+// any of this.
+func TestNoticeIsNotABodyPardon(t *testing.T) {
+	long := "One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven."
+	src := "package p\n\nfunc f() {\n" +
+		"\t// Copyright 2009 The Go Authors.\n" +
+		"\t// " + long + "\n" +
+		"\tprintln(1)\n}\n"
+	found := scan([]byte(src), golang, []span{{start: 0, end: uint(len(src))}})
+	for _, f := range found {
+		if f.class == "length" {
+			return
+		}
+	}
+	t.Errorf("a licence line inside a body pardoned the prose under it: %v", found)
 }
 
 // The length rule names three homes for a claim that will not fit: package

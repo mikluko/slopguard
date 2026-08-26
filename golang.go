@@ -30,6 +30,13 @@ func goLegal(statements []*tree_sitter.Node, body []byte) bool {
 			if !goAssignable(node.ChildByFieldName("left")) {
 				return false
 			}
+		case "package_clause":
+			// Only reachable from the file-scope pass, and only ever prose:
+			// "the package clause" is an English phrase that parses as one, and
+			// nothing in the standard library commented out a package clause on
+			// purpose. A file scope was opened for `func` and `import`, not for
+			// this.
+			return false
 		case "labeled_statement":
 			// `match:`, `cond:`, `result:`, `Have:`, `Cases:` — the shape a note
 			// takes when it labels what follows. Go puts a label on any
@@ -96,9 +103,12 @@ func goStatement(node *tree_sitter.Node, body []byte) bool {
 // built-ins themselves.
 var dropped = set(
 	"append", "cap", "complex", "imag", "len", "make", "max", "min", "new", "real",
-	"bool", "byte", "complex64", "complex128", "error", "float32", "float64",
+	"any", "bool", "byte", "complex64", "complex128", "error", "float32", "float64",
 	"int", "int8", "int16", "int32", "int64", "rune", "string",
 	"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+	// The callee text is the whole selector, so these match as spelled.
+	"unsafe.Add", "unsafe.Alignof", "unsafe.Offsetof", "unsafe.Sizeof",
+	"unsafe.Slice", "unsafe.SliceData", "unsafe.String", "unsafe.StringData",
 )
 
 // goAssignable reports whether the left side of an assignment is something Go

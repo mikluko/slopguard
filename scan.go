@@ -151,7 +151,11 @@ func weigh(candidates []comment, lang *language, src []byte) []finding {
 		// of both passes. Returning the zero verdict from [inspect] would not do
 		// it: that is the value meaning "the shape rules nothing out", and it is
 		// what puts a comment in front of the model.
-		if notice(c.body) {
+		// Not inside a function body: a run reads as one comment, so a marker
+		// opening any line of it pardons every line stacked under it, and a
+		// licence header buried in a body is a commented-out block that happens
+		// to start with one. Nothing legitimate puts a notice there.
+		if notice(c.body) && !c.buried {
 			continue
 		}
 		if verdicts[i] = inspect(c, lang, src); verdicts[i].reason == "" {

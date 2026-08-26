@@ -14,7 +14,9 @@ package corpus
 
 import (
 	"bufio"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -90,15 +92,27 @@ func (r Row) Rev() string {
 	return "HEAD"
 }
 
-// Load reads a corpus file, one JSON row per line.
+// Load reads a corpus file, one JSON row per line, gzipped where the name says
+// so. The compressed form is what the repository carries: the corpus is
+// evidence a measurement is checked against, so it travels with the code, and
+// JSONL of this shape compresses by about a factor of ten.
 func Load(path string) ([]Row, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
+	var source io.Reader = file
+	if strings.HasSuffix(path, ".gz") {
+		unzipped, err := gzip.NewReader(file)
+		if err != nil {
+			return nil, err
+		}
+		defer unzipped.Close()
+		source = unzipped
+	}
 	var rows []Row
-	reader := bufio.NewScanner(file)
+	reader := bufio.NewScanner(source)
 	reader.Buffer(make([]byte, 0, 1<<20), 1<<22)
 	for reader.Scan() {
 		line := reader.Bytes()

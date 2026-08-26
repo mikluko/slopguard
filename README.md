@@ -16,14 +16,29 @@ line 3  padded documentation: cut "This function takes a value and returns a val
 line 7  restates what the code already says: the line below is the documentation
 ```
 
-**How.**
+**Try it on a repository, wiring nothing.** Given paths instead of a hook payload it judges those files and prints what
+it finds, one finding per line:
 
 ```sh
 brew install mikluko/tap/slopguard
+cd <a repo>
+git ls-files -z | xargs -0 slopguard -v
 ```
 
-Then add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and restart the
-session.
+`-v` prints each comment with the line under it, which is what you need in order to say whether a finding is right:
+
+```
+internal/store/lifecycle_test.go:63	echo	0.950	restates what the code already says: the line below is the documentation
+	| // Reason/until are postponed-only.
+	| {name: "ready with reason", from: Item{Status: str(StatusDraft)}, status: StatusReady, ...},
+```
+
+A file in a language it does not read produces nothing, so passing the whole index is safe. The sweep writes nothing and
+remembers nothing; it is the same judgment the hook makes, without the hook. For scale, the Go standard library gives
+1034 findings over 4,065 files, most of them step comments inside long functions.
+
+**Wire it.** Add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and
+restart the session.
 
 ## Why this is not a lint rule
 

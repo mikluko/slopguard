@@ -585,6 +585,14 @@ func blank(src []byte, lang *language) []byte {
 		if end < 0 {
 			break
 		}
+		// A `{{` somebody wrote in prose has no closer of its own, so the next
+		// one anywhere in the file gets paired with it and every comment
+		// between them is erased. An action does not span a blank line, so one
+		// inside the pair means this `{{` was text.
+		if bytes.Contains(out[i:i+end], []byte("\n\n")) {
+			i++
+			continue
+		}
 		for k := i; k < i+end+2; k++ {
 			if out[k] != '\n' {
 				out[k] = ' '

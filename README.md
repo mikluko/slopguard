@@ -337,6 +337,15 @@ disagree. Refit with `go test -run TestHeadAsset -update`.
 go test ./...
 ```
 
+Given file paths instead of a payload, the tool judges those files and prints
+what it finds, one finding per line. `-v` prints the comment and the line under
+it as well, which is what a sweep has to show before anyone can say whether it
+is right:
+
+```sh
+slopguard -v $(git ls-files '*.go')
+```
+
 The tables are the specification: `scan_test.go` for what fires per language,
 `semantic_test.go` for what the model must and must not recognise. A false
 positive or a missed comment is a row added there first.

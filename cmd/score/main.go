@@ -59,6 +59,26 @@ type verdict struct {
 	class string
 }
 
+// misses counts the rows that could not be scored, by why.
+//
+// The count is reported rather than merely subtracted. A corpus mined by one
+// build of the harvester and scored by another can fail to line up completely,
+// which reads as a clean run over nothing at all unless the reasons are printed
+// beside the total.
+type misses struct {
+	repo      int
+	blob      int
+	language  int
+	unmatched int
+}
+
+func (m misses) total() int { return m.repo + m.blob + m.language + m.unmatched }
+
+func (m misses) String() string {
+	return fmt.Sprintf("%d unreachable clone, %d missing blob, %d unknown language, %d no comment at the recorded line",
+		m.repo, m.blob, m.language, m.unmatched)
+}
+
 func run(corpusPath, clones string, sweep bool) error {
 	rows, err := corpus.Load(corpusPath)
 	if err != nil {
@@ -69,9 +89,15 @@ func run(corpusPath, clones string, sweep bool) error {
 		offsets = tilts
 	}
 
-	judged, missed, err := judge(rows, clones, offsets)
+	judged, lost, err := judge(rows, clones, offsets)
 	if err != nil {
 		return err
+	}
+	// A corpus mined before the harvester recorded line numbers scores nothing
+	// and looks like a clean run over an empty set, which is the one failure
+	// here that is invisible in the output.
+	if lost.unmatched == len(rows) {
+		return fmt.Errorf("no row matched a comment at its recorded line: %d rows, all unmatched — regrow the corpus with the current harvester", len(rows))
 	}
 
 	var deleted, survived int
@@ -83,8 +109,8 @@ func run(corpusPath, clones string, sweep bool) error {
 		}
 	}
 	fmt.Printf("# Baseline on the mined corpus\n\n")
-	fmt.Printf("%d rows scored: %d deleted, %d survived. %d rows could not be scored.\n\n",
-		deleted+survived, deleted, survived, missed)
+	fmt.Printf("%d rows scored: %d deleted, %d survived.\n\n%d rows could not be scored: %s.\n\n",
+		deleted+survived, deleted, survived, lost.total(), lost)
 	if deleted == 0 || survived == 0 {
 		return fmt.Errorf("a corpus with only one label cannot be scored")
 	}
@@ -109,8 +135,9 @@ func run(corpusPath, clones string, sweep bool) error {
 // The file is read and parsed once per offset set rather than once per offset:
 // the rules are re-run over the same candidates, which is where the cost is,
 // and re-reading the blob would add nothing but latency.
-func judge(rows []corpus.Row, clones string, offsets []float64) ([][]verdict, int, error) {
+func judge(rows []corpus.Row, clones string, offsets []float64) ([][]verdict, misses, error) {
 	out := make([][]verdict, len(offsets))
+	var lost misses
 	byRepo := map[string][]corpus.Row{}
 	for _, row := range rows {
 		byRepo[row.Repo] = append(byRepo[row.Repo], row)
@@ -121,12 +148,11 @@ func judge(rows []corpus.Row, clones string, offsets []float64) ([][]verdict, in
 	}
 	sort.Strings(names)
 
-	missed := 0
 	for _, name := range names {
 		dir := filepath.Join(clones, strings.ReplaceAll(name, "/", "_"))
 		store, err := corpus.OpenBlobs(dir)
 		if err != nil {
-			missed += len(byRepo[name])
+			lost.repo += len(byRepo[name])
 			continue
 		}
 		byFile := map[string][]corpus.Row{}
@@ -140,8 +166,7 @@ func judge(rows []corpus.Row, clones string, offsets []float64) ([][]verdict, in
 		sort.Strings(keys)
 		for _, key := range keys {
 			rev, path, _ := strings.Cut(key, "\x00")
-			found, gone := file(store, rev, path, byFile[key], offsets)
-			missed += gone
+			found := file(store, rev, path, byFile[key], offsets, &lost)
 			for i := range offsets {
 				out[i] = append(out[i], found[i]...)
 			}
@@ -149,19 +174,21 @@ func judge(rows []corpus.Row, clones string, offsets []float64) ([][]verdict, in
 		store.Close()
 		fmt.Fprintf(os.Stderr, "scored %s\n", name)
 	}
-	return out, missed, nil
+	return out, lost, nil
 }
 
 // file scores the rows belonging to one revision of one path.
-func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []float64) ([][]verdict, int) {
+func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []float64, lost *misses) [][]verdict {
 	out := make([][]verdict, len(offsets))
 	src, err := store.Read(rev + ":" + path)
 	if err != nil || len(src) == 0 {
-		return out, len(rows)
+		lost.blob += len(rows)
+		return out
 	}
 	language := lang.Lookup(path)
 	if language == nil {
-		return out, len(rows)
+		lost.language += len(rows)
+		return out
 	}
 	all, release := comment.ScanAll(src, language)
 	defer release()
@@ -179,8 +206,9 @@ func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []fl
 			candidates = append(candidates, one)
 		}
 	}
+	lost.unmatched += len(rows) - len(candidates)
 	if len(candidates) == 0 {
-		return out, len(rows)
+		return out
 	}
 
 	for i, offset := range offsets {
@@ -194,7 +222,7 @@ func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []fl
 			out[i] = append(out[i], verdict{row: row, fired: fired, class: finding.Class})
 		}
 	}
-	return out, len(rows) - len(candidates)
+	return out
 }
 
 // rates returns recall on the deleted rows and false-positive rate on the

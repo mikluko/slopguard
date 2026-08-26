@@ -63,6 +63,19 @@ func Judge(src []byte, language *lang.Language, added []comment.Span) []Finding 
 // outward, at a constraint enforced somewhere the reader cannot see, earns its
 // place there; only what the semantic pass recognises is nudged.
 func Weigh(candidates []comment.Comment, language *lang.Language, src []byte) []Finding {
+	return WeighAt(candidates, language, src, 0)
+}
+
+// WeighAt is [Weigh] with every semantic threshold moved by offset, which is
+// what a sweep varies to trace what the rules would catch and what they would
+// nudge at each tilt. A positive offset lowers the thresholds, so the classes
+// fire on more; the structural rules carry no threshold and do not move.
+//
+// It exists so that a calibration measures the pipeline rather than the model
+// underneath it. Sweeping [model.Judge] directly skips the structural gates
+// this function applies to a reading, and a curve traced that way describes
+// something the tool never does.
+func WeighAt(candidates []comment.Comment, language *lang.Language, src []byte, offset float64) []Finding {
 	verdicts := make([]verdict, len(candidates))
 	var pending []int
 	for i, c := range candidates {
@@ -90,7 +103,7 @@ func Weigh(candidates []comment.Comment, language *lang.Language, src []byte) []
 			if !candidates[i].Doc && candidates[i].Buried {
 				position = model.BuriedBias
 			}
-			bias[j] = model.Allowance(position, len(texts[j]))
+			bias[j] = model.Allowance(position, len(texts[j])) + offset
 		}
 		// What the model hands back is what it recognised. Turning that into a
 		// verdict is this layer's job, and the next few lines are why the two

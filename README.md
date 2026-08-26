@@ -281,8 +281,13 @@ floor is process start: the binary is 111 MB, since the model is embedded in it.
 - A step comment inside a long function — `// Sort edges.` over `sort.Sort(edges)`
   — is a finding here, and plenty of engineers would defend it as what makes a
   two-hundred-line routine readable. The rule this tool serves reads the urge to
-  write one as a signal the block wants to be a function. It fires only where
-  nothing follows the line in the block, which is where the reading holds.
+  write one as a signal the block wants to be a function. It fires wherever the
+  comment's words are already spelled by the line under it, whatever follows,
+  and on the Go standard library that is the largest class the tool has: 620 of
+  1363. A run of them restating four consecutive trivial lines is the shape the
+  rule is aimed at, and a gate on what follows the line reduces that run to one
+  finding, so there is no version of this that flags the run and spares the
+  banner.
 - The length rule fires only where its own instruction has a target: not on a
   file's own documentation, since that is already the first home it names, and
   not in a language with no function, since YAML and HCL have no symbol to

@@ -10,6 +10,12 @@ restatements of the line below, prose walking through what a test should have as
 they rot in place and the next reader believes them. slopguard reads every comment a write adds and names the ones whose
 claim belongs elsewhere, at the moment it is cheapest to move. It objects and never blocks.
 
+```
+line 3  padded documentation: cut "This function takes a value and returns a value.", which says nothing the
+        signature does not
+line 7  restates what the code already says: the line below is the documentation
+```
+
 **How.**
 
 ```sh
@@ -19,71 +25,38 @@ brew install mikluko/tap/slopguard
 Then add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and restart the
 session.
 
-## Why
+## Why this is not a lint rule
 
-An agent writes comments the way it writes prose, and most of them decay. A line saying *we now use the pooled client*
-parses only for a reader who saw the previous version, and that reader does not exist: the diff shipped with the commit
-message, where the sentence belonged. A line saying *increment the counter* over `n++` was never true of anything but
-the line below it. A walkthrough of how a function works is a test that was written as prose instead.
+None of it is about syntax. What separates `// the caller has already bounded v, so this cannot overflow` from
+`// multiply it by two` is what the sentence is doing, and the only way to tell is to read it. So slopguard reads it:
+tree-sitter finds the comments, and a sentence embedding model decides what each one is by how it compares against a
+corpus of comments that earned their place and a corpus of comments that did not.
 
-None of that is a lint rule, because none of it is about syntax. What separates
-`// the caller has already bounded v, so this cannot overflow` from `// multiply
-it by two` is what the sentence is doing, and the only way to tell is to read it. So slopguard reads it: tree-sitter
-finds the comments, and a sentence embedding model decides what each one is by how it compares against a corpus of
-comments that earned their place and a corpus of comments that did not.
-
-It objects and never blocks. `PostToolUse` fires after the write, the finding comes back as context, and what the agent
-does about it is the agent's business.
+`PostToolUse` fires after the write, the finding comes back as context, and what the agent does about it is the agent's
+business.
 
 ## What it says something about
 
-| Class              | What fires it                                           |
-|--------------------|---------------------------------------------------------|
-| restatement        | `// close the connection` above `conn.Close()`          |
-| self-justification | `// kept for backwards compatibility`                   |
-| commented-out code | a comment that parses as source the compiler would take |
-| length             | documentation running past eight sentences              |
+| Class              | What fires it                                                    |
+|--------------------|------------------------------------------------------------------|
+| restatement        | `// close the connection` above `conn.Close()`                   |
+| self-justification | `// kept for backwards compatibility`                            |
+| commented-out code | a comment that parses as source the compiler would take          |
+| padded documentation | a sentence past the first that says nothing the signature does |
 
 The first two are read by the model. The last two are structural, and so is half of restatement: a comment whose content
 words are already spelled by the identifiers on the line below it is a restatement on the evidence, with no model
 involved.
 
-A narration class was tried and dropped too, more cheaply than the one below. Its direction converged, but it fired once
-on the held-out set, never across three production repositories, and not on its own training sentence. A class that says
-almost nothing is carrying risk for nothing.
-
-## What it does not catch, and why
-
-A change-event explanation — `// we now use the pooled client`, `// this fixes
-the nil panic` — belongs in the commit message, and catching one was the original point of this tool. It is not in here,
-because it could not be made to work.
-
-The distinction is present in the embedding. Across twenty pairs stating one claim first as contract and then as change
-event, the change-event member projects further along the fitted direction in nineteen. But framing moves a sentence
-about a quarter as far as its subject does, so averaging a class of comments about unrelated subjects cancels the
-framing and leaves the topic:
-directions fitted from two disjoint halves agree at cos +0.32 for this class, against +0.575 for self-justification and
-+0.647 for restatement on the same split (`docs/history-class.md`). `TestStability` splits the current corpus
-differently and prints +0.59 and +0.69 for the two surviving classes; the class this argument killed is not in it to be
-printed. An L2 logistic head over the same vectors reaches the same +0.32 and no held-out threshold at even 0.70
-precision. Exemplars rewritten in the register real comments use get to 0.70 recall at 0.64 precision, and every false
-positive is a contract about state that changes over time — what the direction learns is *is about change*, not *its
-truth condition is in the past*.
-
-A phrase list is worse than nothing. `// returns every durable the consumer no
-longer runs` is a contract that spells a marker, and across 33 files of a production service every one of the seven
-findings a phrase list produced was that shape.
-
-So the tool says nothing about change-event comments rather than guessing at them. The labelled examples are kept in
-`heldout_test.go` for whatever tries next, and the full diagnosis — three hypotheses, the numbers that refuted each, and
-the two things worth trying — is in `docs/history-class.md`.
+Change-event comments — `// we now use the pooled client` — were the original point of this tool and are not in it,
+because the class could not be made to work. [docs/limits.md](docs/limits.md) says what was tried.
 
 ## What it leaves alone
 
 Everything that states a contract. A precondition, an invariant, a failure mode, a cost the signature cannot show, a
-constraint enforced somewhere the reader cannot see, a reason a non-obvious choice was made. The negative corpus is
-drawn from the Go standard library, the DOOM sources and Django, plus the register of Kubernetes and Terraform
-configuration, and it includes the hard cases:
+constraint enforced somewhere the reader cannot see, a reason a non-obvious choice was made. The negative corpus is drawn
+from the Go standard library, the DOOM sources and Django, plus the register of Kubernetes and Terraform configuration,
+and it includes the hard cases:
 
 ```
 the stop method is no longer necessary to help the garbage collector
@@ -94,16 +67,14 @@ returns every durable the consumer no longer runs
 All three spell a change-event marker and all three are contracts. A phrase list flags every one of them, which is why
 there is a model here at all.
 
-Machine-readable comments are skipped outright: shebangs, build constraints,
-`//go:generate`, `//nolint`, `// Deprecated:`, `# noqa`, `# type:`,
-`// eslint-disable`, and their neighbours.
+Machine-readable comments are skipped outright: shebangs, build constraints, `//go:generate`, `//nolint`,
+`// Deprecated:`, `# noqa`, `# type:`, `// eslint-disable`, and their neighbours.
 
-A licence notice is exempt from every rule. Some of them ask in their own text to be preserved, and the length rule was
-nudging an agent to shorten the FreeBSD libm headers the Go standard library carries.
+A licence notice is exempt from every rule. Some of them ask in their own text to be preserved.
 
 A comment sharing a line with code is exempt from the rules that read it against that line. The words it shares with the
-line are what the note is about rather than evidence it repeats one, and the notation those notes use is the notation
-the commented-out-code rule would otherwise read as source:
+line are what the note is about rather than evidence it repeats one, and the notation those notes use is the notation the
+commented-out-code rule would otherwise read as source:
 
 ```
 num -= old.cap - old.len // preserve memory of old[old.len:old.cap]
@@ -115,18 +86,14 @@ The cost is `i++ // increment i`, which nothing else here catches.
 
 ## Languages
 
-Go, Python, JavaScript, TypeScript, TSX, Rust, C, C++, Java, Ruby, PHP, shell, YAML and Terraform. A file nothing here
-reads produces nothing, and so does a file that fails to parse — a broken tree is not evidence of a comment.
+Go, Python, JavaScript, TypeScript, TSX, Rust, C, C++, Java, Ruby, PHP, shell, YAML and Terraform, plus `Dockerfile`,
+`Containerfile` and `Makefile` by name rather than by extension. A file nothing here reads produces nothing, and so does
+a file that fails to parse — a broken tree is not evidence of a comment.
 
-YAML is judged as configuration: a stacked comment that parses as a mapping or a sequence is config left behind. Helm
-templates are read as the YAML they become — template actions are blanked to spaces of the same width before the parse,
-so a manifest opening with `{{- if }}` keeps its comments and its byte offsets. A
-`.tpl` file is deliberately not mapped: those are mostly `{{ define }}` bodies, and calling them YAML would be a false
-claim of coverage.
-
-`Dockerfile`, `Containerfile` and `Makefile` are read too, by name rather than by extension. A commented-out Dockerfile
-instruction is told from prose by its case: every Dockerfile writes `RUN` and `COPY` in capitals, and no comment writes
-prose that way, which matters because `# copy the buffer first` parses as a perfectly good `COPY`.
+Two languages are read as something other than themselves. Helm templates are read as the YAML they become, so a manifest
+opening with `{{- if }}` keeps its comments; a `.tpl` file is deliberately not mapped, since those are mostly
+`{{ define }}` bodies and calling them YAML would be a false claim of coverage. A commented-out Dockerfile instruction is
+told from prose by its case, because `# copy the buffer first` parses as a perfectly good `COPY`.
 
 ## Install
 
@@ -187,10 +154,9 @@ It loads a native library into its own process and is not a sandbox.
 Reads the hook payload on stdin, writes a `PostToolUse` result on stdout, always exits 0. A write it does not object to
 produces no output at all.
 
-It fails open. A payload it cannot decode, a tool other than `Write`, `Edit` or
-`MultiEdit`, an extension with no grammar, a file that is gone or is not a regular file or is over 2 MB, replacement
-text it cannot locate in the file, and a source that does not parse all yield silence, because none of them is evidence
-of a comment.
+It fails open. A payload it cannot decode, a tool other than `Write`, `Edit` or `MultiEdit`, an extension with no
+grammar, a file that is gone or is not a regular file or is over 2 MB, replacement text it cannot locate in the file, and
+a source that does not parse all yield silence, because none of them is evidence of a comment.
 
 Without ONNX Runtime it does not go silent, it goes stupid: the structural rules still run, and a phrase list stands in
 for the one model class it can approximate. That fallback judges differently from the model in both directions, and
@@ -208,137 +174,23 @@ A finding names the line and the rule, at most three per write, strongest first:
 }
 ```
 
-## How the judgment works
+A write with nothing for the model to read returns in single-digit to low-teens milliseconds; one that reaches the model
+pays 115 to 145 ms, most of it opening the ONNX session.
 
-Each comment is cut into sentences, and each sentence is embedded with all-MiniLM-L6-v2 (see `assets/PROVENANCE`). Each
-class owns a direction —
-`unit(centroid(class) - centroid(contract))`, fitted from the labelled corpus — and a sentence fires the class whose
-score along that direction clears its threshold by the most.
+## Limits
 
-Listing exemplars and taking the nearest was tried first and does not generalise: on comments from repositories that
-took no part in tuning it nudged prose seven times, missed every change-event comment, caught 3 of 30 restatements, and
-every false positive outscored every true positive. A set of exemplars is a set of points, and the thing being
-recognised is a direction.
-
-Sitting inside a function body lowers the threshold and moves nothing else. Prose is harder to justify there, but a line
-pointing at a constraint enforced elsewhere still earns its place.
-
-The commented-out-code rule reads a comment as source, which asks more of a parser than a parser gives. A tree-sitter
-grammar is context-free and Go is not, so `f == g` and `y0(x) = 1/sqrt(pi) * ...` both parse cleanly and neither is
-something the compiler would take. Three shapes the grammar admits and the language refuses rule a fragment out: an
-expression statement that is not a call or a receive, an assignment to something not assignable, and a leading label.
-
-The fragment is parsed in statement position rather than at file scope, which is where code gets commented out from, and
-the two parse by different rules —
-`fmt.Println("x")` is a conversion at file scope and a call inside a function. A run cut out of a larger block leaves
-braces open, so they are closed before parsing; needing to is evidence rather than a disqualification.
-
-The directions are fitted at build time into `assets/head.bin`, three kilobytes, so an invocation embeds only the
-sentences in front of it. Re-embedding the corpus on every hook call was most of what a run used to cost: a write with
-nothing for the model to read now returns in single-digit to low-teens milliseconds, and one that reaches the model pays
-115 to 145 ms, most of it opening the ONNX session. Both ends of those ranges were measured on this machine, warm, and
-the spread is what the measurement is worth. Most of the floor is process start: the binary is 111 MB, since the model
-is embedded in it.
-
-## Known limits
-
-- Change-event comments, as above.
-- A five-word fragment carries too little for an embedding to place.
-- `Jenkinsfile` and other Groovy: no grammar wired.
 - Recall is modest by construction: held out, restatement reaches about half and self-justification a quarter, at the
-  precision the thresholds are fitted for. A comment this tool passes over is not a comment it approves of.
-- A commented block indented under a key whose value is an empty collection is documentation, not residue:
-  `podSecurityContext: {}` over `# fsGroup: 2000` is how a chart shows what a setting takes, and it is read that way
-  whatever the file is called. A commented option under a key that already has values is still reported, which on a
-  stock `helm create` scaffold is two findings.
-- A finding is remembered when it is named, not when it is acted on. Ignoring a nudge silences it for the rest of the
-  session, rewording earns a fresh one, and deleting the line goes quiet. The cheapest paths to silence are still ignore
-  and delete; the wording argues against both, and nothing enforces it.
-- The same replacement text occurring twice in a file is claimed twice. Only the bytes an edit changed are attributed to
-  it, but where those bytes appear more than once there is nothing in the payload that tells the copies apart.
-- An equation whose left side is a plain identifier is legal Go and is still read as code: `// EM = 0x00 || 0x02 || PS`,
-  `// U_n = PRF(password, U_(n-1))`. Separating those from a switched-off assignment needs the identifiers resolved
-  against the file, since these resolve to nothing in it.
-- The legality check that rules the rest of that family out is wired for Go alone. Every other language still decides on
-  a bare parse plus a lexical prefilter, which is what all of them did before any was measured.
-- A step comment inside a long function — `// Sort edges.` over `sort.Sort(edges)`
-  — is a finding here, and plenty of engineers would defend it as what makes a two-hundred-line routine readable. The
-  rule this tool serves reads the urge to write one as a signal the block wants to be a function. It fires wherever the
-  comment's words are already spelled by the line under it, whatever follows, and on the Go standard library that is the
-  largest class the tool has: 620 of
-    1363. A run of them restating four consecutive trivial lines is the shape the rule is aimed at, and a gate on what
-          follows the line reduces that run to one finding, so there is no version of this that flags the run and spares
-          the banner.
-- The length rule fires only where its own instruction has a target: not on a file's own documentation, since that is
-  already the first home it names, and not in a language with no function, since YAML and HCL have no symbol to document
-  and no test to move a claim into. Where it does fire on configuration, it is generated files it reaches most.
-- Generated files are not skipped. A `//go:generate` marker is, but a table generated without one —
-  `syscall/zsysnum_*.go` — is read like anything else.
-- A comment run that opens with a licence line pardons every line stacked under it, because a run reads as one comment
-  and any of its lines can carry the marker.
-- A contract stated in the words of its own signature reads as padding when several of them stand together.
-  `java.time.zone.ZoneOffsetTransitionRule`
-  documents three enum constants in parallel — "The STANDARD type uses the standard offset" — over a method whose
-  parameters are `standardOffset` and
-  `wallOffset`, so every word is one the declaration spells. Two findings in 15,605 JDK files, and the shape has no tell
-  beyond being right.
-- Rust documentation never reaches the padding rule. tree-sitter-rust ends a
-  `line_comment` on the row after it starts, so a `///` run is never grouped and 87,016 of 91,667 Rust comments arrive
-  as one sentence, which the rule declines. A sweep reporting nothing on Rust is reporting that the rule did not run.
-- Implementation narrative is not caught, and three mechanisms aimed at it were built and reverted.
-  `docs/narrative-class.md` has the measurements.
-- The classes are named `tautology`, `echo` and `compat` everywhere the tests and the sweep print them. `tautology` and
-  `echo` are the model's reading of restatement and the structural one, they carry the same wording, and this file
-  counts them together as restatement. `compat` is self-justification.
+  precision the thresholds are fitted for. **A comment this tool passes over is not a comment it approves of.**
+- Change-event comments are not caught. Neither is implementation narrative.
+- A step comment inside a long function is a finding, and plenty of engineers would defend it. On the Go standard library
+  that is the largest class the tool has, 623 of 1034.
+- Rust documentation never reaches the padding rule, so a sweep reporting nothing on Rust is reporting that the rule did
+  not run.
+- A finding is remembered when it is named, not when it is acted on: ignoring a nudge silences it for the session.
+- Generated files are not skipped unless they carry a `//go:generate` marker.
 
-## Calibration
-
-Thresholds are fitted, not chosen. Each class gets the lowest score at which it still fires at 0.85 precision on the
-fitting corpus — over everything above the cut, and among the examples within 0.02 of it, since cumulative precision
-alone lets a clean top of the ranking buy slack that is spent entirely at the margin.
-
-Both numbers are measured rather than picked. `go test -v -run TestCalibrate`
-fits at required precisions from 0.70 to 0.95, and `-run TestWindow` at margin widths from 0 to 0.08; each reports what
-that choice costs on comments the fit never saw. Nothing below 0.85 nudges held-out prose that was right either, so what
-picks 0.85 is the other side: at 0.95 the self-justification class stops firing at all and two more comments go unnudged
-for nothing. The margin band from 0.01 to 0.02 nudges no held-out prose and still reaches the most true positives; at 0
-it reaches five wrong.
-
-The corpus is in `corpus.go` (hand-written) and `mined.go` (harvested and labelled). Half of the harvest fits; the other
-half is held out in
-`heldout_test.go` and nothing fits from it. `go test -v -run TestHeldOut` reports precision and recall per class against
-that half, and fails if the share of contract prose left alone drops.
-
-Measured on 98 held-out comments, each a single sentence: restatement at recall 0.53 and self-justification at 0.25,
-both at precision 1.0. Those two are per-sentence rates — a comment of several sentences takes the strongest verdict
-among them, so its recall is somewhat higher and is not measured here. Contract prose is left alone 75 of 75 above a
-declaration, 75 of 75 at the lower threshold a comment inside a function body meets, and 25 of 25 when those rows are
-read three to a comment, which is the unit a real doc comment arrives in. All three are asserted. The first row that
-costs a piece of contract prose is twice the shipped tilt, where `TestClear` reports 1 of 75.
-
-On a production Go service, 11 findings across 115 files of `internal`, `app`
-and `pkg`. On the Go standard library — `find . -name '*.go' -not -name
-'*_test.go' -not -path '*/testdata/*' -not -path '*/vendor/*'` under `GOROOT/src`, 4065 files — 1034: 872 restatement,
-142 commented-out code, 20 self-justification, and no padding at all. The largest class is a step comment inside a long
-function, which is the shape this tool is pointed at and the shape that library uses most. The rule that counted a
-comment's sentences used to add 332 findings here and is gone; what replaced it asks whether each sentence earns its
-place, and on that library none fails. On 9934 YAML files and 5313 Terraform files of an infrastructure repository, 32
-findings between them. On its own source, none.
-
-The length rule is set against what documentation does rather than what a style guide says it should: `SLOPGUARD_CORPUS=<repos> go test -v -run
-TestLengthDistribution` counts sentences across a corpus, and in 90,000 comments from four repositories written on
-purpose, half are one sentence, 95% are four or fewer and 99% are eight or fewer. Against the Go standard library alone
-the same test gives 59%, 97% and 99%. Eight flags that last percent. The rule this tool exists to serve is stricter —
-one sentence, a second when it is earned — and enforcing it literally would flag one comment in five, which is a
-disagreement with the author rather than a finding.
-
-One caveat on the held-out numbers, because they are what decides whether this tool is worth running: the held-out half
-and the fitting half were split row by row within each source rather than by source, so comments from one file sit on
-both sides and the classes see the topics they are tested on. It is an upper bound, and the repository sweeps above are
-the group-disjoint check beside it.
-
-Editing the corpus changes every score, so `assets/head.bin` carries a fingerprint of the text it was fitted from and
-`go test` fails when the two disagree. Refit with `go test -run TestHeadAsset -update`.
+[docs/limits.md](docs/limits.md) has the rest, including the shapes it gets wrong and the classes that were tried and
+dropped.
 
 ## Development
 
@@ -354,20 +206,23 @@ right:
 slopguard -v $(git ls-files '*.go')
 ```
 
-The tables are the specification: `scan_test.go` for what fires per language,
-`semantic_test.go` for what the model must and must not recognise. A false positive or a missed comment is a row added
-there first.
+The tables are the specification: `internal/rule/rule_test.go` for what fires per language, with
+`internal/rule/python_test.go` and `internal/rule/yaml_test.go` beside it for the two languages whose prose parses, and
+`internal/model/semantic_test.go` for what the model must and must not recognise. A false positive or a missed comment is
+a row added there first.
 
 Tests that judge text skip when ONNX Runtime is absent; the parsing and structural tests run either way, so a checkout
 without it still exercises the language table, the commented-out-code rules and the identifier echo.
 
-`go test -v -run TestStability` reports how far each class's direction moves when it is fitted from one half of its own
-examples rather than the other. It fails below cos 0.45. That is the measurement the deleted change-event class failed
-at +0.32 while looking healthy from every other angle.
+`go test ./internal/model -v -run TestStability` reports how far each class's direction moves when it is fitted from one
+half of its own examples rather than the other. It fails below cos 0.45. That is the measurement the deleted change-event
+class failed at +0.32 while looking healthy from every other angle.
+
+[docs/design.md](docs/design.md) is how the judgment works and how the thresholds were fitted.
 
 ## License
 
 The source is MIT. The binary is not only the source: it embeds all-MiniLM-L6-v2, which is Apache 2.0, so every build
 redistributes Apache 2.0 material and carries that licence with it. The text is in
-`assets/LICENSE.apache-2.0` and `assets/PROVENANCE` is the notice, with the revision and the checksums to verify what
-was embedded.
+`internal/model/assets/LICENSE.apache-2.0` and `internal/model/assets/PROVENANCE` is the notice, with the revision and
+the checksums to verify what was embedded.

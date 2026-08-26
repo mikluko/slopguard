@@ -254,13 +254,22 @@ func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []fl
 	for _, row := range rows {
 		wanted[row.Line] = row
 	}
+	// Counted over the rows rather than over the comments matched: a trailing
+	// comment can share a start line with the one above it, so two candidates
+	// can answer for one row and a difference of lengths goes negative.
 	var candidates []comment.Comment
+	found := make(map[uint]bool, len(wanted))
 	for _, one := range all {
 		if _, ok := wanted[one.Line]; ok {
 			candidates = append(candidates, one)
+			found[one.Line] = true
 		}
 	}
-	lost.unmatched += len(rows) - len(candidates)
+	for _, row := range rows {
+		if !found[row.Line] {
+			lost.unmatched++
+		}
+	}
 	if len(candidates) == 0 {
 		return out
 	}

@@ -13,6 +13,14 @@ into a centroid.
 All numbers below are measured on the 114 held-out comments, fitted from the 271
 in `corpus.go` plus `mined.go`, unless stated otherwise.
 
+That corpus is the one this class was killed on, and it has grown since: the
+tests now fit from 220 and hold out 130, and the surviving classes score
+differently there. Nothing here is re-measured against it, deliberately. The
+argument is about a class that no longer exists, and re-running it would be
+fitting a direction from a corpus assembled after the decision. Read the rates
+below as the state that decided it, not as the tool's current numbers, which
+`go test -v -run TestHeldOut` prints.
+
 ## Baseline
 
 | class | labelled | fired | precision | recall |
@@ -169,7 +177,8 @@ all-MiniLM-L6-v2 embeddings by a single direction.
 
 `narrative` has a milder form of the same disease and is worth watching: its
 cross-fit agreement is +0.303, and its held-out precision of 1.000 rests on one
-firing.
+firing. It was dropped afterwards, for that reason and on those numbers, so the
+build carries two classes rather than the four this document weighs.
 
 What would be worth trying next, in rough order of cost: a model that encodes
 tense and reference rather than topic similarity (a natural-language-inference

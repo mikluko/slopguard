@@ -54,9 +54,12 @@ claim first as contract and then as change event, the change-event member
 projects further along the fitted direction in nineteen. But framing moves a
 sentence about a quarter as far as its subject does, so averaging a class of
 comments about unrelated subjects cancels the framing and leaves the topic:
-directions fitted from two disjoint halves of real comments agree at cos +0.32
-for this class, against +0.59 for self-justification and +0.69 for restatement.
-An L2 logistic head over the same vectors reaches the same +0.32 and no
+directions fitted from two disjoint halves agree at cos +0.32 for this class,
+against +0.575 for self-justification and +0.647 for restatement on the same split
+(`docs/history-class.md`). `TestStability` splits the current corpus differently
+and prints +0.59 and +0.69 for the two surviving classes; the class this
+argument killed is not in it to be printed. An L2 logistic head over the same
+vectors reaches the same +0.32 and no
 held-out threshold at even 0.70 precision. Exemplars rewritten in the register
 real comments use get to 0.70 recall at 0.64 precision, and every false positive
 is a contract about state that changes over time — what the direction learns is
@@ -134,7 +137,7 @@ a perfectly good `COPY`.
 Not published yet, so build it:
 
 ```sh
-git clone <this repo> && cd slopguard && go build .
+git clone https://github.com/mikluko/slopguard && cd slopguard && go build .
 brew install onnxruntime
 ```
 
@@ -202,9 +205,9 @@ A finding names the line and the rule, at most three per write, strongest first:
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "slopguard read the comments this write added to internal/store.go.\n\n  line 42  restates what the code already says: the line below is the documentation\n\nTake each line with Edit on internal/store.go before the next step. …"
+    "additionalContext": "Edit store.go before your next step: these comments it just gained say things that belong elsewhere.\n\n  line 42  restates what the code already says: the line below is the documentation\n\nPer line: if the claim still binds the next editor, restate it as the symbol's contract or as a test. If it only records this change, cut it and carry it into the commit message. What is judged is where the claim lives, not which words carry it, so rewording is not a fix. If a line is right where it is, keep it and say so in one line."
   },
-  "systemMessage": "slopguard: 1 comment in internal/store.go to reconsider"
+  "systemMessage": "slopguard: 1 comment in store.go to reconsider"
 }
 ```
 
@@ -242,8 +245,11 @@ parsing; needing to is evidence rather than a disqualification.
 The directions are fitted at build time into `assets/head.bin`, three kilobytes,
 so an invocation embeds only the sentences in front of it. Re-embedding the
 corpus on every hook call was most of what a run used to cost: a write with
-nothing for the model to read now returns in about 5 ms, and one that reaches it
-pays about 90 ms for the ONNX session and 2 ms a sentence after that.
+nothing for the model to read now returns in about 5 ms warm, and one that
+reaches the model pays around 115 ms, most of it opening the ONNX session. The
+first call after a build is slower — the binary is 111 MB, since the model is
+embedded in it — and a cold one has been measured at 15 ms with no comments to
+read at all.
 
 ## Known limits
 
@@ -272,6 +278,23 @@ pays about 90 ms for the ONNX session and 2 ms a sentence after that.
 - The legality check that rules the rest of that family out is wired for Go
   alone. Every other language still decides on a bare parse plus a lexical
   prefilter, which is what all of them did before any was measured.
+- A step comment inside a long function — `// Sort edges.` over `sort.Sort(edges)`
+  — is a finding here, and plenty of engineers would defend it as what makes a
+  two-hundred-line routine readable. The rule this tool serves reads the urge to
+  write one as a signal the block wants to be a function. It fires only where
+  nothing follows the line in the block, which is where the reading holds.
+- The length rule fires only where its own instruction has a target: not on a
+  file's own documentation, since that is already the first home it names, and
+  not in a language with no function, since YAML and HCL have no symbol to
+  document and no test to move a claim into. Where it does fire on
+  configuration, it is generated files it reaches most.
+- Generated files are not skipped. A `//go:generate` marker is, but a table
+  generated without one — `syscall/zsysnum_*.go` — is read like anything else.
+- A comment run that opens with a licence line pardons every line stacked under
+  it, because a run reads as one comment and any of its lines can carry the
+  marker.
+- The classes are named `tautology` and `compat` everywhere the tests print
+  them, which is restatement and self-justification here.
 
 ## Calibration
 
@@ -306,17 +329,20 @@ All three are asserted. The first row that costs a piece of contract prose is
 twice the shipped tilt, where `TestClear` reports 1 of 75.
 
 On a production Go service, 11 findings across 115 files of `internal`, `app`
-and `pkg`. On the Go standard library, 3600 files and no test data, 1771: the
-largest class is a step comment inside a long function, which is the shape this
-tool is pointed at and the shape that library uses most. On
+and `pkg`. On the Go standard library — `find . -name '*.go' -not -name
+'*_test.go' -not -path '*/testdata/*' -not -path '*/vendor/*'` under `GOROOT/src`,
+4065 files — 1041, of which 352 are length and 341 restatement. The largest
+class was a step comment inside a long function until the guards below landed;
+it is now the length of package-level documentation. On
 9934 YAML files and 5313 Terraform files of an infrastructure repository, 32
 findings between them. On its own source, none.
 
 The length rule is set against what documentation does rather than what a style
-guide says it should: `go test -v -run TestLengthDistribution
-SLOPGUARD_CORPUS=<repos>` counts sentences across a corpus, and in 90,000
-comments from four repositories written on purpose, half are one sentence, 95%
-are four or fewer and 99% are eight or fewer. Eight flags that last percent. The
+guide says it should: `SLOPGUARD_CORPUS=<repos> go test -v -run
+TestLengthDistribution` counts sentences across a corpus, and in 90,000 comments
+from four repositories written on purpose, half are one sentence, 95% are four
+or fewer and 99% are eight or fewer. Against the Go standard library alone the
+same test gives 59%, 97% and 99%. Eight flags that last percent. The
 rule this tool exists to serve is stricter — one sentence, a second when it is
 earned — and enforcing it literally would flag one comment in five, which is a
 disagreement with the author rather than a finding.
@@ -361,4 +387,8 @@ failed at +0.32 while looking healthy from every other angle.
 
 ## License
 
-MIT
+The source is MIT. The binary is not only the source: it embeds
+all-MiniLM-L6-v2, which is Apache 2.0, so every build redistributes Apache 2.0
+material and carries that licence with it. The text is in
+`assets/LICENSE.apache-2.0` and `assets/PROVENANCE` is the notice, with the
+revision and the checksums to verify what was embedded.

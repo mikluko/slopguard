@@ -1,6 +1,7 @@
-The two artifacts in this directory are compiled into the binary with go:embed.
-Both are fetched from the Hugging Face repository Xenova/all-MiniLM-L6-v2 at
-revision 751bff37182d3f1213fa05d7196b954e230abad9.
+Two of the artifacts in this directory are fetched rather than built, and both
+are compiled into the binary with go:embed. They come from the Hugging Face
+repository Xenova/all-MiniLM-L6-v2 at revision
+751bff37182d3f1213fa05d7196b954e230abad9.
 
     model.onnx      onnx/model.onnx      90387606 bytes
                     sha256 759c3cd2b7fe7e93933ad23c4c9181b7396442a2ed746ec7c1d46192c469c46e
@@ -8,10 +9,17 @@ revision 751bff37182d3f1213fa05d7196b954e230abad9.
                     sha256 da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0
 
 That repository is an ONNX export of sentence-transformers/all-MiniLM-L6-v2,
-Apache 2.0, six layers and 384 dimensions, published at a 256-token inference
-cap. The float32 export is the one used: the int8 export is a quarter of the
-size, and what it costs in the cosine geometry the class floors are calibrated
-against has not been measured.
+six layers and 384 dimensions, published at a 256-token inference cap. The
+float32 export is the one used: the int8 export is a quarter of the size, and
+what it costs in the cosine geometry the class floors are calibrated against has
+not been measured.
+
+Both are licensed Apache 2.0, whose text is beside them in LICENSE.apache-2.0.
+Because they are embedded, every binary built from this repository redistributes
+Apache 2.0 material and carries that obligation with it: the licence has to
+travel with the artifact, which is section 4(a), and this file is the notice
+section 4(d) asks for. The tool's own source is MIT, and the two apply to
+different parts of the same binary.
 
 To verify:
 

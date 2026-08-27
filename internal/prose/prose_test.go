@@ -23,6 +23,15 @@ func TestStrip(t *testing.T) {
 		{"", ""},
 		{"//", ""},
 		{"no marker at all", "no marker at all"},
+		// The closing and opening lines of a block comment carry nothing but
+		// markers, and used to keep half of one: `*/` lost its star to the
+		// continuation marker and kept the slash, `/**` kept the star.
+		{"*/", ""},
+		{" */", ""},
+		{"**/", ""},
+		{"/**", ""},
+		{"/** a javadoc opener", "a javadoc opener"},
+		{" * a continuation ending the block */", "a continuation ending the block"},
 	} {
 		if got := Strip(c.line); got != c.want {
 			t.Errorf("Strip(%q) = %q, want %q", c.line, got, c.want)

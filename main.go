@@ -477,7 +477,7 @@ func report(name string, findings []rule.Finding, in payload) string {
 
 // summary is the line the human sees. It carries the lines rather than only
 // their number: the agent is being told to edit something on a signal that is
-// wrong about half the time, and the one party able to judge that was being
+// often wrong, and the one party able to judge that was being
 // handed a count it could not check against anything.
 func summary(name string, findings []rule.Finding) string {
 	at := make([]string, 0, len(findings))

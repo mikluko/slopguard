@@ -310,7 +310,9 @@ selected by a gate that reweighted the classes threefold. That `exposure` finall
 overlapped the classes was the third, where it was still a zero-error oracle over
 44% of the positives. That capping single-label repositories would help was the
 fourth, where it concentrated the corpus it was meant to spread. **The only claim
-that has held every round is that `echo` and `tautology` catch nothing.**
+that has held every round is that `echo` and `tautology` catch almost nothing:
+on the ninth corpus, measured alone, `echo` takes one and `tautology` none, and
+the one is a row `leftover` also takes.**
 
 The one-bit baselines must be re-run here before any is quoted. On earlier
 corpora `lines > 5`, `trailing`, a language prior and a `@`-prefix rule all beat
@@ -393,14 +395,14 @@ comment opens the arm or sits directly above the label — which removed 12 of 1
 findings on the Go standard library and 21 of 189 across the clones, at no cost
 in recall. Twenty of those twenty-one were a single Vue file; the twenty-first
 was jq's `/*create_pt_key();*/`, which is residue, and the exemption is wrong
-about it. It is wrong about three more, and for two different reasons rather than
-one. A comment at the *tail* of an arm has a case label as its next node just as
-a label comment does, and the two are the same shape in the tree, so structure
-cannot separate them — that covers `staticinit/sched.go:372` and nothing else.
-The other three, jq's included, are comments on an arm's *first* line, which the
-exemption spares deliberately and which happen here to be residue. Together they
-make it about 88% right, knowingly, and an earlier revision of this paragraph
-offered the tree-shape argument for all four when it covers one.
+about it. It is wrong about three more, and for two reasons in equal measure. A
+comment between arms has a case label on both sides just as a label comment does,
+and the tree cannot separate them: that covers `staticinit/sched.go:372` and the
+commented-out `case goimporterMagic:` arm. The other two, jq's included, are
+comments on an arm's *first* line, which the exemption spares deliberately and
+which happen here to be residue. Two per branch, about 88% right knowingly. An
+earlier revision offered the tree-shape argument for all four, and its correction
+then claimed it covered only one.
 
 The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not

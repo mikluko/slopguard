@@ -120,17 +120,17 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // grammar files a trailing comment beside the arms rather than inside one — Go
 // and TypeScript both do — it is the same tree shape as a label comment: a case
 // on either side of it. Two repairs were built and measured and both reverted.
-// Testing the previous sibling recovers one of the true positives below and
+// Testing the previous sibling recovers two of the true positives below and
 // brings twenty Vue false positives with it; testing the parent moves nothing.
 //
-// So this silences four findings that are residue: a `//dump(...)` at the tail
-// of an arm in `staticinit`, and — for the different reason that [opens] spares
-// an arm's first line — a commented-out `case goimporterMagic:` arm, a disabled
-// `if` block in `reflectlite`, and jq's `/*create_pt_key();*/`. Only the first is
-// the tail shape, so the tree-shape argument covers one of the four; the other
-// three are the first-line exemption working as written on comments that deserve
-// reporting. Four of the thirty-three findings this removes are residue, which
-// makes it about 88% right, and the alternative measured worse.
+// So this silences four findings that are residue, two per branch. This one
+// takes a `//dump(...)` at the tail of an arm in `staticinit` and a
+// commented-out `case goimporterMagic:` arm, both sitting between arms where the
+// tree cannot tell them from a label; [opens] takes a disabled `if` block in
+// `reflectlite` and jq's `/*create_pt_key();*/`, both on an arm's first line,
+// where the exemption is working as written on comments that deserve reporting.
+// Four of the thirty-three findings removed are residue, which makes this about
+// 88% right, and the alternative measured worse.
 func arm(c comment.Comment) bool {
 	if len(c.Nodes) == 0 {
 		return false
@@ -147,9 +147,13 @@ func arm(c comment.Comment) bool {
 
 // opens reports whether nothing but a case label precedes a comment in its arm.
 //
-// Four of the kinds in [labels] spell the matched expression as the arm's
-// `value`, so a comment whose only earlier sibling is that value opens the arm.
-// Six do not, and in those a comment on the arm's first line is not exempt:
+// Four of the eighteen kinds in [labels] spell the matched expression as the
+// arm's `value`, so a comment whose only earlier sibling is that value opens the
+// arm: `expression_case`, `switch_case`, `case_statement` and bash's `case_item`
+// — and bash's own `case_statement` is not one of them, since there `value` is
+// the subject being matched rather than an arm's label. The other fourteen do
+// not, so in those a comment on the arm's first line is not exempt. Six of them
+// are worth naming:
 // Go's `type_case` uses `type` and its `communication_case` `communication`;
 // Python's `case_clause` names only its body, as `consequence`, and gives the
 // pattern no field at all; Ruby's `when` uses `pattern` and `body`; Java's
@@ -158,8 +162,9 @@ func arm(c comment.Comment) bool {
 // succeeds and points at the wrong node.
 //
 // That is a gap rather than a design, and it errs toward reporting, which is the
-// safe direction. An earlier revision of this comment said "three do not" and
-// named `alternative` for Python, which is `if_statement`'s field.
+// safe direction. Two earlier revisions of this comment got the count wrong in
+// both directions and one named `alternative` for Python, which is
+// `if_statement`'s field.
 func opens(c comment.Comment, parent *tree_sitter.Node) bool {
 	previous := c.Nodes[0].PrevNamedSibling()
 	if previous == nil {

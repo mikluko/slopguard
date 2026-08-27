@@ -282,16 +282,19 @@ func inspectOnly(c comment.Comment, language *lang.Language, src []byte, only st
 
 // inspect runs the structural rules in precedence order.
 //
-// `echo` and `hollow` are behind [Wider], and default to off. Neither has ever
-// caught a comment anybody deleted, across nine versions of the mined corpus and
-// four definitions of its negative class, while `echo` supplies 172 findings on
+// `echo` and `hollow` are behind [Wider], and default to off. Measured alone on
+// the ninth corpus, `echo` catches one comment somebody deleted and nudges six,
+// and `hollow` catches and nudges nothing, while `echo` supplies 172 findings on
 // the Go standard library and `hollow` four across a JDK sweep of which all four
 // were read and all four were wrong. The file count that used to stand here
-// disagreed with docs/limits.md's for the same sweep, so neither is quoted.
+// disagreed with docs/limits.md's for the same sweep, so neither is quoted. The
+// one `echo` catch is a row `leftover` catches too, so it changes no default —
+// but this doc asserted for several rounds that neither class had ever caught
+// anything, which the scorer's own isolated table refuted on every run.
 //
 // The corpus cannot see what `echo` targets, and that is honestly argued: a
 // trivial comment bothers nobody, so nobody deletes it, and fifteen of the
-// twenty comments the two classes fire on there are trivial by Steidl's
+// twenty comments the four gated classes fire on there are trivial by Steidl's
 // criterion. What is measurable is the other side. On real code `echo` is right
 // about two thirds of the time and its false positives are section headings; on
 // a faithful port to the population Steidl actually validated, documentation

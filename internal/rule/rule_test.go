@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
 	"github.com/mikluko/slopguard/internal/comment"
 	"github.com/mikluko/slopguard/internal/model"
 )
@@ -324,49 +326,37 @@ func judged(want string) bool {
 	return model.Speaks(want)
 }
 
-// Every kind in [labels] is one a grammar in the table actually emits, and every
-// grammar that has switch arms has its kinds here.
+// Every kind in [labels] is one a grammar in the table actually emits.
 //
 // Neither invariant sweep touches most of these, so nothing measured them:
 // `case_expression` sat in the set for a round while no grammar emitted it, and
 // PHP's `default_statement` was missing for the same round, both invisible
-// because the mined corpus holds no PHP. The fixtures below reach the rule
-// through the real scanner, so a kind that is misspelled or gone from a grammar
-// fails here rather than silently exempting nothing.
+// because the mined corpus holds no PHP. A first version of this test asserted
+// the same sentence and checked four grammars on a first-match basis, so
+// `case_expression` and a kind spelled `totally_not_a_real_kind` both passed it.
+//
+// This one enumerates what the grammars emit and requires every label to be in
+// that set, so a misspelling fails whether or not any fixture reaches it.
 func TestEveryLabelIsAKindItsGrammarEmits(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		lang *language
-		src  string
-	}{
-		{"go expression case", golang, "package p\n\nfunc f(k int) {\n\tswitch k {\n\t// step(k)\n\tcase 1:\n\t\treport(k)\n\t}\n}\n"},
-		{"typescript switch case", typescript, "function f(k: number) {\n  switch (k) {\n    // step(k)\n    case 1:\n      report(k)\n  }\n}\n"},
-		{"python case clause", python, "def f(k):\n    match k:\n        # step(k)\n        case 1:\n            report(k)\n"},
-		{"rust match arm", rust, "fn f(k: i32) {\n    match k {\n        // step(k);\n        1 => report(k),\n        _ => (),\n    }\n}\n"},
+	emitted := map[string]bool{}
+	for _, language := range []*language{
+		golang, javascript, typescript, tsx, python, rust,
+		clang, cpp, java, php, ruby, bash,
 	} {
-		t.Run(c.name, func(t *testing.T) {
-			src := []byte(c.src)
-			candidates, release := comment.ScanAll(src, c.lang)
-			defer release()
-			if len(candidates) == 0 {
-				t.Fatal("the fixture yielded no comment, so it tests nothing")
+		grammar := tree_sitter.NewLanguage(language.Grammar())
+		for id := uint16(0); id < uint16(grammar.NodeKindCount()); id++ {
+			if grammar.NodeKindIsNamed(id) {
+				emitted[grammar.NodeKindForId(id)] = true
 			}
-			var seen []string
-			for _, one := range candidates {
-				if one.Annotates != nil {
-					seen = append(seen, one.Annotates.Kind())
-				}
-				if parent := one.Nodes[0].Parent(); parent != nil {
-					seen = append(seen, parent.Kind())
-				}
-			}
-			for _, kind := range seen {
-				if labels[kind] {
-					return
-				}
-			}
-			t.Fatalf("no kind around this comment is in labels; the grammar emits %q", seen)
-		})
+		}
+	}
+	if len(emitted) == 0 {
+		t.Fatal("no node kinds enumerated, so this asserts nothing")
+	}
+	for kind := range labels {
+		if !emitted[kind] {
+			t.Errorf("labels holds %q and no grammar in the table emits it", kind)
+		}
 	}
 }
 

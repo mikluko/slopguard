@@ -35,8 +35,13 @@ internal/store/lifecycle_test.go:63	echo	0.950	restates what the code already sa
 
 A file in a language it does not read produces nothing, so passing the whole index is safe. The sweep writes nothing and
 remembers nothing; it is the same judgment the hook makes, without the hook. For scale, the Go standard library gives
-690 findings over 4,065 files, most of them step comments inside long functions: 355 `tautology`, 172 `echo`, 142
-`leftover`, 21 `compat`, and no `hollow`.
+142 findings over 4,065 files, all of them commented-out code.
+
+**What ships is `leftover` alone.** `echo`, `hollow`, `tautology` and `compat` are behind `SLOPGUARD_WIDER=1`, off by
+default. On a corpus of comments other people deleted or kept, `leftover` catches 20 and nudges 5 where the whole set
+catches 21 and nudges 25: one extra catch for twenty extra false positives. The two semantic classes are also what
+loads the 86 MB model, which is most of a second per write. `docs/metric.md` carries the measurement and the argument
+for why this is a default rather than a deletion.
 
 **Wire it.** Add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and
 restart the session.

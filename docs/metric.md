@@ -129,6 +129,43 @@ throughout.
 A number with no baseline says nothing, and the first version named four
 baselines and ran none of them. Measured since:
 
+## What ships, and why it is one rule
+
+`leftover` alone. `echo`, `hollow`, `tautology` and `compat` are behind
+`SLOPGUARD_WIDER=1` and off by default.
+
+    build                    caught   nudged   recall   FPR      lift
+    everything on                21       25    0.091   0.007     7.6
+    leftover alone               20        5    0.087   0.001    13.3
+
+One catch for twenty false positives. On the Go standard library the default
+gives 142 findings over 4,065 files against 690 with everything on, and 1,034
+before this cycle began. User time on one real file: 0.05s against 0.71s,
+because the semantic pass loads 86 MB of ONNX before it can say anything.
+
+**This is a default rather than a deletion, and the reason matters.** The corpus
+labels by deletion, a trivial comment bothers nobody, so nobody deletes it:
+fifteen of the twenty comments those classes fire on here are trivial by
+Steidl's criterion. The corpus cannot see the defect they target, and a reviewer
+tested whether it was actively biased against them by rebuilding the harvester
+with the exposure gate off. `echo`'s false-positive rate moved 0.07 points. It
+is blind, not hostile.
+
+What is measurable is the other side. On real code `echo` is right about two
+thirds of the time and its false positives are section headings scored against a
+run's first statement. `tautology` is right seven times in twenty-four and fails
+systematically above `return`, `break` and `continue`, where there is nothing to
+restate, which is the objection every source in `docs/comment-practice.md`
+makes. A faithful port of Steidl to the population his metric was validated on,
+documentation against the signature, scores below chance.
+
+So the value is unmeasurable and will stay so on this instrument, and the cost is
+86 MB, most of a second per write, and three quarters of everything the tool
+says. That asymmetry is the whole argument, and it was answerable from the first
+round.
+
+## The full pipeline, for comparison
+
 Measured on the seventh corpus, markers excluded, 249 deleted and 3,618
 survived:
 

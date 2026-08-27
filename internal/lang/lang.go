@@ -58,6 +58,10 @@ type Language struct {
 	// statement position rather than with a comment. Python does, and it is
 	// where essentially all of its standing documentation lives.
 	Docstrings bool
+	// Registers reports whether commenting a setting out is how these files
+	// publish the settings they accept, which makes a commented-out structure
+	// documentation rather than residue.
+	Registers bool
 }
 
 // Lookup returns the language to parse path as, or nil when nothing here reads
@@ -192,6 +196,22 @@ var (
 		Functions: set(),
 		Templated: true,
 	}
+	// Values is a Helm chart's values.yaml, which is YAML in every respect but
+	// one: a chart publishes the settings it accepts by writing them commented
+	// out, so a commented structure there is the file doing its job.
+	//
+	// The name is YAML's, so every predicate keyed on the language still finds
+	// it, and only the commented-out-code rule reads the flag. Hand-judged over
+	// 24 repositories, values.yaml supplied 51 findings and no true positive;
+	// the two the rule gets right in YAML are both CI workflows.
+	Values = &Language{
+		Name:      "yaml",
+		Grammar:   tsyaml.Language,
+		Comments:  set("comment"),
+		Functions: set(),
+		Templated: true,
+		Registers: true,
+	}
 	// hcl has no function bodies, so every comment in a Terraform file is judged
 	// as documentation of the block it sits in.
 	HCL = &Language{
@@ -279,6 +299,8 @@ var byName = map[string]*Language{
 	"Makefile":      Makefile,
 	"makefile":      Makefile,
 	"GNUmakefile":   Makefile,
+	"values.yaml":   Values,
+	"values.yml":    Values,
 }
 
 func set(names ...string) map[string]bool {

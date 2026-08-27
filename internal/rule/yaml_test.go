@@ -87,6 +87,37 @@ replicaCount: 1
 		want: "",
 	},
 	{
+		// The majority form in every chart measured, and the one the empty-key
+		// exemption misses: the sentences above the block are part of the same
+		// run and parse as mapping keys of their own.
+		name: "a setting introduced by prose is being documented",
+		src: `image:
+  repository: example/app
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be manually created in the namespace.
+  # pullSecrets:
+  #   - myRegistrKeySecretName
+`,
+		want: "",
+	},
+	{
+		name: "a heading that ends in a colon is still prose",
+		src: `# Example proxy configuration:
+# proxy_url: http://proxy:3128
+proxy_url: ""
+`,
+		want: "",
+	},
+	{
+		name: "residue carries no sentence",
+		src: `image:
+  repository: example/app
+  # pullSecrets:
+  #   - myRegistrKeySecretName
+`,
+		want: "commented-out",
+	},
+	{
 		name: "an empty key does not excuse a block beside it",
 		src: `podSecurityContext: {}
 

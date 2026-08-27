@@ -10,7 +10,9 @@ func TestLookup(t *testing.T) {
 		want *Language
 	}{
 		{"internal/store/store.go", Go},
-		{"deploy/values.yaml", YAML},
+		{"deploy/manifest.yaml", YAML},
+		{"deploy/values.yaml", Values},
+		{"charts/x/values.yml", Values},
 		{"main.tf", HCL},
 		{"Dockerfile", Dockerfile},
 		{"build/Dockerfile", Dockerfile},
@@ -40,7 +42,11 @@ func TestLookup(t *testing.T) {
 			case got != nil && c.want == nil:
 				t.Fatalf("read as %s, want nothing", got.Name)
 			case got != nil && got != c.want:
-				t.Fatalf("read as %s, want %s", got.Name, c.want.Name)
+				// Two entries may share a name and differ in what they permit,
+				// which is what values.yaml is, so the name alone cannot say
+				// which one came back.
+				t.Fatalf("read as %s (registers=%v), want %s (registers=%v)",
+					got.Name, got.Registers, c.want.Name, c.want.Registers)
 			}
 		})
 	}

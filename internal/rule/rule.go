@@ -89,6 +89,14 @@ func WeighAt(candidates []comment.Comment, language *lang.Language, src []byte, 
 // class on its own, that understates every rule below the first and makes the
 // order look like a ranking. An empty name runs all of them.
 func WeighOnly(candidates []comment.Comment, language *lang.Language, src []byte, offset float64, only string) []Finding {
+	return weigh(candidates, language, src, offset, only, Wider())
+}
+
+// weigh is [WeighOnly] with the wider set decided by the caller rather than by
+// the environment. The environment is read once, at the exported edge, so that
+// the judgment itself takes no process-global state: a test naming what it wants
+// does not have to set a variable every other test in the package then sees.
+func weigh(candidates []comment.Comment, language *lang.Language, src []byte, offset float64, only string, wider bool) []Finding {
 	verdicts := make([]verdict, len(candidates))
 	var pending []int
 	for i, c := range candidates {
@@ -103,7 +111,7 @@ func WeighOnly(candidates []comment.Comment, language *lang.Language, src []byte
 		if prose.Notice(c.Body) && !c.Buried {
 			continue
 		}
-		if verdicts[i] = inspectOnly(c, language, src, only); verdicts[i].reason == "" {
+		if verdicts[i] = inspectOnly(c, language, src, only, wider); verdicts[i].reason == "" {
 			pending = append(pending, i)
 		}
 	}
@@ -115,7 +123,7 @@ func WeighOnly(candidates []comment.Comment, language *lang.Language, src []byte
 	// The model is loaded lazily, so skipping the pass skips the 86 MB and the
 	// second it costs. `only` naming a semantic class overrides the default,
 	// which is what lets the scorer measure them without the hook running them.
-	if !Wider() && only != "tautology" && only != "compat" {
+	if !wider && only != "tautology" && only != "compat" {
 		pending = nil
 	}
 	if len(pending) > 0 {
@@ -171,9 +179,6 @@ type verdict struct {
 	class  string
 }
 
-// inspect returns why the shape of a comment rules it out, or the zero verdict
-// to leave that judgment to the semantic pass. The first rule that fires wins:
-// one line of nudge per comment.
 // widerEnv turns the classes measured at no recall back on, all of them: the two
 // structural ones this package gates, and the semantic pass the rule layer gates
 // beside them.
@@ -193,7 +198,14 @@ const widerEnv = "SLOPGUARD_WIDER"
 // see the defect those classes target, so the case against them is a cost
 // argument and not a verdict on whether they are right. Somebody who wants the
 // wider reading sets one variable and has it back.
-func Wider() bool { return os.Getenv(widerEnv) != "" }
+//
+// The value is parsed as a boolean, so `SLOPGUARD_WIDER=0` is off. Read as mere
+// presence, the one documented way to turn this on read its own negation as a
+// yes, and took the second of model load with it.
+func Wider() bool {
+	on, err := strconv.ParseBool(os.Getenv(widerEnv))
+	return err == nil && on
+}
 
 // keeping returns the verdict where it is the class asked for, and the zero
 // verdict otherwise. An empty name keeps everything.
@@ -212,9 +224,9 @@ func keeping(v verdict, only string) verdict {
 // rule, so a comment `leftover` claimed never reaches `echoes`, and discarding
 // that verdict afterwards reports `echo` as silent where it would have fired.
 // That is the partition the isolated table exists to replace.
-func inspectOnly(c comment.Comment, language *lang.Language, src []byte, only string) verdict {
+func inspectOnly(c comment.Comment, language *lang.Language, src []byte, only string, wider bool) verdict {
 	if only == "" {
-		return inspect(c, language, src)
+		return inspect(c, language, src, wider)
 	}
 	switch only {
 	case "leftover":
@@ -251,11 +263,11 @@ func inspectOnly(c comment.Comment, language *lang.Language, src []byte, only st
 //
 // So the value is unmeasurable and the volume is not. They stay in the tree,
 // tested, one environment variable away.
-func inspect(c comment.Comment, language *lang.Language, src []byte) verdict {
+func inspect(c comment.Comment, language *lang.Language, src []byte, wider bool) verdict {
 	if leftover(c, language, src) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
-	if !Wider() {
+	if !wider {
 		return verdict{}
 	}
 	if echoes(c, src) {

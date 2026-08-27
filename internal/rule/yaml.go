@@ -14,7 +14,7 @@ import (
 // in it, while `# Note: this cluster is shared` carries a sentence and a
 // capital.
 func yamlConfig(c comment.Comment, root *tree_sitter.Node, body, src []byte) bool {
-	if !holds(root, structures) || documented(c, src) {
+	if !holds(root, structures) || documented(c, src) || explained(body) {
 		return false
 	}
 	var pairs []*tree_sitter.Node
@@ -55,6 +55,44 @@ func yamlConfig(c comment.Comment, root *tree_sitter.Node, body, src []byte) boo
 		}
 	}
 	return true
+}
+
+// explained reports whether a run carries a sentence beside its structure,
+// which is how a chart documents a setting rather than how residue is left
+// behind:
+//
+//	## Optionally specify an array of imagePullSecrets.
+//	## Secrets must be manually created in the namespace.
+//	# pullSecrets:
+//	#   - myRegistrKeySecretName
+//
+// A whole run reads as one comment, so those four lines are parsed together and
+// the sentences parse as mapping keys of their own. That is the majority form in
+// every chart measured: hand-judged, YAML was 91 of 269 findings and all but two
+// of them were an option being documented. Residue carries no sentence, because
+// the author was commenting out lines that were already configuration.
+func explained(body []byte) bool {
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
+		if line == "" {
+			continue
+		}
+		key, _, found := strings.Cut(line, ":")
+		if !found {
+			// A bare word is a scalar in a sequence; a bare clause is prose.
+			if strings.Contains(line, " ") {
+				return true
+			}
+			continue
+		}
+		// A key with a space in it is a sentence that happens to end in a colon.
+		// Configuration keys are identifiers.
+		if strings.Contains(strings.TrimSpace(key), " ") {
+			return true
+		}
+	}
+	return false
 }
 
 // structures are the YAML shapes configuration takes. Prose parses as a plain

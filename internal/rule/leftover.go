@@ -26,8 +26,11 @@ const parsedBytes = 16 << 10
 // that line; a comment after a live statement is a note about it, and the
 // notation those notes use is the notation this rule reads as source —
 // `x2 := Sqrt(x1) // x2 = sqrt(1 - x*x)` says what the variable now holds.
+//
+// A file that registers its settings by commenting them is exempt outright: see
+// [lang.Language.Registers].
 func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
-	if c.Doc || c.Trailing {
+	if c.Doc || c.Trailing || language.Registers {
 		return false
 	}
 	// The lexical prefilter is what a language has instead of a legality check:

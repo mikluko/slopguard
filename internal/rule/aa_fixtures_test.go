@@ -1,7 +1,6 @@
 package rule
 
 import (
-	"os"
 	"testing"
 
 	"github.com/mikluko/slopguard/internal/comment"
@@ -20,14 +19,27 @@ import (
 // it. The table's case is a file that was just written, so the span is all of
 // it.
 //
-// Every class is on, [Wider] included. These tables are the specification of
-// what each rule recognises, and a rule being off by default is a shipping
+// Every class is on, the wider set included. These tables are the specification
+// of what each rule recognises, and a rule being off by default is a shipping
 // decision rather than a statement about what it reads. Turning the wider set
 // off here would silently stop testing three of the five.
+//
+// Asked for by argument rather than by environment. Setting the variable here
+// left it set for whatever ran next and cleared one the caller had exported, and
+// no race detector reports either: the environment is behind its own lock, so
+// what breaks is the test's meaning rather than its memory.
 func scan(src []byte, language *lang.Language, added []comment.Span) []Finding {
-	os.Setenv(widerEnv, "1")
-	defer os.Unsetenv(widerEnv)
-	return Judge(src, language, added)
+	candidates, release := comment.Scan(src, language, added)
+	defer release()
+	return weigh(candidates, language, src, 0, "", true)
+}
+
+// shipped runs the pipeline as it ships, with the wider set off, which is what
+// [scan] deliberately does not do.
+func shipped(src []byte, language *lang.Language, added []comment.Span) []Finding {
+	candidates, release := comment.Scan(src, language, added)
+	defer release()
+	return weigh(candidates, language, src, 0, "", false)
 }
 
 // whole is the span covering a source file entire.

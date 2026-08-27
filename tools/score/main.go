@@ -212,7 +212,7 @@ func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, ma
 	perClass(judged[shipped], deleted, survived)
 
 	fmt.Printf("\n## Per class, each measured with the others off\n\n")
-	alone(rows, clones, deleted, survived)
+	alone(rows, clones)
 
 	fmt.Printf("\n## What a rule reading one field gets\n\n")
 	baselines(rows, judged[shipped])
@@ -484,7 +484,7 @@ var classes = []string{"leftover", "echo", "hollow", "tautology", "compat"}
 // rules run in a fixed precedence, so `tautology` only ever sees what `leftover`
 // and `echo` declined. Read as a ranking that understates every rule but the
 // first, and it has been read that way in this repository more than once.
-func alone(rows []corpus.Row, clones string, deleted, survived int) {
+func alone(rows []corpus.Row, clones string) {
 	fmt.Printf("| class | recall on deleted | FPR on survived | caught | nudged |\n|---|---|---|---|---|\n")
 	for _, name := range classes {
 		judged, _, err := judge(rows, clones, []float64{0}, name)

@@ -277,6 +277,92 @@ func judged(want string) bool {
 	return model.Speaks(want)
 }
 
+// What ships is `leftover` alone. Every other class is behind [Wider], and this
+// is the only place that says so: the spec tables all run with the wider set on,
+// because they specify what a rule reads rather than whether it is switched on.
+//
+// Each source here is a fixture another test asserts does fire.
+func TestShippedRunsLeftoverAlone(t *testing.T) {
+	// Python, because this has to hold on a machine with no ONNX Runtime and
+	// the Go fixture beside it is answered by the model: a comment heading a run
+	// of statements is not a structural echo, deliberately.
+	echoed := `def f(user):
+    # save the user profile
+    save_user_profile(user)
+`
+	padded := `package p
+
+// Double returns the value twice over. This function takes a value and returns
+// a value. The implementation is simple and easy to read.
+func Double(value int) int { return value * 2 }
+`
+	commented := `package p
+
+func f() {
+	// total := 0
+	// for _, item := range items {
+	// 	total += item
+	// }
+	_ = 0
+}
+`
+	for _, c := range []struct {
+		name string
+		lang *language
+		src  string
+		want string
+	}{
+		{"echo is off", python, echoed, ""},
+		{"hollow is off", golang, padded, ""},
+		{"leftover still fires", golang, commented, "leftover"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			found := shipped([]byte(c.src), c.lang, whole([]byte(c.src)))
+			switch {
+			case c.want == "" && len(found) > 0:
+				t.Fatalf("the default said something: %s (%s)", found[0].Class, found[0].Reason)
+			case c.want == "":
+			case len(found) == 0:
+				t.Fatalf("the default went silent on %s", c.want)
+			case found[0].Class != c.want:
+				t.Fatalf("want class %q, got %q", c.want, found[0].Class)
+			}
+		})
+	}
+	// The same two sources under the wider set, so that a fixture quietly
+	// ceasing to fire cannot pass this test by going silent everywhere.
+	for _, c := range []struct {
+		name string
+		lang *language
+		src  string
+		want string
+	}{
+		{"echo", python, echoed, "echo"},
+		{"hollow", golang, padded, "hollow"},
+	} {
+		t.Run(c.name+" fires when asked for", func(t *testing.T) {
+			found := scan([]byte(c.src), c.lang, whole([]byte(c.src)))
+			if len(found) == 0 || found[0].Class != c.want {
+				t.Fatalf("want %s under the wider set, got %v", c.want, found)
+			}
+		})
+	}
+}
+
+// Wider is read as a boolean, so the negative form turns it off. Read as mere
+// presence, `SLOPGUARD_WIDER=0` switched the wider set on.
+func TestWiderReadsItsValue(t *testing.T) {
+	for value, want := range map[string]bool{
+		"1": true, "true": true, "TRUE": true,
+		"0": false, "false": false, "": false, "off": false,
+	} {
+		t.Setenv(widerEnv, value)
+		if got := Wider(); got != want {
+			t.Errorf("SLOPGUARD_WIDER=%q: want %v, got %v", value, want, got)
+		}
+	}
+}
+
 // A comment outside the text the tool call wrote is somebody else's problem.
 func TestScanIgnoresUntouchedComments(t *testing.T) {
 	skipWithoutRuntime(t)

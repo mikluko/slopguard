@@ -134,13 +134,6 @@ func skip(path string) bool {
 	return false
 }
 
-// deleted returns the comments this commit removed while leaving the code they
-// annotated in place.
-//
-// The pair of parses is what makes the label trustworthy. A comment gone from
-// the child is not yet evidence, because deleting a function deletes its doc
-// comment too and says nothing about the comment; requiring the annotated code
-// to still be there is what separates a judgement from a sweep.
 // sweep is how many files one commit may touch before it is read as a codemod
 // rather than as a set of judgements.
 //
@@ -155,6 +148,13 @@ func skip(path string) bool {
 // at once. A tool run across a repository does.
 const sweep = 15
 
+// deleted returns the comments this commit removed while leaving the code they
+// annotated in place.
+//
+// The pair of parses is what makes the label trustworthy. A comment gone from
+// the child is not yet evidence, because deleting a function deletes its doc
+// comment too and says nothing about the comment; requiring the annotated code
+// to still be there is what separates a judgement from a sweep.
 func deleted(dir string, repo Repo, c commit, store *corpus.Blobs) ([]corpus.Row, error) {
 	paths, err := touched(dir, c.sha)
 	if err != nil {

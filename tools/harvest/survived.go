@@ -39,7 +39,7 @@ func readable(dir string) ([]string, error) {
 // The label is the inverse of a deletion and comes from the same place: every
 // author who edited this file since had the comment in front of them and left
 // it there. It is weaker evidence than a deletion, which is one person's
-// explicit act, and the row carries the count so a reading can weight it.
+// explicit act.
 func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus.Row, error) {
 	language := lang.Lookup(path)
 	src, err := store.Read("HEAD:" + path)

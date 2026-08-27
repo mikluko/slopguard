@@ -129,34 +129,38 @@ throughout.
 A number with no baseline says nothing, and the first version named four
 baselines and ran none of them. Measured since:
 
-Measured on the third corpus, 3,799 rows scored with markers excluded, 497
-deleted:
+Measured on the fifth corpus, markers excluded, 250 deleted and 3,302 survived:
 
 | | catches | nudges | recall | FPR |
 |---|---|---|---|---|
-| `leftover` | 19 | 11 | 0.038 | 0.003 |
+| `leftover` | 20 | 11 | 0.080 | 0.003 |
 | `tautology` | 0 | 20 | 0 | 0.006 |
 | `echo` | 0 | 9 | 0 | 0.003 |
-| `compat` | 1 | 0 | 0.002 | 0 |
-| **the shipped build** | **20** | **40** | **0.040** | **0.012** |
+| `compat` | 1 | 0 | 0.004 | 0 |
+| **the shipped build** | **21** | **40** | **0.084** | **0.012** |
 
-Hypergeometric over 60 firings and 497 positives: expected 7.9, observed 20,
-**z about 4.7**. Lift over a rule firing at random at the same rate is about 2.5,
-and `leftover` alone is about 4.8 at z near 8. **The tool is above chance on this
-corpus and the lift is `leftover`'s.**
+Restricted to the matched subset with `-matched`, which requires of a deletion
+what the survived label requires of a survivor: recall 0.073 on 82 positives at
+the same FPR, `leftover` 6 of 6. **The two agree in direction and magnitude**,
+which is the check that matters: the headline is not carried by the stratum where
+the negative class has no members.
 
-Two earlier claims are withdrawn rather than merely updated. An earlier version
-said the tool beat chance at z = 6.2; that was the first, broken corpus. A later
-one said it did not beat chance at all, and that `echo` was a significant
-negative predictor at p = 3.6e-5; that was the second corpus, whose negative
-class was selected by a gate that reweighted the classes against each other by a
-factor of three. **At 9 and 20 firings neither `echo` nor `tautology` is now
-distinguishable from chance in either direction.** They catch nothing, which is a
-fact; that they are worse than nothing is not established.
+Lift over a rule firing at random at the same rate is about 4.9 unrestricted and
+5.4 matched. `leftover` supplies 20 of the 21 catches.
 
-The one-bit baselines have to be re-run against this corpus before any of them
-is quoted again. On the previous one, `lines > 5`, a leave-one-repo-out language
-prior, and `trailing` all beat the tool.
+**Five conclusions have been recorded on five corpora and four are withdrawn.**
+That the tool beat chance at z = 6.2 was the first, whose positive class was 70%
+admitted by a test that never ran. That it did not beat chance at all, and that
+`echo` was a significant negative predictor, was the second, whose negatives were
+selected by a gate that reweighted the classes threefold. That `exposure` finally
+overlapped the classes was the third, where it was still a zero-error oracle over
+44% of the positives. That capping single-label repositories would help was the
+fourth, where it concentrated the corpus it was meant to spread. **The only claim
+that has held every round is that `echo` and `tautology` catch nothing.**
+
+The one-bit baselines must be re-run here before any is quoted. On earlier
+corpora `lines > 5`, `trailing`, a language prior and a `@`-prefix rule all beat
+the tool, and the last of those was one repository's codemod, now capped out.
 
 **The marker answer, restated.** Markers are a tracked-debt convention Google's
 C++ and Java guides mandate, so the tool is deliberately not chasing them.

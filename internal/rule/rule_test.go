@@ -58,6 +58,28 @@ var cases = []struct {
 `,
 	},
 	{
+		// Java files a run of colon arms sharing a body under
+		// `switch_block_statement_group`. The comment is exempt here through
+		// `switch_label`, the kind of the arm it sits above, which is why the
+		// group kind itself was dropped from `labels`: nothing reaches it.
+		name: "a comment above a java arm group names what the group handles",
+		lang: java,
+		src: `class C {
+  void f(int k) {
+    switch (k) {
+      case 0:
+        first(k);
+        break;
+      // report(k);
+      case 1:
+      case 2:
+        other(k);
+    }
+  }
+}
+`,
+	},
+	{
 		// PHP's match arms, whose two kinds carry the whole exemption there.
 		name: "a comment above a php match arm names what the arm handles",
 		lang: php,

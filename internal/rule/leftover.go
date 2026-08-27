@@ -111,33 +111,40 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 //
 // Both forms occur, above the label and as the arm's first line, and both write
 // the construct in the host language because that is what makes them legible.
-// Hand-judged, this one position was 21 of 189 findings across 24 repositories
-// and 12 of 142 on the Go standard library, and all but a handful were the
+// Hand-judged, this one position was 21 of 189 findings across the 23 mined
+// repositories with content and 12 of 142 on the Go standard library, and all
+// but a handful were the
 // naming shape rather than residue: a case arm is where a reader most needs an
 // example of what is being matched.
 //
-// **A comment at the tail of an arm is exempt too, and should not be.** Where a
-// grammar files a trailing comment beside the arms rather than inside one — Go
-// and TypeScript both do — it is the same tree shape as a label comment: a case
-// on either side of it. Two repairs were built and measured and both reverted:
+// **A comment at the tail of an arm is exempt too, and should not be.** This
+// branch applies no positional test at all, so anything whose next node is a
+// case label is spared wherever it sits. Three alternatives were built and
+// measured, and all three reverted:
 //
-//	shipped                          130 stdlib   168 clones
-//	previous sibling is a label      135          188   recovers sched.go:372
-//	nothing precedes the comment     136          188   also recovers importer.go:234
-//	parent is a label                130          168   moves nothing
+//	shipped                        130 stdlib   168 clones
+//	previous sibling is a label    135          188         recovers sched.go:372
+//	nothing precedes the comment   136          188         recovers that and importer.go:234
+//	parent is a label              130          168         moves nothing
 //
-// So the cheaper repair recovers one of the four below and the dearer one two,
-// and both cost twenty Vue false positives plus four more in the standard
-// library. Earlier revisions of this paragraph claimed one recovery and then
-// two, each naming the twenty-Vue variant, which no single implementation gives.
+// The two that move anything cost the same twenty Vue false positives and the
+// same four in the standard library, so the second strictly dominates the first:
+// one more true positive at no extra cost, and a cheaper test. Its output is also
+// byte-identical to deleting this branch outright, which is the honest way to
+// read it — the choice is not between two repairs but between keeping the branch
+// and dropping it, at two true positives against twenty-four false ones.
+//
+// The third moves nothing, so it measured the same rather than worse.
+//
+// Four revisions of this paragraph have got that wrong, in four different ways,
+// each refuted by a measurement already in the file.
 //
 // This branch silences a `//dump(...)` at the tail of an arm in `staticinit` and
-// a commented-out `case goimporterMagic:` arm; [opens] silences a disabled `if`
-// block in `reflectlite` and jq's `/*create_pt_key();*/`, both on an arm's first
-// line. Two per branch, and the reason differs: this branch applies no
-// positional test at all, so anything whose next node is a label is exempt
-// wherever it sits. Four of the thirty-three findings removed are residue, which
-// makes this about 88% right, and both alternatives measured worse.
+// the continuation of a commented-out `case goimporterMagic:` arm at
+// `importer.go:234`; [opens] silences a disabled `if` block in `reflectlite` and
+// jq's `/*create_pt_key();*/`, both on an arm's first line. Two per branch. Four
+// of the thirty-three findings removed are residue, which makes this about 88%
+// right.
 func arm(c comment.Comment) bool {
 	if len(c.Nodes) == 0 {
 		return false
@@ -154,24 +161,24 @@ func arm(c comment.Comment) bool {
 
 // opens reports whether nothing but a case label precedes a comment in its arm.
 //
-// Four of the eighteen kinds in [labels] spell the matched expression as the
+// Four of the seventeen kinds in [labels] spell the matched expression as the
 // arm's `value`, so a comment whose only earlier sibling is that value opens the
 // arm: `expression_case`, `switch_case`, `case_statement` and bash's `case_item`
 // — and bash's own `case_statement` is not one of them, since there `value` is
-// the subject being matched rather than an arm's label. The other fourteen do
+// the subject being matched rather than an arm's label. The other thirteen do
 // not, so in those a comment on the arm's first line is not exempt. Six of them
 // are worth naming:
 // Go's `type_case` uses `type` and its `communication_case` `communication`;
 // Python's `case_clause` names its body `consequence` and its guard `guard`,
-// and gives the pattern no field at all; Ruby's `when` uses `pattern` and `body`; Java's
+// and gives the pattern no field at all — the `alternative` an earlier revision
+// named is the field the enclosing `block` hangs it under, not one of its own; Ruby's `when` uses `pattern` and `body`; Java's
 // `switch_label` has no fields; and Rust's `match_arm` does have a `value` but
 // it is the arm's body, which is the nastiest of the six because the lookup
 // succeeds and points at the wrong node.
 //
 // That is a gap rather than a design, and it errs toward reporting, which is the
 // safe direction. Two earlier revisions of this comment got the count wrong in
-// both directions and one named `alternative` for Python, which is
-// `if_statement`'s field.
+// both directions.
 func opens(c comment.Comment, parent *tree_sitter.Node) bool {
 	previous := c.Nodes[0].PrevNamedSibling()
 	if previous == nil {
@@ -199,8 +206,13 @@ var labels = set(
 	// bash emits neither as an arm: it spells one `case_item`, and its own
 	// `case_statement` is the whole construct.
 	"case_statement", "default_statement",
-	// Java, whose colon form and arrow form are different kinds
-	"switch_label", "switch_rule", "switch_block_statement_group",
+	// Java, whose colon form and arrow form are different kinds.
+	// `switch_block_statement_group`, which files a run of colon arms sharing a
+	// body, was here too and is gone: a comment above such a run is exempt
+	// through the `switch_label` beneath it, so no fixture ever reached the
+	// group kind and removing it moves neither sweep. A kind nothing reaches is
+	// a guess about a grammar, which is what put a phantom in this set once.
+	"switch_label", "switch_rule",
 	// PHP's match expression, where these two are the only thing exempting a
 	// comment above an arm: removing either adds a finding to the fixture for
 	// it. A previous revision of this comment said the opposite — that they were

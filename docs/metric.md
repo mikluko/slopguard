@@ -134,7 +134,9 @@ throughout.
 ## Baselines, which must be run and mostly were not
 
 A number with no baseline says nothing, and the first version named four
-baselines and ran none of them. Measured since:
+baselines and ran none of them. They have been run since, and the table is under
+[The baselines, run at last](#the-baselines-run-at-last) below; this heading
+promised a list here and ended without one for several rounds.
 
 ## What ships, and why it is one rule
 
@@ -354,7 +356,7 @@ should carry. The headline understates the tool by about five times, for the sam
 reason the corpus FPR understates its false alarms: both are ratios over a
 population chosen by the miner rather than by the deployment.
 
-So it was measured directly. 214 findings over 24 repositories and the Go
+So it was measured directly. 214 findings over the 23 mined repositories and the Go
 standard library, drawn as two strata — every multi-line finding, and an
 every-third sample of the single-line ones — and judged in context by four
 readers on disjoint packets, blind to each other.
@@ -405,8 +407,8 @@ other branch spares an arm's *first* line deliberately, and takes jq's and
 Three revisions of this paragraph got that wrong in three different ways: the
 first offered a tree-shape argument for all four, the second said it covered one,
 and the third said the tree cannot separate a between-arms comment from a label —
-which the measurement two paragraphs down refutes, since testing the previous
-sibling does separate them and recovers one of the two.
+which the table in `arm`'s own doc refutes, since testing the previous sibling
+does separate them and recovers one of the two.
 
 The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not
@@ -521,7 +523,8 @@ is sound and not warned about the one that is not.
   the window on both sides takes recall from 0.088 to 0.064.
 - **`annotates` length.** The other live one, at lift 2.16. The positive side
   carries a survival test the negative side does not.
-- **Repository skew.** The 20 catches come from 8 of 24 repositories, and jq and
+- **Repository skew.** The 20 catches come from 8 of the 23 repositories with
+  content, and jq and
   pydantic supply 10 of them. Four of the 20 are one jq commit's two copies of
   the same manual. No repository is at the 800-row cap; the largest contributes
   388.

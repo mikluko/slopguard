@@ -73,8 +73,10 @@ costs a piece of contract prose is twice the shipped tilt, where `TestClear` rep
 
 On a production Go service, 11 findings across 115 files of `internal`, `app` and `pkg`. On the Go standard library —
 `find . -name '*.go' -not -name '*_test.go' -not -path '*/testdata/*' -not -path '*/vendor/*'` under `GOROOT/src`, 4065
-files — 1034 with every class on, which is what `SLOPGUARD_WIDER=1` now asks for: 872 restatement, 142 commented-out
-code, 20 self-justification, and no padding at all. The shipped default is the 142. The largest class is
+files — **678** with every class on, which is what `SLOPGUARD_WIDER=1` asks for: 355 restatement by the model, 172 by the
+identifier echo, **130** commented-out code, 21 self-justification, and no padding at all. **The shipped default is the
+130.** This paragraph read 1034 / 872 / 142 for several rounds after the exemptions that moved them, while `AGENTS.md`
+carried the current figure as an invariant. The largest class is
 a step comment inside a long function, which is the shape this tool is pointed at and the shape that library uses most.
 On 9934 YAML files and 5313 Terraform files of an infrastructure repository, 32 findings between them. On its own source,
 none.

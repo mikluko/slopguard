@@ -58,9 +58,9 @@ func TestReviewEdit(t *testing.T) {
 // the transition test compares text.
 //
 // Through [review] rather than [report], which is where the blanking happens.
-// Three tests were added with that fix and all three built their findings by
-// hand, so deleting the loop left the suite green and restored the false
-// certainty it was written to remove.
+// The tests added with that fix all built their findings by hand and called
+// [report] directly, so deleting the loop left the suite green and restored the
+// false certainty it was written to remove.
 func TestReviewWillNotClaimACommentWithATwin(t *testing.T) {
 	t.Setenv(session.MemoryEnv, t.TempDir())
 	const twice = `package p

@@ -32,15 +32,19 @@ Every refactor holds this, and a refactor that moves it is a behaviour change we
 cd $(go env GOROOT)/src
 find . -name '*.go' -not -name '*_test.go' -not -path '*/testdata/*' -not -path '*/vendor/*' \
   -print0 | xargs -0 -n 300 slopguard > /tmp/sweep.txt
-wc -l /tmp/sweep.txt          # 142 over 4,065 files, all leftover
-SLOPGUARD_WIDER=1 …           # 690: 355 tautology, 172 echo, 142 leftover, 21 compat, 0 hollow
+wc -l /tmp/sweep.txt          # 130 over 4,065 files, all leftover
 ```
 
 Diff the file, not the count: the same total over different lines is not the same behaviour.
 
 The standard library holds no YAML, so it cannot see the exemptions that matter most. The second invariant is a sweep of
-the mined clones, where 24 repositories and 11 languages give 189 findings; `tools/harvest -clones <dir>` puts them
-there. A change that moves the 142 and not the 189, or the other way round, has moved one language and should say which.
+the mined clones, where 24 repositories and 11 languages give 168 findings; `tools/harvest -clones <dir>` puts them
+there. A change that moves the 130 and not the 168, or the other way round, has moved one language and should say which.
+
+Neither number is a score. Hand-judged, about half of what the tool says is wrong, and the share splits by population
+rather than averaging: near nine in ten on application code, near one in four on compilers and spec implementations.
+A change that moves a count has to say which findings it moved, because moving the wrong half and the right half are the
+same arithmetic and opposite work.
 
 The tool over its own source returns nothing, which is the cheap version of the same check:
 

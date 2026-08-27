@@ -24,7 +24,16 @@ rediscovered by whoever hits it next.
 
 - An equation whose left side is a plain identifier is legal Go and is still read as code: `// EM = 0x00 || 0x02 || PS`,
   `// U_n = PRF(password, U_(n-1))`. Separating those from a switched-off assignment needs the identifiers resolved
-  against the file, since these resolve to nothing in it.
+  against the file, since these resolve to nothing in it. **Tried, measured, reverted.** Requiring one name in the
+  comment to occur elsewhere in the file, comments excluded, removes 4 of the 130 findings on the Go standard library —
+  three section banners and a `// done (label)` note — and costs no catch on the mined corpus. It also silences
+  `// var timeout = 5 * time.Second`, because commenting out the last use of a package takes the import with it, so the
+  cleanest true positive there is grounds nothing. Four findings is not worth a systematic miss on that shape.
+- A compiler pass sketching the code it emits is the largest single false-positive family, about 29 of the Go standard
+  library's findings and nearly all of `cmd/compile/internal/walk`: `// hv1 := 0`, `// hp = &a[0]`. The sketch names the
+  variables the pass manipulates, so it grounds every name and reads as legal Go. It fails to *type* check —
+  `no new variables on left side of :=` — and that is the only thing measured that separates it. A type checker is two
+  orders of magnitude outside a hook's budget and exists for one of the fourteen languages, so this shape stands.
 - A comment run that opens with a licence line pardons every line stacked under it, because a run reads as one comment
   and any of its lines can carry the marker.
 - A contract stated in the words of its own signature reads as padding when several of them stand together.

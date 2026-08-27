@@ -440,6 +440,18 @@ func baselines(rows []corpus.Row, shipped []verdict) {
 			func(r corpus.Row) bool { return len(r.Annotates) < bound },
 		})
 	}
+	// The rows the tool actually scored, not every row loaded. A corpus row
+	// whose blob is gone is scored by every one-field baseline, since those read
+	// the row, and by nothing in the pipeline, which needs the file. Footed on
+	// the loaded set the tool's own row was computed over 231 positives it had
+	// seen 227 of, and the same run printed its recall as 0.088 above this table
+	// and 0.087 inside it.
+	if len(shipped) > 0 {
+		rows = rows[:0:0]
+		for _, v := range shipped {
+			rows = append(rows, v.row)
+		}
+	}
 	var deleted, survived int
 	for _, row := range rows {
 		if row.Label == corpus.Deleted {

@@ -35,7 +35,8 @@ internal/store/lifecycle.go:88	leftover	1.000	commented-out code: delete it, or 
 
 A file in a language it does not read produces nothing, so passing the whole index is safe. The sweep writes nothing and
 remembers nothing; it is the same judgment the hook makes, without the hook. For scale, the Go standard library gives
-142 findings over 4,065 files, all of them commented-out code.
+130 findings over 4,065 files, every one of them from the commented-out-code rule — which is a statement about which
+rule fired, not about how many are right. On that particular library, most are not: see below.
 
 **What ships is `leftover` alone.** `echo`, `hollow`, `tautology` and `compat` are behind `SLOPGUARD_WIDER=1`, off by
 default. On a corpus of comments other people deleted or kept, `leftover` catches 20 and nudges 1 where the whole set
@@ -43,10 +44,19 @@ catches 21 and nudges 25. The two semantic classes are also what loads the 90 MB
 write that reaches it. The binary is the same size either way, since the model is embedded at compile time.
 `docs/metric.md` carries the measurement and the argument for why this is a default rather than a deletion.
 
-**How often it is right.** 214 findings over 24 repositories and the Go standard library, judged by hand in context,
-came out at about half. That is the honest number for the class that ships, and the corpus cannot produce it: a corpus
-labelled by deletion measures whether a nudge predicts what somebody removed, not whether a nudge is correct. Read a
-finding before acting on it.
+**How often it is right, and where.** 214 findings over 24 repositories and the Go standard library, judged by hand in
+context, came out at about half — but the average is not what anyone experiences, because precision splits hard by what
+the code is:
+
+| population | roughly right |
+|---|---|
+| application and library code, tests | 9 in 10 |
+| compilers, codegen, crypto and spec implementations | 1 in 4 |
+
+The wrong ones are all one thing: notation that is valid source. A compiler pass sketching the code it emits, an RFC or
+NIST step written as an assignment, a comment naming what a `case` arm handles. Those live where the tool is weakest and
+are rare where it is strong. The corpus cannot produce this number at all — labelled by deletion, it measures whether a
+nudge predicts what somebody removed, not whether a nudge is correct. Read a finding before acting on it.
 
 **Wire it.** Add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and
 restart the session.

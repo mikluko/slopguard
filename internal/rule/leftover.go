@@ -1,6 +1,8 @@
 package rule
 
 import (
+	"strings"
+
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/mikluko/slopguard/internal/comment"
@@ -30,7 +32,7 @@ const parsedBytes = 16 << 10
 // A file that registers its settings by commenting them is exempt outright: see
 // [lang.Language.Registers].
 func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
-	if c.Doc || c.Trailing || language.Registers {
+	if c.Doc || c.Trailing || language.Registers || arm(c) {
 		return false
 	}
 	// The lexical prefilter is what a language has instead of a legality check:
@@ -97,6 +99,54 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 		return !checked || compiles(inside, []byte(prefix+body+suffix))
 	}
 	return false
+}
+
+// arm reports whether a comment sits on the boundary of a switch arm, where it
+// names the construct that arm handles rather than disabling anything:
+//
+//	// no: let NODE = init;
+//	// yes: let id = NODE;
+//	case 'VariableDeclarator':
+//
+//	case _Clear:
+//		// clear(m)
+//
+// Both forms occur, above the label and as the arm's first line, and both write
+// the construct in the host language because that is what makes them legible.
+// Hand-judged, this one position was 20 of 189 findings across 24 repositories
+// and 6 of 142 on the Go standard library, and essentially none of them was
+// residue: a case arm is where a reader most needs an example of what is being
+// matched.
+//
+// The arm's first line only, not anywhere inside it. A comment further down has
+// statements before it and is disabling one of them as readily as any other.
+func arm(c comment.Comment) bool {
+	if len(c.Nodes) == 0 {
+		return false
+	}
+	if c.Annotates != nil && labelled(c.Annotates.Kind()) {
+		return true
+	}
+	parent := c.Nodes[0].Parent()
+	if parent == nil || !labelled(parent.Kind()) {
+		return false
+	}
+	// Nothing but the label itself before it. Every grammar here spells the
+	// matched expression as the arm's `value`, so a comment whose only earlier
+	// sibling is that value opens the arm.
+	previous := c.Nodes[0].PrevNamedSibling()
+	if previous == nil {
+		return true
+	}
+	value := parent.ChildByFieldName("value")
+	return value != nil && previous.StartByte() == value.StartByte()
+}
+
+// labelled reports whether a node kind is a switch arm. Matched on the name
+// because every grammar spells it differently — `expression_case`, `switch_case`,
+// `case_statement` — and all of them say so.
+func labelled(kind string) bool {
+	return strings.Contains(kind, "case") || strings.Contains(kind, "default")
 }
 
 // scopes returns the positions a fragment is tried in, in the order to try

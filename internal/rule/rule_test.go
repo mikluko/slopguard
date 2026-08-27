@@ -22,6 +22,53 @@ var cases = []struct {
 	gap  string
 }{
 	{
+		// A case arm is where a reader most needs an example of what is being
+		// matched, and the example is written in the language being matched.
+		name: "a comment opening a case arm names what the arm handles",
+		lang: golang,
+		src: `package p
+
+func f(kind int) {
+	switch kind {
+	case 1:
+		// clear(m)
+		report(kind)
+	}
+}
+`,
+	},
+	{
+		name: "a comment above a case arm names what the arm handles",
+		lang: typescript,
+		src: `function f(node: Node, parent: Node) {
+  switch (parent.type) {
+    // no: let NODE = init;
+    // yes: let id = NODE;
+    case 'VariableDeclarator':
+      return parent.init === node
+  }
+}
+`,
+	},
+	{
+		// Further in, there are statements before it, and it is disabling one
+		// as readily as any other.
+		name: "a comment further inside a case arm is not spared",
+		lang: golang,
+		src: `package p
+
+func f(kind int) {
+	switch kind {
+	case 1:
+		report(kind)
+		// report(kind + 1)
+		finish(kind)
+	}
+}
+`,
+		want: "commented-out",
+	},
+	{
 		name: "go doc comment",
 		lang: golang,
 		src: `package p

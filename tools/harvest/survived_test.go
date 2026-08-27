@@ -37,6 +37,56 @@ func churn(t *testing.T, dir, path, head string, n int) {
 	}
 }
 
+// A survivor whose annotated code nobody has been back to is not one anybody
+// read and left, and [expose] drops it.
+//
+// This gate defines the negative class alongside `endured`, and nothing called
+// [expose] until this test: reverting `seen` to zero failed only the assertion
+// that the constant is what the fixtures assume, which proves the literal and
+// not the behaviour. The two fixtures differ in one thing, whether a later
+// commit touched the annotated lines or only the lines after them.
+func TestSeenIsBracketed(t *testing.T) {
+	const comment = "// this explains what the total below is counted for\n"
+
+	for _, c := range []struct {
+		name    string
+		touched bool
+		want    bool
+	}{
+		{"nobody went back to the code", false, false},
+		{"somebody edited the code under it", true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := repoAt(t)
+			head := "package p\n\n" + comment + body
+			commitFile(t, dir, "total.go", head)
+			churn(t, dir, "total.go", head, 8)
+			if c.touched {
+				// The annotated function itself, so LineEdits counts it.
+				grown := "package p\n\n" + comment +
+					"func Total(items []int) int {\n\tsum := 1\n\tfor _, item := range items {\n\t\tsum += item\n\t}\n\treturn sum\n}\n"
+				commitFile(t, dir, "total.go", grown)
+			}
+
+			store, err := corpus.OpenBlobs(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+			rows, err := survived(dir, Repo{Name: "test/repo", License: "MIT"}, "total.go", store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) == 0 {
+				t.Fatal("the fixture yielded no survivor to expose")
+			}
+			if got := len(expose(dir, rows)) > 0; got != c.want {
+				t.Fatalf("annotated code touched = %v: kept %v, want %v", c.touched, got, c.want)
+			}
+		})
+	}
+}
+
 // A comment is a survivor once [endured] later commits have touched its file
 // with the comment still in front of whoever wrote them. Seven is not enough
 // and eight is, which is the boundary [TestConstantsAreWhatTheFixturesAssume]

@@ -137,10 +137,10 @@ baselines and ran none of them. Measured since:
     build                    caught   nudged   recall   FPR      lift
     everything on                21       25    0.091   0.007     7.6
     leftover alone               20        5    0.087   0.001    13.3
-    leftover, three exemptions   20        1    0.088   0.000    15.9
+    leftover, four exemptions    20        1    0.088   0.000    15.3
 
 One catch for twenty false positives. On the Go standard library the default
-gives 142 findings over 4,065 files against 690 with everything on, and 1,034
+gives 130 findings over 4,065 files against 690 with everything on, and 1,034
 before this cycle began. User time on one real file: 0.05s against 0.71s,
 because the semantic pass loads 90 MB of ONNX before it can say anything.
 
@@ -197,49 +197,73 @@ than by argument.
 
 ## The baselines, run at last
 
-On the ninth corpus, 227 deleted and 3,428 survived, with the three exemptions in:
+On the ninth corpus, over the 3,655 rows the tool could score, with the three
+exemptions in:
 
 | rule | recall | FPR | lift |
 |---|---|---|---|
-| harvest field: `exposure` is zero | 0.654 | 0.000 | **16.66** |
-| **the shipped build** | 0.088 | 0.000 | **15.87** |
-| marker: TODO, FIXME, XXX, HACK | 0.113 | 0.010 | 6.99 |
-| `trailing` | 0.143 | 0.026 | 4.30 |
-| text opens with `@` | 0.009 | 0.003 | 2.78 |
-| harvest field: `annotates` under 60 bytes | 0.307 | 0.127 | 2.24 |
-| harvest field: `annotates` under 80 bytes | 0.489 | 0.226 | 2.02 |
-| `doc` | 0.182 | 0.101 | 1.72 |
-| harvest field: `annotates` under 100 bytes | 0.584 | 0.328 | 1.70 |
-| harvest field: `annotates` under 160 bytes | 0.758 | 0.503 | 1.46 |
-| `buried` | 0.610 | 0.434 | 1.37 |
-| more than five lines | 0.100 | 0.076 | 1.29 |
-| text of 120 bytes or more | 0.359 | 0.375 | 0.96 |
-| harvest field: `annotates` truncated at 400 | 0.048 | 0.236 | 0.21 |
+| harvest field: `exposure` is zero | 0.656 | 0.000 | **16.10** |
+| **the shipped build** | 0.088 | 0.000 | **15.33** |
+| marker: TODO, FIXME, XXX, HACK | 0.110 | 0.010 | 6.94 |
+| `trailing` | 0.141 | 0.026 | 4.26 |
+| text opens with `@` | 0.009 | 0.003 | 2.93 |
+| harvest field: `annotates` under 60 bytes | 0.295 | 0.126 | 2.16 |
+| harvest field: `annotates` under 80 bytes | 0.480 | 0.225 | 2.00 |
+| `doc` | 0.185 | 0.100 | 1.76 |
+| harvest field: `annotates` under 100 bytes | 0.577 | 0.329 | 1.68 |
+| harvest field: `annotates` under 160 bytes | 0.753 | 0.503 | 1.45 |
+| `buried` | 0.617 | 0.428 | 1.40 |
+| more than five lines | 0.101 | 0.076 | 1.30 |
+| text of 120 bytes or more | 0.366 | 0.374 | 0.98 |
+| harvest field: `annotates` truncated at 400 | 0.048 | 0.236 | 0.22 |
 
-All on the same footing, with markers counted on both sides. The `annotates`
-thresholds are swept rather than fixed, because the two fixed ones this table
-used to carry were both dead — under 40 bytes is the harvest's own floor and
-catches nothing, truncation at 400 scores below chance — so the table was
-checking a bug an earlier round had already fixed and missing the axis it lived
-on.
+All on the same footing, with markers counted on both sides, and every row now
+on the rows the tool could actually score. Footed on the loaded set instead, the
+tool's own row was computed over 231 positives it had seen 227 of, and one run
+printed its recall as 0.088 above this table and 0.087 inside it.
 
-**Two rows above the tool are fields the harvester wrote**, and both are read as
-reports on how the corpus was built rather than as rules anybody would ship.
-`exposure` is an artifact of a filter and is discussed below. `annotates` length
-separates the labels at lift 2.24 because the positive side additionally requires
-the annotated code to survive its commit verbatim, and long code is likelier to
+**Read lift as precision, because that is what it is.** With `rate` the share of
+all rows a rule fires on,
+
+    lift = recall / rate = (N/P) × caught/(caught+nudged)
+
+so it is corpus precision multiplied by `N/P`, a constant of the mining
+thresholds. Two consequences, neither of them small. The first is that this
+document rejected precision for depending on `endured` and then quoted, in every
+comparison it made, precision multiplied by exactly that dependence. The second
+is that lift saturates: as false positives go to zero it pins at `N/P` regardless
+of how many positives the rule caught. `exposure == 0` catches 149 at zero cost
+and the tool catches 20 at nearly zero cost, and lift cannot tell them apart —
+16.10 against 15.33 is not the tool nearly matching an oracle, it is both rules
+sitting against the same ceiling. Prefer the counts.
+
+**One row above the tool is a field the harvester wrote.** An earlier revision of
+this section said two; `annotates` under 60 bytes is eleventh. `exposure` is an
+artifact of a filter and is discussed below. `annotates` length still separates
+the labels, at lift 2.16, because the positive side additionally requires the
+annotated code to survive its commit verbatim and long code is likelier to
 change, so long-annotated positives are filtered out: median 84 bytes against the
-negative class's 158.
+negative class's 158. Standardised to the deleted class's own `annotates`
+distribution the tool scores 15.50 against its pooled figure, so the confound is
+real and worth about 2%.
 
 **Against the marker regex the comparison is not resolved, in either direction.**
 An earlier revision here said the regex edged the tool, 6.85 against 6.40, on a
-corpus this is no longer. On the ninth corpus the point estimate reverses — the
-tool 13.3 against the regex 7.0 — but with repositories as the clustering unit
-the paired gap is +6.11 lift with a 95% interval of [−0.17, +12.66], and the tool
-is behind the regex on recall. So "the tool beats the baselines" is not a finding
-at 95%, and neither is its negation. The answer to the marker rule is still not a
-number: Google's C++ and Java guides mandate the form, so a tracked-debt marker
-is not a misplaced explanation and the tool is deliberately not chasing it.
+corpus this is no longer. On the ninth corpus the point estimate reverses: the
+tool 15.33 against the regex 6.94, or in counts, 20 catches and 1 false alarm
+against 25 and 35.
+
+The interval that was quoted here — a paired gap of +6.11 with a 95% range of
+[−0.17, +12.66] — was bootstrapped on the pre-exemption build at lift 13.3
+against 7.0, and is left out rather than restated, because nobody has run it on
+what ships. What carries over is its shape and its conclusion: clustered by
+repository the gap was not distinguishable from zero at 95%, the tool is behind
+the regex on recall, and 8 repositories is not enough clusters to settle it
+either way. Read the counts.
+
+The answer to the marker rule is still not a number: Google's C++ and Java guides
+mandate the form, so a tracked-debt marker is not a misplaced explanation and the
+tool is deliberately not chasing it.
 
 Two baselines that beat the whole pipeline on earlier corpora are now near the
 floor: `text opens with @` fell from lift 7.2 to 2.28 when a per-commit cap
@@ -271,9 +295,27 @@ rate. So `-markers=false` slightly *raises* the reported recall. Report both.
 
 Recall and lift are what a corpus labelled by deletion can measure. Precision at
 the operating point is not, and precision is what a hook interrupting a write is
-paid in. The corpus samples comment lines that somebody edited; the tool fires on
-code nobody has touched, so the corpus's own FPR of 0.001 understates real-code
-false positives by more than an order of magnitude.
+paid in.
+
+Two things this section said and had wrong. Precision *is* computable here — it
+is `lift × P/N`, about 0.95 — it is simply meaningless, because it is precision
+on a population the hook never sees. And the corpus FPR was said to understate
+real-code false positives "by more than an order of magnitude", which cannot be
+true: measured over the Go standard library's 120,192 comment runs, 142 findings
+put the false-alarm rate below 0.0012 even if every one were wrong, against a
+corpus FPR of 0.0003. The gap is a factor of about four, not ten, and the reason
+to distrust the corpus figure is not its size.
+
+The reason is the denominator. Roughly four fifths of the positive class is not
+commented-out code at all — hand-reading a systematic sample puts commented-out
+code at about a fifth of it, tracked-debt markers at an eighth, and prose removed
+for reasons that are nobody's defect at about half. `leftover` is built not to
+fire on any of that, so recall 0.088 is close to `P(commented-out code | deleted)`
+times the rate at which the rule catches one. **Conditional on the subset the
+shipped rule addresses, recall is nearer 0.4**, and that is the number a reader
+should carry. The headline understates the tool by about five times, for the same
+reason the corpus FPR understates its false alarms: both are ratios over a
+population chosen by the miner rather than by the deployment.
 
 So it was measured directly. 214 findings over 24 repositories and the Go
 standard library, drawn as two strata — every multi-line finding, and an
@@ -289,9 +331,25 @@ readers on disjoint packets, blind to each other.
 The false positives are five shapes, all of them valid source in the language
 they sit in: a compiler pass sketching the code it emits, spec or algebraic
 notation, a comment naming what a `case` arm handles, a section heading, and an
-annotation another tool consumes. The last of those is fixed; the other four are
-not, and the first two are not obviously fixable, since a pseudocode convention
-that uses the host language's own syntax is indistinguishable from the syntax.
+annotation another tool consumes. Two are now fixed. The annotation families went
+with the directive list, and the `case` arm went with a structural test — the
+comment opens the arm or sits directly above the label — which removed 12 of 142
+findings on the Go standard library and 21 of 189 across the clones, at no cost
+in recall. That one shape was 21 findings in a single Vue file.
+
+The three that stand are the hard ones, and the first two may not be fixable at
+all: a pseudocode convention written in the host language's own syntax is not
+distinguishable from the syntax. What separates the compiler sketches is that
+they fail to *type* check, and a type checker is two orders of magnitude outside
+a hook's budget and exists for one of the fourteen languages.
+
+**Precision is bimodal, and the pooled number is nobody's experience.** Reading
+whole populations rather than a stratified sample: go-chi 26 findings and about
+26 right, a pydantic sample 20 of 20, the Go standard library about 35 of 142.
+Application code, library code and tests run near nine in ten; compilers, code
+generators, crypto and spec implementations near one in four. The five shapes
+above are concentrated in exactly the second group, which is why the average sits
+where it does and why it describes no actual repository.
 
 **This is also how a recommendation was refused.** A reviewer, hand-judging the
 19 multi-line findings in the standard library at 11 right of 19, proposed

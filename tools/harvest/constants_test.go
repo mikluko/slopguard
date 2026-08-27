@@ -138,11 +138,14 @@ func TestBurstIsBracketed(t *testing.T) {
 	}
 }
 
-// Thirty-eight bytes of annotated code is not enough to check survival against;
+// Thirty-nine bytes of annotated code is not enough to check survival against;
 // forty is.
 //
 // The declaration is `var V<padding> = 1`, which is nine bytes plus the padding,
-// so the two widths below are the floor of forty minus and plus one.
+// so the two widths below are the floor of forty minus one and the floor itself.
+// Bracketed at thirty-eight and forty first, which left thirty-nine passing both
+// subtests: a boundary test one short of the boundary pins everything except the
+// value anybody would actually drift to.
 func TestAnnotatedFloorIsBracketed(t *testing.T) {
 	code := func(width int) string {
 		return fmt.Sprintf("var %s = 1\n", "V"+strings.Repeat("x", width))
@@ -152,7 +155,7 @@ func TestAnnotatedFloorIsBracketed(t *testing.T) {
 		width int
 		want  bool
 	}{
-		{"thirty-eight bytes is under the floor", 29, false},
+		{"thirty-nine bytes is under the floor", 30, false},
 		{"forty bytes clears it", 31, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {

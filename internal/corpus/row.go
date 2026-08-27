@@ -63,13 +63,6 @@ type Row struct {
 	// has a lifetime of zero, which is the strongest evidence in the corpus, and
 	// omitting the field encoded it as absent so every reader dropped it.
 	LifetimeDays float64 `json:"lifetime_days"`
-	// Dated says whether LifetimeDays was computed at all. It separates a
-	// same-day deletion from one whose birth could not be found.
-	Dated bool `json:"dated"`
-	// EditsSince counts the commits that touched the file after a survived
-	// comment was written. It is a cheap prefilter and nothing more: a file
-	// being edited says nothing about whether anyone read this comment.
-	EditsSince int `json:"edits_since,omitempty"`
 	// Exposure counts the commits after Added that touched the code this comment
 	// annotates, which is the number that makes `survived` mean anything. A
 	// comment somebody edited around and left is evidence they wanted it; a

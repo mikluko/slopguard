@@ -141,21 +141,29 @@ func skip(path string) bool {
 // the child is not yet evidence, because deleting a function deletes its doc
 // comment too and says nothing about the comment; requiring the annotated code
 // to still be there is what separates a judgement from a sweep.
-// sweep is how many comments one commit may drop across the whole repository
-// before it is read as a codemod rather than as a set of judgements.
+// sweep is how many files one commit may touch before it is read as a codemod
+// rather than as a set of judgements.
 //
-// [burst] bounds one file and cannot see this: a commit touching ninety-four
-// files contributes three from each. Measured, 124 of 535 positives came from
-// nine commits and 85 from two of one repository's, both of them mechanical
-// rewrites of JSDoc across a directory. A person deleting comments they think
-// are bad does not do it to a hundred files at once.
-const sweep = 8
+// Counted in files, not rows. Counting rows was inert: [burst] already caps
+// every file at three, so no commit ever reached a row threshold, and setting
+// this to a hundred thousand produced byte-identical harvests on the two largest
+// contributors. The leak went through the other door. Measured, 66 of 285
+// positives came from 49 commits that each touched at least fifteen files, among
+// them "Remove Python 3.8 Support" at 185 files and "Drop Python 3.9" at 174.
+//
+// A person deleting comments they think are bad does not do it to fifteen files
+// at once. A tool run across a repository does.
+const sweep = 15
 
 func deleted(dir string, repo Repo, c commit, store *corpus.Blobs) ([]corpus.Row, error) {
 	paths, err := touched(dir, c.sha)
 	if err != nil {
 		// A commit whose parent is outside a shallow clone cannot be read, and
 		// that is the boundary rather than a failure.
+		return nil, nil
+	}
+	// Before any blob is read, so a codemod costs nothing to reject.
+	if len(paths) >= sweep {
 		return nil, nil
 	}
 	var rows []corpus.Row
@@ -173,9 +181,6 @@ func deleted(dir string, repo Repo, c commit, store *corpus.Blobs) ([]corpus.Row
 			continue
 		}
 		rows = append(rows, gone(dir, repo, c, path, language, before, after)...)
-	}
-	if len(rows) > sweep {
-		return nil, nil
 	}
 	return rows, nil
 }
@@ -288,7 +293,6 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 		if born, ok := corpus.BlameLine(dir, c.sha+"^", path, one.Line); ok {
 			row.Added, row.AddedAt = born.SHA, born.When
 			row.LifetimeDays = c.when.Sub(born.When).Hours() / 24
-			row.Dated = true
 		}
 		rows = append(rows, row)
 	}

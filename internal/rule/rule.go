@@ -13,6 +13,7 @@ package rule
 import (
 	"cmp"
 	"hash/fnv"
+	"os"
 	"slices"
 	"strconv"
 
@@ -102,13 +103,19 @@ func WeighOnly(candidates []comment.Comment, language *lang.Language, src []byte
 		if prose.Notice(c.Body) && !c.Buried {
 			continue
 		}
-		if verdicts[i] = keeping(inspect(c, language, src), only); verdicts[i].reason == "" {
+		if verdicts[i] = inspectOnly(c, language, src, only); verdicts[i].reason == "" {
 			pending = append(pending, i)
 		}
 	}
 	if only != "" && only != "tautology" && only != "compat" {
 		// Every structural class was asked for by name and answered above; the
 		// semantic pass would only add what this call is meant to exclude.
+		pending = nil
+	}
+	// The model is loaded lazily, so skipping the pass skips the 86 MB and the
+	// second it costs. `only` naming a semantic class overrides the default,
+	// which is what lets the scorer measure them without the hook running them.
+	if !Wider() && only != "tautology" && only != "compat" {
 		pending = nil
 	}
 	if len(pending) > 0 {
@@ -167,6 +174,27 @@ type verdict struct {
 // inspect returns why the shape of a comment rules it out, or the zero verdict
 // to leave that judgment to the semantic pass. The first rule that fires wins:
 // one line of nudge per comment.
+// widerEnv turns the classes measured at no recall back on, all of them: the two
+// structural ones this package gates, and the semantic pass the rule layer gates
+// beside them.
+const widerEnv = "SLOPGUARD_WIDER"
+
+// Wider reports whether the classes that catch nothing measurable are wanted.
+//
+// Off by default, and the default is what the numbers say. On the mined corpus
+// the whole pipeline catches 21 comments people deleted and nudges 25 they kept;
+// `leftover` alone catches 20 and nudges 5. So the other four classes buy one
+// catch for twenty false positives, and lift goes from 7.6 to about 13 when they
+// go. On the Go standard library they are three quarters of everything the tool
+// says. And the semantic half of them costs a second per invocation and 86 MB of
+// embedded model: measured on one real file, 1.207s against 0.026s.
+//
+// This is a default rather than a deletion because the corpus provably cannot
+// see the defect those classes target, so the case against them is a cost
+// argument and not a verdict on whether they are right. Somebody who wants the
+// wider reading sets one variable and has it back.
+func Wider() bool { return os.Getenv(widerEnv) != "" }
+
 // keeping returns the verdict where it is the class asked for, and the zero
 // verdict otherwise. An empty name keeps everything.
 func keeping(v verdict, only string) verdict {
@@ -176,23 +204,79 @@ func keeping(v verdict, only string) verdict {
 	return verdict{}
 }
 
+// inspectOnly runs the structural rules with every one but the named class
+// switched off.
+//
+// Filtering [inspect]'s answer instead does not do it, and the difference is the
+// whole point of the table this feeds. `inspect` returns at its first firing
+// rule, so a comment `leftover` claimed never reaches `echoes`, and discarding
+// that verdict afterwards reports `echo` as silent where it would have fired.
+// That is the partition the isolated table exists to replace.
+func inspectOnly(c comment.Comment, language *lang.Language, src []byte, only string) verdict {
+	if only == "" {
+		return inspect(c, language, src)
+	}
+	switch only {
+	case "leftover":
+		if leftover(c, language, src) {
+			return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
+		}
+	case "echo":
+		if echoes(c, src) {
+			return verdict{model.ReasonFor("tautology"), 0.95, "echo"}
+		}
+	case "hollow":
+		if empty := hollows(c, src); len(empty) > 0 && wordy(c, language) {
+			return thin(c, empty)
+		}
+	}
+	return verdict{}
+}
+
+// inspect runs the structural rules in precedence order.
+//
+// `echo` and `hollow` are behind [Wider], and default to off. Neither has ever
+// caught a comment anybody deleted, across nine versions of the mined corpus and
+// four definitions of its negative class, while `echo` supplies 172 findings on
+// the Go standard library and `hollow` four across 15,372 files of which all
+// four were read and all four were wrong.
+//
+// The corpus cannot see what `echo` targets, and that is honestly argued: a
+// trivial comment bothers nobody, so nobody deletes it, and fifteen of the
+// twenty comments the two classes fire on there are trivial by Steidl's
+// criterion. What is measurable is the other side. On real code `echo` is right
+// about two thirds of the time and its false positives are section headings; on
+// a faithful port to the population Steidl actually validated, documentation
+// against the signature, the rule scores below chance.
+//
+// So the value is unmeasurable and the volume is not. They stay in the tree,
+// tested, one environment variable away.
 func inspect(c comment.Comment, language *lang.Language, src []byte) verdict {
 	if leftover(c, language, src) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
+	}
+	if !Wider() {
+		return verdict{}
 	}
 	if echoes(c, src) {
 		return verdict{model.ReasonFor("tautology"), 0.95, "echo"}
 	}
 	if empty := hollows(c, src); len(empty) > 0 && wordy(c, language) {
-		return verdict{
-			"padded documentation: cut " + strconv.Quote(empty[0].text) + ", which " +
-				hollowReasons[empty[0].why] +
-				". A sentence past the first is earned by a precondition, an invariant the caller must hold, a failure mode, or a cost the signature cannot show",
-			0.4 + 0.3*float64(len(empty))/float64(prose.Sentences(c.Text)),
-			"hollow",
-		}
+		return thin(c, empty)
 	}
 	return verdict{}
+}
+
+// thin is the hollow rule's verdict, named so that the isolated pass and the
+// whole pipeline cannot word it differently.
+func thin(c comment.Comment, empty []padded) verdict {
+	return verdict{
+		"padded documentation: cut " + strconv.Quote(empty[0].text) + ", which " +
+			hollowReasons[empty[0].why] +
+			". A sentence past the first is earned by a precondition, an invariant the caller must hold, a failure mode, or a cost the signature cannot show",
+		0.4 + 0.3*float64(len(empty))/float64(prose.Sentences(c.Text)),
+		"hollow",
+	}
 }
 
 // wordy reports whether a comment has anywhere else to put what will not fit,

@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"os"
 	"testing"
 
 	"github.com/mikluko/slopguard/internal/comment"
@@ -18,7 +19,14 @@ import (
 // scan runs the whole pipeline over one file, which is what a spec table hands
 // it. The table's case is a file that was just written, so the span is all of
 // it.
+//
+// Every class is on, [Wider] included. These tables are the specification of
+// what each rule recognises, and a rule being off by default is a shipping
+// decision rather than a statement about what it reads. Turning the wider set
+// off here would silently stop testing three of the five.
 func scan(src []byte, language *lang.Language, added []comment.Span) []Finding {
+	os.Setenv(widerEnv, "1")
+	defer os.Unsetenv(widerEnv)
 	return Judge(src, language, added)
 }
 

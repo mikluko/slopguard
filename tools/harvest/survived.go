@@ -106,7 +106,6 @@ func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus
 			Body:       one.Body,
 			Added:      born.SHA,
 			AddedAt:    born.When,
-			EditsSince: edits,
 			Doc:        one.Doc,
 			Trailing:   one.Trailing,
 			Buried:     one.Buried,

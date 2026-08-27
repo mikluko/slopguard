@@ -9,10 +9,14 @@ import (
 	"github.com/mikluko/slopguard/internal/session"
 )
 
+// The fixture is commented-out code rather than a restatement, because these
+// tests are about the plumbing around a finding and should exercise the
+// configuration that ships. `echo` and the semantic pass are behind
+// [rule.Wider] and off by default.
 const source = `package p
 
 func double(v int) int {
-	// multiply it by two
+	// return v * 3
 	return v * 2
 }
 `
@@ -40,12 +44,12 @@ func TestReviewEdit(t *testing.T) {
 	t.Setenv(session.MemoryEnv, t.TempDir())
 	in := payload{ToolName: "Edit"}
 	in.ToolInput.FilePath = file(t, "double.go", source)
-	in.ToolInput.NewString = "\t// multiply it by two\n\treturn v * 2"
+	in.ToolInput.NewString = "\t// return v * 3\n\treturn v * 2"
 	findings := review(in)
 	if len(findings) != 1 {
 		t.Fatalf("want one finding, got %d", len(findings))
 	}
-	if !strings.Contains(findings[0].Reason, "restates what the code") {
+	if !strings.Contains(findings[0].Reason, "commented-out code") {
 		t.Fatalf("unexpected reason: %s", findings[0].Reason)
 	}
 }
@@ -141,7 +145,7 @@ func TestReviewMemoryIsNarrow(t *testing.T) {
 		t.Fatalf("another session should hear it, got %d findings", len(findings))
 	}
 
-	moved := strings.Replace(source, "// multiply it by two", "// close the connection", 1)
+	moved := strings.Replace(source, "// return v * 3", "// return v * 4", 1)
 	if err := os.WriteFile(path, []byte(moved), 0o644); err != nil {
 		t.Fatal(err)
 	}

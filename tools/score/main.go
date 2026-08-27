@@ -79,10 +79,10 @@ func recent(rows []corpus.Row, days float64) []corpus.Row {
 	}
 	kept := make([]corpus.Row, 0, len(rows))
 	for _, row := range rows {
-		// Dated rather than a positive lifetime: a comment written and removed
-		// inside one committer-second has a lifetime of zero, and testing the
-		// number discarded exactly the rows this filter exists to keep.
-		if row.Label == corpus.Deleted && (!row.Dated || row.LifetimeDays > days) {
+		// The birth commit rather than a positive lifetime: a comment written and
+		// removed inside one committer-second has a lifetime of zero, and testing
+		// the number discarded exactly the rows this filter exists to keep.
+		if row.Label == corpus.Deleted && (row.Added == "" || row.LifetimeDays > days) {
 			continue
 		}
 		kept = append(kept, row)
@@ -215,7 +215,7 @@ func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, ma
 	alone(rows, clones, deleted, survived)
 
 	fmt.Printf("\n## What a rule reading one field gets\n\n")
-	baselines(rows)
+	baselines(rows, judged[shipped])
 
 	if sweep {
 		fmt.Printf("\n## The curve\n\n")
@@ -404,7 +404,7 @@ func report(verdicts []verdict) {
 // this corpus, and two of those three turned out to be artifacts of the mining
 // rather than facts about comments, which is the other reason to print them:
 // a baseline that suddenly wins is how a corpus reports its own contamination.
-func baselines(rows []corpus.Row) {
+func baselines(rows []corpus.Row, shipped []verdict) {
 	tests := []struct {
 		name string
 		hit  func(corpus.Row) bool
@@ -416,6 +416,13 @@ func baselines(rows []corpus.Row) {
 		{"doc", func(r corpus.Row) bool { return r.Doc }},
 		{"more than five lines", func(r corpus.Row) bool { return r.Lines > 5 }},
 		{"text of 120 bytes or more", func(r corpus.Row) bool { return len(r.Text) >= 120 }},
+		// The three that read a field the harvester wrote rather than anything
+		// about the comment. A rule that separates the labels on one of these is
+		// reporting how the corpus was built, and each of them has done exactly
+		// that at some point in this map's history.
+		{"harvest field: exposure is zero", func(r corpus.Row) bool { return r.Exposure == 0 }},
+		{"harvest field: annotates under 40 bytes", func(r corpus.Row) bool { return len(r.Annotates) < 40 }},
+		{"harvest field: annotates truncated at 400", func(r corpus.Row) bool { return strings.HasSuffix(r.Annotates, "…") }},
 	}
 	var deleted, survived int
 	for _, row := range rows {
@@ -428,7 +435,27 @@ func baselines(rows []corpus.Row) {
 	if deleted == 0 || survived == 0 {
 		return
 	}
+	// A rule firing at random on the same share of rows catches that share of the
+	// positives, so the ratio is what the rule adds over firing blind.
+	lift := func(caught, nudged int) (float64, float64, float64) {
+		recall := float64(caught) / float64(deleted)
+		fpr := float64(nudged) / float64(survived)
+		rate := float64(caught+nudged) / float64(deleted+survived)
+		if rate == 0 {
+			return recall, fpr, 0
+		}
+		return recall, fpr, recall / rate
+	}
+
 	fmt.Printf("| rule | recall | FPR | lift |\n|---|---|---|---|\n")
+	// The tool's own row, computed by the same arithmetic as everything below
+	// it. Quoting a lift for the pipeline from one table and the baselines from
+	// another is how a comparison stops being one.
+	if len(shipped) > 0 {
+		_, _, caught, nudged := rates(shipped)
+		recall, fpr, over := lift(caught, nudged)
+		fmt.Printf("| **the shipped build** | %.3f | %.3f | **%.2f** |\n", recall, fpr, over)
+	}
 	for _, test := range tests {
 		var caught, nudged int
 		for _, row := range rows {
@@ -441,16 +468,8 @@ func baselines(rows []corpus.Row) {
 			}
 			nudged++
 		}
-		recall := float64(caught) / float64(deleted)
-		fpr := float64(nudged) / float64(survived)
-		// A rule firing at random on the same share of rows catches that share
-		// of the positives, so the ratio is what the rule adds over firing blind.
-		rate := float64(caught+nudged) / float64(deleted+survived)
-		lift := 0.0
-		if rate > 0 {
-			lift = recall / rate
-		}
-		fmt.Printf("| %s | %.3f | %.3f | %.2f |\n", test.name, recall, fpr, lift)
+		recall, fpr, over := lift(caught, nudged)
+		fmt.Printf("| %s | %.3f | %.3f | %.2f |\n", test.name, recall, fpr, over)
 	}
 }
 

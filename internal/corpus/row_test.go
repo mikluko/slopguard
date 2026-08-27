@@ -26,7 +26,7 @@ func TestRevNamesTheVersionRead(t *testing.T) {
 func TestLoadReadsPlainAndGzip(t *testing.T) {
 	rows := []Row{
 		{Repo: "a/b", Label: Deleted, Text: "start write transactions", Line: 12, Removed: "abc"},
-		{Repo: "a/b", Label: Survived, Text: "the caller must hold the lock", Line: 40, EditsSince: 9},
+		{Repo: "a/b", Label: Survived, Text: "the caller must hold the lock", Line: 40, Exposure: 9},
 	}
 	var encoded []byte
 	for _, row := range rows {

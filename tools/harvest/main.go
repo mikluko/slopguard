@@ -73,6 +73,13 @@ func run(clones, out, only string, commits, files, depth, keep int) error {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", repo.Name, err)
 			continue
 		}
+		// A repository yielding only one label was going to be dropped here.
+		// Measured, the premise was wrong: tokio supplies 125 deleted and 192
+		// survived, so the rule would not have touched it, and only date-fns is
+		// one-sided, worth a third of the measured recall rather than half. Run
+		// after the exposure gate it also cost three repositories their whole
+		// negative contribution when their last positive was filtered out, which
+		// concentrated the corpus rather than spreading it.
 		rows = expose(dir, balance(distinct(rows), keep))
 		var kept int
 		for _, row := range rows {
@@ -126,7 +133,16 @@ func expose(dir string, rows []corpus.Row) []corpus.Row {
 			continue
 		}
 		row.Exposure = edits
-		if row.Label == corpus.Survived && edits < seen {
+		// Both labels, or the field is an oracle. Applied to survivors alone it
+		// made a minimum of one exposure true of every negative by construction,
+		// so the 238 positives sitting at zero were separable at zero false
+		// positives: `exposure == 0` scored recall 0.44 at FPR 0.000, z = 39.
+		//
+		// Matched, both labels answer the same question. Somebody came back to
+		// this code at least once, and then they either removed the comment or
+		// left it. A comment deleted before anyone returned is a real deletion
+		// and it is dropped anyway, because it has no comparable negative.
+		if edits < seen {
 			continue
 		}
 		kept = append(kept, row)

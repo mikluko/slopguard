@@ -141,6 +141,16 @@ func skip(path string) bool {
 // the child is not yet evidence, because deleting a function deletes its doc
 // comment too and says nothing about the comment; requiring the annotated code
 // to still be there is what separates a judgement from a sweep.
+// sweep is how many comments one commit may drop across the whole repository
+// before it is read as a codemod rather than as a set of judgements.
+//
+// [burst] bounds one file and cannot see this: a commit touching ninety-four
+// files contributes three from each. Measured, 124 of 535 positives came from
+// nine commits and 85 from two of one repository's, both of them mechanical
+// rewrites of JSDoc across a directory. A person deleting comments they think
+// are bad does not do it to a hundred files at once.
+const sweep = 8
+
 func deleted(dir string, repo Repo, c commit, store *corpus.Blobs) ([]corpus.Row, error) {
 	paths, err := touched(dir, c.sha)
 	if err != nil {
@@ -163,6 +173,9 @@ func deleted(dir string, repo Repo, c commit, store *corpus.Blobs) ([]corpus.Row
 			continue
 		}
 		rows = append(rows, gone(dir, repo, c, path, language, before, after)...)
+	}
+	if len(rows) > sweep {
+		return nil, nil
 	}
 	return rows, nil
 }
@@ -201,12 +214,20 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 	// annotated code grew, `Contains` passed on the old text while the lookup
 	// missed on the new, so a rewording came out as a deletion.
 	var documented []string
+	kept := bare(after, current)
+	remains := corpus.Flat(string(kept))
 	for _, one := range current {
 		for _, node := range one.Nodes {
 			held[corpus.Flat(node.Utf8Text(after))]++
 		}
 		if one.Annotates != nil {
-			documented = append(documented, corpus.Flat(one.Annotates.Utf8Text(after)))
+			// Blanked, like the needle it is compared against. Reading this side
+			// raw while the needle came from blanked bytes meant the two could
+			// never match on a node carrying an inline comment, so `rewritten`
+			// returned false and a comment somebody rewrote was labelled one
+			// somebody deleted. On one repository that was 93% of its rows: a
+			// single codemod turning `[@x]{@link url}` into `[@x](url)`.
+			documented = append(documented, spans(kept, one.Annotates))
 		}
 	}
 	// The haystacks are each version's code with every comment blanked. Code a
@@ -215,7 +236,6 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 	// off. The needle is read out of the same blanked bytes, so that a node
 	// carrying a comment inside it is still comparable.
 	blanked := bare(before, old)
-	survived := corpus.Flat(string(bare(after, current)))
 	previous := corpus.Flat(string(blanked))
 
 	var dropped int
@@ -233,15 +253,14 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 		if len(code) < annotatedFloor {
 			continue
 		}
-		// A needle absent from its own parent means the test cannot run, and a
-		// row it never ran on carries no established label.
-		stood := strings.Count(previous, code)
-		if stood == 0 {
-			continue
-		}
 		// Occurrences rather than membership: a short node recurs, so asking
 		// whether the text is present answers yes on a different instance of it.
-		if strings.Count(survived, code) < stood {
+		//
+		// The needle is read from the parent's own blanked bytes, so it is
+		// always present there at least once and a guard on a zero count would
+		// be unreachable. One was written and is not kept: an unreachable branch
+		// that a fixture appears to pin is worse than no guard at all.
+		if strings.Count(remains, code) < strings.Count(previous, code) {
 			continue
 		}
 		if rewritten(documented, code) {

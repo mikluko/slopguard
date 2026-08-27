@@ -122,28 +122,82 @@ people actively valued.
 A number with no baseline says nothing, and the first version named four
 baselines and ran none of them. Measured since:
 
-| rule | recall | FPR | note |
+Measured on the rebuilt corpus, 3,892 rows with markers excluded, 887 deleted:
+
+| rule | recall | FPR | lift |
 |---|---|---|---|
-| `\b(TODO\|FIXME\|XXX\|HACK)\b` | 0.149 | 0.009 | beats the tool on both axes |
-| `trailing` boolean from the parser | 0.130 | 0.053 | sits on the shipped ROC curve |
-| fire on every JavaScript comment | 0.106 | 0.036 | same recall, 22% fewer nudges |
-| the shipped build | 0.110 | 0.047 | |
-| the shipped build, model off | 0.100 | 0.046 | |
-| fire on length alone | ≈ chance | | AUC ≈ 0.5 |
-| fire at random on 4.9% of rows | 0.049 | 0.049 | |
+| `lines > 5` | 0.218 | 0.060 | **2.26** |
+| language prior, leave-one-repo-out | 0.418 | 0.142 | **2.04** |
+| `trailing` | 0.161 | 0.079 | **1.65** |
+| text length >= 120 | 0.463 | 0.308 | 1.35 |
+| **the shipped build** | **0.042** | **0.021** | **~1.25** |
+| `doc` | 0.073 | 0.090 | 0.85 |
+| `buried` | 0.399 | 0.493 | 0.85 |
 
-The tool beats chance decisively: z = 6.2 unstratified, z = 7.3 stratified by
-language, z = 3.8 after a worst-case clustering correction, lift 2.25 to 2.54.
-**It does not beat three one-bit baselines at its shipped operating point.**
+On the full corpus with markers counted, `\b(TODO|FIXME|XXX|HACK)\b` scores
+recall 0.091 at FPR 0.011, lift 2.98.
 
-Two of those three are corpus artifacts and dissolve with the repairs below: the
-JavaScript baseline is half date-fns, which contributes 246 deleted rows and zero
-survived, and `trailing` rides a position skew created by harvesting the two
-labels under different eligibility rules. **The marker baseline is not an
-artifact.** It is real, and the answer to it is that markers are a tracked-debt
-convention that Google's C++ and Java guides mandate, so the tool is deliberately
-not trying to catch them. That answer is only honest if marker rows are excluded
-from `deleted` rather than counted as recall the tool failed to earn.
+**The tool is not distinguishable from chance on this corpus.** Hypergeometric
+over 137 firings and 887 positives: expected 31.2, observed 39, exact one-sided
+p = 0.068, clustered by repository p = 0.129, and the lift interval is [0.947,
+1.603] which contains 1.0. An earlier version of this document said the tool beat
+chance at z = 6.2. That was measured on the broken corpus and is withdrawn.
+
+**Two classes are individually significant and they point opposite ways.**
+`leftover` catches 36 of 60 firings against 13.7 expected: z = +6.9, exact
+p = 4.7e-10, lift 2.63 with interval [2.08, 3.13], and it survives clustering
+and multiplicity. `echo` catches 2 of 59 against 13.4 expected: z = -3.6, exact
+p = 3.6e-5. **It is a significant negative predictor**, not merely a weak one.
+`tautology` at 0 of 29 is p = 0.049 after Bonferroni, suggestive only. `compat`
+fired once and carries no information.
+
+**The marker answer, restated.** Markers are a tracked-debt convention Google's
+C++ and Java guides mandate, so the tool is deliberately not chasing them.
+Excluding them is not conservative, though: all 89 excluded rows are positives,
+none are negatives, and the tool's recall on them is 2/89, worse than its overall
+rate. So `-markers=false` slightly *raises* the reported recall. Report both.
+
+## The two classes are not exchangeable, and that is the deepest problem left
+
+`exposure` is 0 on all 887 deleted rows and at least 2 on all 3,005 survived
+ones, because it is only computed for survivors. `edits_since` is absent on every
+deleted row and at least 8 on every survived one. **A one-line rule
+`exposure == 0` scores recall 1.000 at FPR 0.000.**
+
+No rule reads those fields, so nothing leaks into the score. What it proves is
+that the negative class is a doubly filtered subpopulation with no counterpart
+filter on the positive side, and the imbalance shows up in everything a rule
+does read:
+
+    lines, mean              deleted 11.17    survived 2.94     SMD +0.31
+    text length, mean        deleted 427      survived 157      SMD +0.35
+    start line, mean         deleted 232      survived 677      SMD -0.65
+
+113 of the 116 deleted rows longer than 20 lines are one repository. Any rule
+correlated with block size gets lift for free, and `leftover` is a
+commented-out-code detector, which is exactly such a rule. Its significance
+survives every correction applied so far, but this is the confound that would
+explain it away if one did.
+
+`tokio` is 28.2% of the deleted class and the tool catches 1 of its 250. Leaving
+it out moves the tool's lift from 1.25 to 1.58 and `leftover`'s from 2.63 to
+3.23. Repository identity alone, fitted, scores recall 0.70 at lift 1.86.
+
+**Until both labels are drawn under matched eligibility and capped identically,
+a rate measured here is a statement about this corpus and not about the tool.**
+
+## Comparing two corpora is not a measurement
+
+The fall from recall 0.110 to 0.044 was reported as though the tool had been
+re-measured. It had not: the corpus, the build, the deletion window and the
+marker treatment all changed at once. Like for like, the same build gives 0.078
+on the old corpus and 0.042 on the new.
+
+The only legitimate test is paired, on rows both corpora contain. 281 of the new
+deleted rows are in the old one. On those: old build 26 catches, new build 24,
+**McNemar exact p = 0.50.** The tool did not change. The drop is entirely a
+change in which rows are in the corpus, which is what a repair to the mining
+rules should produce.
 
 ## What is known to be wrong with the corpus
 

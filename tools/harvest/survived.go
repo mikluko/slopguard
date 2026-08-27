@@ -73,6 +73,12 @@ func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus
 		return nil, nil
 	}
 
+	// Blanked, like the deleted side. Storing raw code here and blanked code
+	// there made `annotates` two different measurements wearing one name:
+	// comment markers appeared in 25.2% of survived rows and 4.3% of deleted
+	// ones, which is a label anything reading the field could separate on.
+	blanked := bare(src, comments)
+
 	var rows []corpus.Row
 	for _, one := range comments {
 		at := int(one.Line) - 1
@@ -82,6 +88,12 @@ func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus
 		born := credit[at]
 		edits, known := later[born.SHA]
 		if !known || edits < endured || !corpus.Prose(corpus.Flat(one.Text)) {
+			continue
+		}
+		// The same floor the deleted side applies. Tested there only, it held on
+		// 540 survived rows and zero deleted ones, so `len(annotates) < 40` was a
+		// zero-error label for the negative class.
+		if one.Annotates == nil || len(spans(blanked, one.Annotates)) < annotatedFloor {
 			continue
 		}
 		row := corpus.Row{
@@ -101,11 +113,9 @@ func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus
 			Lines:      len(one.Nodes),
 			Line:       one.Line,
 		}
-		if one.Annotates != nil {
-			row.Annotates = corpus.Truncate(corpus.Flat(one.Annotates.Utf8Text(src)), 400)
-			row.CodeFrom = one.Annotates.StartPosition().Row + 1
-			row.CodeTo = one.Annotates.EndPosition().Row + 1
-		}
+		row.Annotates = corpus.Truncate(spans(blanked, one.Annotates), 400)
+		row.CodeFrom = one.Annotates.StartPosition().Row + 1
+		row.CodeTo = one.Annotates.EndPosition().Row + 1
 		rows = append(rows, row)
 	}
 	return rows, nil

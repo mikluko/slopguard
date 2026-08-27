@@ -178,7 +178,7 @@ func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, ma
 		offsets = tilts
 	}
 
-	judged, lost, err := judge(rows, clones, offsets)
+	judged, lost, err := judge(rows, clones, offsets, "")
 	if err != nil {
 		return err
 	}
@@ -208,8 +208,11 @@ func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, ma
 	fmt.Printf("## The shipped build\n\n")
 	report(judged[shipped])
 
-	fmt.Printf("\n## Per class, at the shipped thresholds\n\n")
+	fmt.Printf("\n## Per class, as a share of one run\n\n")
 	perClass(judged[shipped], deleted, survived)
+
+	fmt.Printf("\n## Per class, each measured with the others off\n\n")
+	alone(rows, clones, deleted, survived)
 
 	if sweep {
 		fmt.Printf("\n## The curve\n\n")
@@ -246,7 +249,7 @@ func fired(verdicts []verdict, want string) {
 // The file is read and parsed once per offset set rather than once per offset:
 // the rules are re-run over the same candidates, which is where the cost is,
 // and re-reading the blob would add nothing but latency.
-func judge(rows []corpus.Row, clones string, offsets []float64) ([][]verdict, misses, error) {
+func judge(rows []corpus.Row, clones string, offsets []float64, only string) ([][]verdict, misses, error) {
 	out := make([][]verdict, len(offsets))
 	var lost misses
 	byRepo := map[string][]corpus.Row{}
@@ -277,7 +280,7 @@ func judge(rows []corpus.Row, clones string, offsets []float64) ([][]verdict, mi
 		sort.Strings(keys)
 		for _, key := range keys {
 			rev, path, _ := strings.Cut(key, "\x00")
-			found := file(store, rev, path, byFile[key], offsets, &lost)
+			found := file(store, rev, path, byFile[key], offsets, &lost, only)
 			for i := range offsets {
 				out[i] = append(out[i], found[i]...)
 			}
@@ -289,7 +292,7 @@ func judge(rows []corpus.Row, clones string, offsets []float64) ([][]verdict, mi
 }
 
 // file scores the rows belonging to one revision of one path.
-func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []float64, lost *misses) [][]verdict {
+func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []float64, lost *misses, only string) [][]verdict {
 	out := make([][]verdict, len(offsets))
 	src, err := store.Read(rev + ":" + path)
 	if err != nil || len(src) == 0 {
@@ -333,7 +336,7 @@ func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []fl
 
 	for i, offset := range offsets {
 		flagged := map[uint]rule.Finding{}
-		for _, finding := range rule.WeighAt(candidates, language, src, offset) {
+		for _, finding := range rule.WeighOnly(candidates, language, src, offset, only) {
 			// Keep the strongest finding on a line rather than the last, since
 			// a trailing comment can share a start line with the one above it.
 			if held, taken := flagged[finding.Line]; taken && held.Score >= finding.Score {
@@ -386,6 +389,29 @@ func report(verdicts []verdict) {
 	fmt.Printf("| figure | value |\n|---|---|\n")
 	fmt.Printf("| recall on deleted | %.3f (%d caught) |\n", recall, caught)
 	fmt.Printf("| false-positive rate on survived | %.3f (%d nudged) |\n", fpr, nudged)
+}
+
+// classes are the rules a run can be restricted to, in the order `inspect`
+// tries them.
+var classes = []string{"leftover", "echo", "hollow", "tautology", "compat"}
+
+// alone reports each class measured with the others switched off, which is what
+// the class costs rather than what it adds on top of whatever ran before it.
+//
+// The table beside this one is a partition: a comment gets one verdict and the
+// rules run in a fixed precedence, so `tautology` only ever sees what `leftover`
+// and `echo` declined. Read as a ranking that understates every rule but the
+// first, and it has been read that way in this repository more than once.
+func alone(rows []corpus.Row, clones string, deleted, survived int) {
+	fmt.Printf("| class | recall on deleted | FPR on survived | caught | nudged |\n|---|---|---|---|---|\n")
+	for _, name := range classes {
+		judged, _, err := judge(rows, clones, []float64{0}, name)
+		if err != nil || len(judged) == 0 {
+			continue
+		}
+		recall, fpr, caught, nudged := rates(judged[0])
+		fmt.Printf("| %s | %.3f | %.3f | %d | %d |\n", name, recall, fpr, caught, nudged)
+	}
 }
 
 func perClass(verdicts []verdict, deleted, survived int) {

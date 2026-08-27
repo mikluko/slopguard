@@ -76,6 +76,18 @@ func Weigh(candidates []comment.Comment, language *lang.Language, src []byte) []
 // this function applies to a reading, and a curve traced that way describes
 // something the tool never does.
 func WeighAt(candidates []comment.Comment, language *lang.Language, src []byte, offset float64) []Finding {
+	return WeighOnly(candidates, language, src, offset, "")
+}
+
+// WeighOnly is [WeighAt] with every class but one switched off, which is what
+// measuring a class costs rather than what it adds on top of the ones before it.
+//
+// The rules run in a fixed precedence and a comment gets one verdict, so a table
+// built from a whole run reports each class's share of a partition: `tautology`
+// only ever sees what `leftover` and `echo` declined. Read as though it were the
+// class on its own, that understates every rule below the first and makes the
+// order look like a ranking. An empty name runs all of them.
+func WeighOnly(candidates []comment.Comment, language *lang.Language, src []byte, offset float64, only string) []Finding {
 	verdicts := make([]verdict, len(candidates))
 	var pending []int
 	for i, c := range candidates {
@@ -90,9 +102,14 @@ func WeighAt(candidates []comment.Comment, language *lang.Language, src []byte, 
 		if prose.Notice(c.Body) && !c.Buried {
 			continue
 		}
-		if verdicts[i] = inspect(c, language, src); verdicts[i].reason == "" {
+		if verdicts[i] = keeping(inspect(c, language, src), only); verdicts[i].reason == "" {
 			pending = append(pending, i)
 		}
+	}
+	if only != "" && only != "tautology" && only != "compat" {
+		// Every structural class was asked for by name and answered above; the
+		// semantic pass would only add what this call is meant to exclude.
+		pending = nil
 	}
 	if len(pending) > 0 {
 		texts := make([][]string, len(pending))
@@ -118,7 +135,7 @@ func WeighAt(candidates []comment.Comment, language *lang.Language, src []byte, 
 			if read.Class == "tautology" && !restates(candidates[pending[j]], src) {
 				continue
 			}
-			verdicts[pending[j]] = verdict{read.Reason, read.Score, read.Class}
+			verdicts[pending[j]] = keeping(verdict{read.Reason, read.Score, read.Class}, only)
 		}
 	}
 	var out []Finding
@@ -150,6 +167,15 @@ type verdict struct {
 // inspect returns why the shape of a comment rules it out, or the zero verdict
 // to leave that judgment to the semantic pass. The first rule that fires wins:
 // one line of nudge per comment.
+// keeping returns the verdict where it is the class asked for, and the zero
+// verdict otherwise. An empty name keeps everything.
+func keeping(v verdict, only string) verdict {
+	if only == "" || v.class == only {
+		return v
+	}
+	return verdict{}
+}
+
 func inspect(c comment.Comment, language *lang.Language, src []byte) verdict {
 	if leftover(c, language, src) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}

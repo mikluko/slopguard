@@ -335,47 +335,41 @@ var repeat bool
 // does not ask for an edit is read as commentary and answered in prose.
 func report(name string, findings []rule.Finding, in payload) string {
 	var b strings.Builder
-	b.WriteString("Edit " + name + " before your next step: these comments it just gained say things that belong elsewhere.\n\n")
+	b.WriteString("slopguard is a heuristic and about half of its findings are wrong. It parsed these comments in " +
+		name + " as valid source:\n\n")
 	for _, f := range findings {
-		b.WriteString("  line " + strconv.FormatUint(uint64(f.Line), 10) + "  " + f.Reason + "\n")
+		b.WriteString("  " + name + ":" + strconv.FormatUint(uint64(f.Line), 10) + "  " + f.Reason + "\n")
 	}
 	// The long form is worth its tokens once. After that the agent has read
 	// it, and re-sending it every time is the one place this tool spends
-	// context it has not earned.
+	// context it has not earned. The calibration is not part of that trade: it
+	// is what makes the finding safe to act on, so the short form keeps it.
 	if repeat {
-		b.WriteString("\nAs before: restate the claim as a contract, or move it to the commit message. Rewording is not a fix.")
+		b.WriteString("\nAs before: delete it if this write switched off live code, and leave it if it is notation. No reply needed.")
 		return b.String()
 	}
-	b.WriteString("\nPer line: if the claim still binds the next editor, restate it as the symbol's contract or as a test. " +
-		"If it only records this change, cut it and carry it into the commit message. " +
-		"What is judged is where the claim lives, not which words carry it, so rewording is not a fix. " +
-		"If a line is right where it is, keep it and say so in one line.")
-	if rules := anchor(in); rules != "" {
-		b.WriteString("\n\nThe rules these come from are in " + rules + ".")
-	}
+	b.WriteString("\nPer line: if this write commented out live code, delete it — git has it. " +
+		"If it is spec or algebraic notation, a sketch of the code a pass emits, a label naming what a case arm " +
+		"handles, or a section heading, then it is right as written: leave it and carry on, no reply needed. " +
+		"Those four are the measured false positives. Do not reword a comment to satisfy this, and do not act on a " +
+		"comment this write did not author.")
 	return b.String()
 }
 
-// anchor names the file holding the rules, when the session has one. Citing a
-// file the agent cannot open buys nothing.
-func anchor(in payload) string {
-	if in.CWD == "" {
-		return ""
-	}
-	for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
-		if _, err := os.Stat(filepath.Join(in.CWD, name)); err == nil {
-			return name
-		}
-	}
-	return ""
-}
-
+// summary is the line the human sees. It carries the lines rather than only
+// their number: the agent is being told to edit something on a signal that is
+// wrong about half the time, and the one party able to judge that was being
+// handed a count it could not check against anything.
 func summary(name string, findings []rule.Finding) string {
+	at := make([]string, 0, len(findings))
+	for _, f := range findings {
+		at = append(at, name+":"+strconv.FormatUint(uint64(f.Line), 10))
+	}
 	count := strconv.Itoa(len(findings)) + " comment"
 	if len(findings) != 1 {
 		count += "s"
 	}
-	return "slopguard: " + count + " in " + name + " to reconsider"
+	return "slopguard: " + count + " to reconsider — " + strings.Join(at, ", ")
 }
 
 // display names the file the way the agent addressed it, relative to the

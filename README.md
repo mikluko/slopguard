@@ -192,11 +192,13 @@ A finding names the line and the rule, at most three per write, strongest first:
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "Edit store.go before your next step: these comments it just gained say things that belong elsewhere.\n\n  line 42  commented-out code: delete it, or make it real\n\nPer line: if the claim still binds the next editor, restate it as the symbol's contract or as a test. If it only records this change, cut it and carry it into the commit message. What is judged is where the claim lives, not which words carry it, so rewording is not a fix. If a line is right where it is, keep it and say so in one line."
+    "additionalContext": "slopguard is a heuristic and about half of its findings are wrong. It parsed these comments in store.go as valid source:\n\n  store.go:42  commented-out code: delete it, or make it real\n\nPer line: if this write commented out live code, delete it — git has it. If it is spec or algebraic notation, a sketch of the code a pass emits, a label naming what a case arm handles, or a section heading, then it is right as written: leave it and carry on, no reply needed. Those four are the measured false positives. Do not reword a comment to satisfy this, and do not act on a comment this write did not author."
   },
-  "systemMessage": "slopguard: 1 comment in store.go to reconsider"
+  "systemMessage": "slopguard: 1 comment to reconsider — store.go:42"
 }
 ```
+
+The nudge says its own error rate, because the agent acts on it and half of what it says is wrong. It names the four shapes it gets wrong so the agent can dismiss one at a glance, and makes leaving a comment alone cost nothing — an agent charged for defending correct code learns that deleting it is cheaper. The `systemMessage` carries the lines rather than a count, since the human is the only party who can tell a true finding from a false one.
 
 A write is judged in single-digit to low-teens milliseconds. Under `SLOPGUARD_WIDER=1` one that reaches the model pays
 about a second on the first call, most of it opening the ONNX session, and 115 to 145 ms after that.

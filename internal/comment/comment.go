@@ -162,14 +162,32 @@ func after(node *tree_sitter.Node, src []byte) bool {
 // adjacent reports whether two single-line comments are stacked in one column
 // on consecutive lines.
 func adjacent(prev, next *tree_sitter.Node) bool {
-	if prev.StartPosition().Row != prev.EndPosition().Row {
+	if !single(prev) || !single(next) {
 		return false
 	}
-	if next.StartPosition().Row != next.EndPosition().Row {
-		return false
-	}
-	return prev.EndPosition().Row+1 == next.StartPosition().Row &&
+	return written(prev)+1 == next.StartPosition().Row &&
 		prev.StartPosition().Column == next.StartPosition().Column
+}
+
+// written is the last row a comment puts text on.
+//
+// A grammar is free to end a line comment at the start of the row below rather
+// than at the end of its own, and tree-sitter-rust does: every `///` ends at
+// column zero of the next line. Reading the node's end row directly makes each
+// line of a Rust doc comment look multi-line, so no run is ever grouped, and a
+// rule that judges one line at a time then reads the body of a `//// ```rust`
+// example as commented-out code.
+func written(node *tree_sitter.Node) uint {
+	end := node.EndPosition()
+	if end.Column == 0 && end.Row > node.StartPosition().Row {
+		return end.Row - 1
+	}
+	return end.Row
+}
+
+// single reports whether a comment puts text on one row only.
+func single(node *tree_sitter.Node) bool {
+	return written(node) == node.StartPosition().Row
 }
 
 // clean reports whether the bytes between two offsets are all whitespace.

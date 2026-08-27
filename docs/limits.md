@@ -7,9 +7,14 @@ rediscovered by whoever hits it next.
 
 - `Jenkinsfile` and other Groovy: no grammar wired.
 - A five-word fragment carries too little for an embedding to place.
-- Rust documentation never reaches the padding rule. tree-sitter-rust ends a `line_comment` on the row after it starts,
-  so a `///` run is never grouped and 87,016 of 91,667 Rust comments arrive as one sentence, which the rule declines. A
-  sweep reporting nothing on Rust is reporting that the rule did not run.
+- Rust documentation used not to reach the padding rule, for a reason that turned out to matter far more elsewhere.
+  tree-sitter-rust ends a `line_comment` at column zero of the row below, so `adjacent` read every `///` as multi-line
+  and no run was ever grouped. The padding rule declining to run was the harmless half. The damaging half was that
+  `leftover` then judged each line of a ` ```rust ` doc example on its own and reported the body of a test `cargo test`
+  compiles and runs as commented-out code, at score 1.000, which wins the three-finding budget outright. Measured on the
+  mined corpus that was 143 of `leftover`'s 298 false positives, a quarter of the tool's whole false-positive rate.
+  `written` now asks what row a comment last puts text on rather than where its node ends; removing those 143 cost no
+  catches and took the corpus false-positive rate from 0.047 to 0.039.
 - Generated files are not skipped. A `//go:generate` marker is, but a table generated without one —
   `syscall/zsysnum_*.go` — is read like anything else.
 - The legality check that rules out equations misread as code is wired for Go alone. Every other language still decides

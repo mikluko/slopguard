@@ -72,6 +72,23 @@ function f($k) {
 `,
 	},
 	{
+		// The default arm is a different kind from the conditional one, and the
+		// fixture above pins only the conditional: a commit claimed both were
+		// covered while removing `match_default_expression` alone left the
+		// suite green.
+		name: "a comment above a php match default names what the arm handles",
+		lang: php,
+		src: `<?php
+function f($k) {
+  return match ($k) {
+    1 => other($k),
+    // report($k);
+    default => none(),
+  };
+}
+`,
+	},
+	{
 		// A case arm is where a reader most needs an example of what is being
 		// matched, and the example is written in the language being matched.
 		name: "a comment opening a case arm names what the arm handles",

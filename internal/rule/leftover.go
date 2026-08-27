@@ -119,18 +119,25 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // **A comment at the tail of an arm is exempt too, and should not be.** Where a
 // grammar files a trailing comment beside the arms rather than inside one — Go
 // and TypeScript both do — it is the same tree shape as a label comment: a case
-// on either side of it. Two repairs were built and measured and both reverted.
-// Testing the previous sibling recovers two of the true positives below and
-// brings twenty Vue false positives with it; testing the parent moves nothing.
+// on either side of it. Two repairs were built and measured and both reverted:
 //
-// So this silences four findings that are residue, two per branch. This one
-// takes a `//dump(...)` at the tail of an arm in `staticinit` and a
-// commented-out `case goimporterMagic:` arm, both sitting between arms where the
-// tree cannot tell them from a label; [opens] takes a disabled `if` block in
-// `reflectlite` and jq's `/*create_pt_key();*/`, both on an arm's first line,
-// where the exemption is working as written on comments that deserve reporting.
-// Four of the thirty-three findings removed are residue, which makes this about
-// 88% right, and the alternative measured worse.
+//	shipped                          130 stdlib   168 clones
+//	previous sibling is a label      135          188   recovers sched.go:372
+//	nothing precedes the comment     136          188   also recovers importer.go:234
+//	parent is a label                130          168   moves nothing
+//
+// So the cheaper repair recovers one of the four below and the dearer one two,
+// and both cost twenty Vue false positives plus four more in the standard
+// library. Earlier revisions of this paragraph claimed one recovery and then
+// two, each naming the twenty-Vue variant, which no single implementation gives.
+//
+// This branch silences a `//dump(...)` at the tail of an arm in `staticinit` and
+// a commented-out `case goimporterMagic:` arm; [opens] silences a disabled `if`
+// block in `reflectlite` and jq's `/*create_pt_key();*/`, both on an arm's first
+// line. Two per branch, and the reason differs: this branch applies no
+// positional test at all, so anything whose next node is a label is exempt
+// wherever it sits. Four of the thirty-three findings removed are residue, which
+// makes this about 88% right, and both alternatives measured worse.
 func arm(c comment.Comment) bool {
 	if len(c.Nodes) == 0 {
 		return false
@@ -155,8 +162,8 @@ func arm(c comment.Comment) bool {
 // not, so in those a comment on the arm's first line is not exempt. Six of them
 // are worth naming:
 // Go's `type_case` uses `type` and its `communication_case` `communication`;
-// Python's `case_clause` names only its body, as `consequence`, and gives the
-// pattern no field at all; Ruby's `when` uses `pattern` and `body`; Java's
+// Python's `case_clause` names its body `consequence` and its guard `guard`,
+// and gives the pattern no field at all; Ruby's `when` uses `pattern` and `body`; Java's
 // `switch_label` has no fields; and Rust's `match_arm` does have a `value` but
 // it is the arm's body, which is the nastiest of the six because the lookup
 // succeeds and points at the wrong node.
@@ -187,16 +194,19 @@ var labels = set(
 	"expression_case", "default_case", "type_case", "communication_case",
 	// JavaScript, TypeScript, TSX
 	"switch_case", "switch_default",
-	// C, C++, PHP. bash spells an arm `case_item`; its own `case_statement` is
-	// the whole construct, and it emits no `default_statement` at all.
+	// `case_statement` is C, C++ and PHP; `default_statement` is PHP alone,
+	// since C and C++ spell `default:` as a `case_statement` with no value.
+	// bash emits neither as an arm: it spells one `case_item`, and its own
+	// `case_statement` is the whole construct.
 	"case_statement", "default_statement",
 	// Java, whose colon form and arrow form are different kinds
 	"switch_label", "switch_rule", "switch_block_statement_group",
 	// PHP's match expression, where these two are the only thing exempting a
-	// comment above an arm: removing them adds three findings to a PHP match
-	// fixture. A previous revision of this comment said the opposite — that they
-	// were unreachable and decorative — on the strength of a fixture that failed
-	// to reach the rule for a reason of its own.
+	// comment above an arm: removing either adds a finding to the fixture for
+	// it. A previous revision of this comment said the opposite — that they were
+	// unreachable and decorative — on the strength of a fixture that failed to
+	// reach the rule for a reason of its own, and the revision after that put
+	// the cost at three findings when it is one per kind.
 	"match_conditional_expression", "match_default_expression",
 	// Rust
 	"match_arm",

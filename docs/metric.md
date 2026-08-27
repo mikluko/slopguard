@@ -395,14 +395,18 @@ comment opens the arm or sits directly above the label — which removed 12 of 1
 findings on the Go standard library and 21 of 189 across the clones, at no cost
 in recall. Twenty of those twenty-one were a single Vue file; the twenty-first
 was jq's `/*create_pt_key();*/`, which is residue, and the exemption is wrong
-about it. It is wrong about three more, and for two reasons in equal measure. A
-comment between arms has a case label on both sides just as a label comment does,
-and the tree cannot separate them: that covers `staticinit/sched.go:372` and the
-commented-out `case goimporterMagic:` arm. The other two, jq's included, are
-comments on an arm's *first* line, which the exemption spares deliberately and
-which happen here to be residue. Two per branch, about 88% right knowingly. An
-earlier revision offered the tree-shape argument for all four, and its correction
-then claimed it covered only one.
+about it. It is wrong about three more, two per branch of the exemption. The
+branch that reads what a comment sits above applies no positional test at all, so
+anything whose next node is a case label is spared wherever it sits: that takes
+`staticinit/sched.go:372` and the commented-out `case goimporterMagic:` arm. The
+other branch spares an arm's *first* line deliberately, and takes jq's and
+`reflectlite/value.go:296`. About 88% right, knowingly.
+
+Three revisions of this paragraph got that wrong in three different ways: the
+first offered a tree-shape argument for all four, the second said it covered one,
+and the third said the tree cannot separate a between-arms comment from a label —
+which the measurement two paragraphs down refutes, since testing the previous
+sibling does separate them and recovers one of the two.
 
 The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not

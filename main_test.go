@@ -322,33 +322,47 @@ func TestReportMarksTheConfirmedFindingAmongGuesses(t *testing.T) {
 // finding's line number is the one number the nudge may carry, so it is stripped
 // before the check.
 func TestReportQuotesNoRate(t *testing.T) {
-	findings := []rule.Finding{{Line: 42, Reason: "commented-out code: delete it, or make it real"}}
 	fractions := []string{
 		"half", "third", "quarter", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
 		"percent", "%", "most of the time", "of the time",
 	}
-	for _, certain := range []bool{false, true} {
+	// One finding this write demonstrably commented out and one it did not, so
+	// the three branches of the report are all reached. A first version passed
+	// `payload{}` and an edit matching nothing, which hedges either way, so it
+	// certified every branch while exercising one.
+	confirmed := rule.Finding{Line: 42, Reason: "commented-out code", Source: "foo()", Raw: "// foo()"}
+	guessed := rule.Finding{Line: 43, Reason: "commented-out code", Source: "qux()", Raw: "// qux()"}
+	commenting := edit("\tfoo()\n", "\t// foo()\n")
+
+	for _, c := range []struct {
+		name     string
+		findings []rule.Finding
+		in       payload
+	}{
+		{"every finding confirmed", []rule.Finding{confirmed}, commenting},
+		{"some confirmed", []rule.Finding{confirmed, guessed}, commenting},
+		{"none confirmed", []rule.Finding{guessed}, payload{}},
+	} {
 		for _, repeated := range []bool{false, true} {
-			repeat = repeated
-			out := report("store.go", findings, edit("x", "y"))
-			if certain {
-				out = report("store.go", findings, payload{})
-			}
-			bare := strings.ReplaceAll(out, "store.go:42", "")
-			for _, digit := range "0123456789" {
-				if strings.ContainsRune(bare, digit) {
-					t.Errorf("the nudge carries a digit:\n%s", out)
-					break
+			t.Run(c.name, func(t *testing.T) {
+				repeat = repeated
+				t.Cleanup(func() { repeat = false })
+				out := report("store.go", c.findings, c.in)
+				bare := strings.NewReplacer("store.go:42", "", "store.go:43", "").Replace(out)
+				for _, digit := range "0123456789" {
+					if strings.ContainsRune(bare, digit) {
+						t.Errorf("the nudge carries a digit:\n%s", out)
+						break
+					}
 				}
-			}
-			for _, word := range fractions {
-				if strings.Contains(strings.ToLower(bare), word) {
-					t.Errorf("the nudge quotes a rate (%q):\n%s", word, out)
+				for _, word := range fractions {
+					if strings.Contains(strings.ToLower(bare), word) {
+						t.Errorf("the nudge quotes a rate (%q):\n%s", word, out)
+					}
 				}
-			}
+			})
 		}
 	}
-	repeat = false
 }
 
 // edit builds the payload an Edit hands the hook.

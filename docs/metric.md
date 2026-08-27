@@ -141,7 +141,14 @@ baselines and ran none of them. Measured since:
 One catch for twenty false positives. On the Go standard library the default
 gives 142 findings over 4,065 files against 690 with everything on, and 1,034
 before this cycle began. User time on one real file: 0.05s against 0.71s,
-because the semantic pass loads 86 MB of ONNX before it can say anything.
+because the semantic pass loads 90 MB of ONNX before it can say anything.
+
+**It does not shrink the binary, and an earlier version of this document implied
+it did.** The model is embedded at compile time and `internal/rule` imports
+`internal/model` for its reason strings, so the artifact is 116 MB either way.
+What the default buys is the load, which is most of a second on every write, and
+twenty of the twenty-five false positives. Dropping the 90 MB as well needs build
+tags and a package split, which is a separate change.
 
 **This is a default rather than a deletion, and the reason matters.** The corpus
 labels by deletion, a trivial comment bothers nobody, so nobody deletes it:

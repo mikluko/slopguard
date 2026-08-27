@@ -40,8 +40,9 @@ remembers nothing; it is the same judgment the hook makes, without the hook. For
 **What ships is `leftover` alone.** `echo`, `hollow`, `tautology` and `compat` are behind `SLOPGUARD_WIDER=1`, off by
 default. On a corpus of comments other people deleted or kept, `leftover` catches 20 and nudges 5 where the whole set
 catches 21 and nudges 25: one extra catch for twenty extra false positives. The two semantic classes are also what
-loads the 86 MB model, which is most of a second per write. `docs/metric.md` carries the measurement and the argument
-for why this is a default rather than a deletion.
+loads the 90 MB model, which is most of a second on every write. The binary is the same size either way, since the
+model is embedded at compile time. `docs/metric.md` carries the measurement and the argument for why this is a default
+rather than a deletion.
 
 **Wire it.** Add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and
 restart the session.

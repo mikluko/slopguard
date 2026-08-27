@@ -121,6 +121,57 @@ func TestSweptIsNotHarvested(t *testing.T) {
 	}
 }
 
+// A rewording where the annotated code grew around it. The survival test
+// accepts a substring and the rewrite test demanded exact node text, so the two
+// disagreed in one direction: `Contains` passed on the old code while the
+// lookup missed on the new, and a comment somebody rewrote came out as deleted.
+//
+// Python because the shape needs code that grows without a closing delimiter in
+// the way, which is what an import list is.
+func TestRewordedOverGrownCodeIsNotHarvested(t *testing.T) {
+	dir := repoAt(t)
+	commitFile(t, dir, "compat.py",
+		"# typing.Concatenate and typing.ParamSpec require Python 3.10\nfrom typing_extensions import Concatenate, ParamSpec\n")
+	second := commitFile(t, dir, "compat.py",
+		"# typing.Concatenate and typing.ParamSpec require Python 3.10\n"+
+			"# typing.Self requires Python 3.11\n"+
+			"from typing_extensions import Concatenate, ParamSpec, Self\n")
+
+	if texts := harvested(t, dir, second); len(texts) != 0 {
+		t.Errorf("a rewording over grown code was harvested as deleted: %q", texts)
+	}
+}
+
+// Code the commit commented out has not survived it. A block comment keeps the
+// code's bytes exactly, so testing against the whole child file finds them
+// inside the new comment and reports the code as still standing.
+func TestCommentedOutCodeHasNotSurvived(t *testing.T) {
+	dir := repoAt(t)
+	commitFile(t, dir, "total.go", "package p\n\n// loop over the items and add them up\n"+body)
+	second := commitFile(t, dir, "total.go", "package p\n\n/*\n"+body+"*/\n")
+
+	if texts := harvested(t, dir, second); len(texts) != 0 {
+		t.Errorf("a comment whose code was commented out was harvested: %q", texts)
+	}
+}
+
+// A recurring annotated node. Asking whether the code is present in the child
+// answers yes on the other instance of it, so a comment whose own subject was
+// deleted reads as one whose subject survived. Counting occurrences separates
+// them.
+func TestRecurringCodeIsNotMistakenForSurvival(t *testing.T) {
+	dir := repoAt(t)
+	const step = "\tif err := reconcile(ctx, name, opts); err != nil {\n\t\treturn err\n\t}\n"
+	commitFile(t, dir, "run.go", "package p\n\nfunc run() error {\n"+
+		"\t// the first pass is deliberately separate from the second\n"+step+step+"\treturn nil\n}\n")
+	// The annotated statement goes with its comment; its twin below stays.
+	second := commitFile(t, dir, "run.go", "package p\n\nfunc run() error {\n"+step+"\treturn nil\n}\n")
+
+	if texts := harvested(t, dir, second); len(texts) != 0 {
+		t.Errorf("a comment whose own statement went was harvested on its twin: %q", texts)
+	}
+}
+
 // One commit stripping every comment from a file is a rewrite, and none of its
 // comments was decided on individually.
 func TestBurstIsNotHarvested(t *testing.T) {

@@ -11,9 +11,16 @@ import (
 )
 
 // annotatedFloor is how much code has to sit under a comment before its
-// survival can be checked. A three-character node occurs everywhere in a file,
-// so a shorter one would report the code as surviving whatever the commit did.
-const annotatedFloor = 24
+// survival can be checked.
+//
+// Twenty-four bytes of flattened code is `if err != nil { return }` exactly, and
+// `from main_app import app`, and `config *bootstrap.Config`. Those recur many
+// times in one file, so a membership test on them answers yes whatever the
+// commit did: measured on the first corpus, 13.5% of the deleted class had lost
+// an occurrence of its own annotated code and passed anyway. The floor is raised
+// and the test counts occurrences rather than asking whether the text is present
+// at all, which is the half that actually fixes it.
+const annotatedFloor = 40
 
 // burst is how many comments one commit may drop from one file before the whole
 // file is read as a rewrite rather than as a set of judgements.
@@ -150,39 +157,61 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 	current, releaseNew := comment.ScanAll(after, language)
 	defer releaseNew()
 
+	// held counts the comment nodes the child still carries, keyed one node at a
+	// time rather than one run at a time.
+	//
+	// A run is what [comment.ScanAll] groups, so keying on it means adding a
+	// single line beside an existing comment changes the key of the comment
+	// nobody touched, and that untouched comment reads as deleted. Measured on
+	// the first corpus, 7.2% of the deleted class was still present in the child
+	// verbatim, and this was how.
 	held := make(map[string]int, len(current))
 	// documented is the code that still carries a comment of some kind after the
-	// commit, keyed the same way survival is checked.
+	// commit.
 	//
 	// It is what separates a deletion from a rewording, and without it the
 	// harvest is worthless: a doc comment edited to add a link or to be
 	// reflowed has prose that is gone from the child and code that survives,
 	// so it satisfies every other test here while being evidence that somebody
 	// cared about the comment rather than that they judged it.
-	documented := make(map[string]bool, len(current))
+	// It is a list rather than a set because it has to answer the same question
+	// the survival test asks, and that test accepts a substring. Keyed for exact
+	// equality it disagreed with survival in one direction only: when the
+	// annotated code grew, `Contains` passed on the old text while the lookup
+	// missed on the new, so a rewording came out as a deletion.
+	var documented []string
 	for _, one := range current {
-		held[corpus.Flat(one.Text)]++
+		for _, node := range one.Nodes {
+			held[corpus.Flat(node.Utf8Text(after))]++
+		}
 		if one.Annotates != nil {
-			documented[corpus.Flat(one.Annotates.Utf8Text(after))] = true
+			documented = append(documented, corpus.Flat(one.Annotates.Utf8Text(after)))
 		}
 	}
-	survived := corpus.Flat(string(after))
+	// The haystack is the child's code with every comment blanked. Code a commit
+	// commented out is still present as bytes, so testing against the whole file
+	// reports it as having survived the very commit that switched it off.
+	survived := bare(after, current)
+	previous := bare(before, old)
 
+	var dropped int
 	var rows []corpus.Row
 	for _, one := range old {
-		text := corpus.Flat(one.Text)
-		if held[text] > 0 {
-			held[text]--
+		if standing(one, before, held) {
 			continue
 		}
+		dropped++
+		text := corpus.Flat(one.Text)
 		if !corpus.Prose(text) || one.Annotates == nil {
 			continue
 		}
 		code := corpus.Flat(one.Annotates.Utf8Text(before))
-		if len(code) < annotatedFloor || !strings.Contains(survived, code) {
+		// Occurrences rather than membership: a short node recurs, so asking
+		// whether the text is present answers yes on a different instance of it.
+		if len(code) < annotatedFloor || strings.Count(survived, code) < strings.Count(previous, code) {
 			continue
 		}
-		if documented[code] {
+		if rewritten(documented, code) {
 			continue
 		}
 		row := corpus.Row{
@@ -208,8 +237,59 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 		}
 		rows = append(rows, row)
 	}
-	if len(rows) > burst {
+	// Counted over every comment that left the file, not over the rows that
+	// survived the other filters. Gating on the rows lets a mass refactor
+	// contribute up to [burst] of them however many comments it actually swept:
+	// measured on the first corpus, 21% of contributing file-commits had dropped
+	// more than three comments, one of them 399.
+	if dropped > burst {
 		return nil
 	}
 	return rows
+}
+
+// rewritten reports whether some comment in the child still documents this
+// code, allowing for the code having grown or shrunk around it.
+func rewritten(documented []string, code string) bool {
+	for _, still := range documented {
+		if strings.Contains(still, code) || strings.Contains(code, still) {
+			return true
+		}
+	}
+	return false
+}
+
+// standing reports whether every node of a comment is still in the child, and
+// consumes the ones it matched so that two identical comments need two of them.
+func standing(one comment.Comment, src []byte, held map[string]int) bool {
+	var matched []string
+	for _, node := range one.Nodes {
+		text := corpus.Flat(node.Utf8Text(src))
+		if held[text] == 0 {
+			for _, back := range matched {
+				held[back]++
+			}
+			return false
+		}
+		held[text]--
+		matched = append(matched, text)
+	}
+	return true
+}
+
+// bare returns src with every comment blanked, so that what is left is the code
+// alone. Whitespace of the same width replaces the comment, which keeps the
+// flattening cheap and the result readable when a harvest is being debugged.
+func bare(src []byte, comments []comment.Comment) string {
+	out := append([]byte(nil), src...)
+	for _, one := range comments {
+		for _, node := range one.Nodes {
+			for i := node.StartByte(); i < node.EndByte() && i < uint(len(out)); i++ {
+				if out[i] != '\n' {
+					out[i] = ' '
+				}
+			}
+		}
+	}
+	return corpus.Flat(string(out))
 }

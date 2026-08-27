@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +98,43 @@ func b() {
 	// every form of the nudge.
 	if strings.Contains(report("twice.go", findings, in), "This write commented out live code") {
 		t.Error("the nudge claims a transition it cannot attribute")
+	}
+}
+
+// A comment with no twin keeps its claim, which is the other half of the test
+// above and the half that was missing.
+//
+// Blanking every finding's Raw unconditionally passed the whole suite: the twin
+// test only proved the loop exists, not that it is narrow, and every other test
+// touching the confirmed branch builds its findings by hand and never reaches
+// [review]. That mutation would leave the tool unable to say anything with
+// certainty from a real hook run, silently.
+func TestReviewKeepsTheClaimOnACommentWithNoTwin(t *testing.T) {
+	t.Setenv(session.MemoryEnv, t.TempDir())
+	const once = `package p
+
+func a() {
+	// return v * 3
+	return v * 2
+}
+`
+	in := payload{ToolName: "Edit"}
+	in.ToolInput.FilePath = file(t, "once.go", once)
+	in.ToolInput.OldString = "\treturn v * 3\n\treturn v * 2\n"
+	in.ToolInput.NewString = "\t// return v * 3\n\treturn v * 2\n"
+
+	findings := review(in)
+	if len(findings) != 1 {
+		t.Fatalf("want one finding, got %d", len(findings))
+	}
+	if findings[0].Raw == "" {
+		t.Fatal("a comment with no twin lost its claim to certainty")
+	}
+	if !switched(findings[0], in) {
+		t.Fatal("the transition this write made is not reported as one")
+	}
+	if !strings.Contains(report("once.go", findings, in), "This write commented out live code") {
+		t.Error("the nudge hedges a transition it watched happen")
 	}
 }
 
@@ -325,6 +363,21 @@ func TestReportQuotesNoRate(t *testing.T) {
 	fractions := []string{
 		"half", "third", "quarter", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
 		"percent", "%", "most of the time", "of the time",
+	}
+	// A ratio spelled in words has a rate's shape and none of the tokens above.
+	// The previous list dropped "one in" while the commit adding it claimed to
+	// have verified against "four in ten", which it passed — and "one in four on
+	// compilers" is the phrasing in this file's own doc and in the README, so it
+	// is the likeliest thing to leak. Built as pairs rather than banned outright
+	// because the nudge legitimately says "those four are the measured false
+	// positives".
+	numbers := []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
+	for _, a := range numbers {
+		for _, b := range numbers {
+			for _, shape := range []string{"%s in %s", "%s in every %s", "%s out of %s", "%s times in %s"} {
+				fractions = append(fractions, fmt.Sprintf(shape, a, b))
+			}
+		}
 	}
 	// One finding this write demonstrably commented out and one it did not, so
 	// the three branches of the report are all reached. A first version passed

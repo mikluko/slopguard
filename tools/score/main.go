@@ -214,6 +214,9 @@ func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, ma
 	fmt.Printf("\n## Per class, each measured with the others off\n\n")
 	alone(rows, clones, deleted, survived)
 
+	fmt.Printf("\n## What a rule reading one field gets\n\n")
+	baselines(rows)
+
 	if sweep {
 		fmt.Printf("\n## The curve\n\n")
 		curve(judged, offsets, deleted, survived)
@@ -389,6 +392,66 @@ func report(verdicts []verdict) {
 	fmt.Printf("| figure | value |\n|---|---|\n")
 	fmt.Printf("| recall on deleted | %.3f (%d caught) |\n", recall, caught)
 	fmt.Printf("| false-positive rate on survived | %.3f (%d nudged) |\n", fpr, nudged)
+}
+
+// baselines reports what a rule reading a single field of a row would score,
+// beside a reference for a rule firing at random at the same rate.
+//
+// A number with no baseline says nothing, and this document named four for a
+// long time while running none of them. Every one of these needs no model, no
+// parse and no threshold, so a class that does not beat them is not paying for
+// what it costs. Three of them have beaten the whole pipeline on some version of
+// this corpus, and two of those three turned out to be artifacts of the mining
+// rather than facts about comments, which is the other reason to print them:
+// a baseline that suddenly wins is how a corpus reports its own contamination.
+func baselines(rows []corpus.Row) {
+	tests := []struct {
+		name string
+		hit  func(corpus.Row) bool
+	}{
+		{"marker: TODO, FIXME, XXX, HACK", func(r corpus.Row) bool { return marked.MatchString(r.Text) }},
+		{"text opens with @", func(r corpus.Row) bool { return strings.HasPrefix(r.Text, "@") }},
+		{"trailing", func(r corpus.Row) bool { return r.Trailing }},
+		{"buried", func(r corpus.Row) bool { return r.Buried }},
+		{"doc", func(r corpus.Row) bool { return r.Doc }},
+		{"more than five lines", func(r corpus.Row) bool { return r.Lines > 5 }},
+		{"text of 120 bytes or more", func(r corpus.Row) bool { return len(r.Text) >= 120 }},
+	}
+	var deleted, survived int
+	for _, row := range rows {
+		if row.Label == corpus.Deleted {
+			deleted++
+			continue
+		}
+		survived++
+	}
+	if deleted == 0 || survived == 0 {
+		return
+	}
+	fmt.Printf("| rule | recall | FPR | lift |\n|---|---|---|---|\n")
+	for _, test := range tests {
+		var caught, nudged int
+		for _, row := range rows {
+			if !test.hit(row) {
+				continue
+			}
+			if row.Label == corpus.Deleted {
+				caught++
+				continue
+			}
+			nudged++
+		}
+		recall := float64(caught) / float64(deleted)
+		fpr := float64(nudged) / float64(survived)
+		// A rule firing at random on the same share of rows catches that share
+		// of the positives, so the ratio is what the rule adds over firing blind.
+		rate := float64(caught+nudged) / float64(deleted+survived)
+		lift := 0.0
+		if rate > 0 {
+			lift = recall / rate
+		}
+		fmt.Printf("| %s | %.3f | %.3f | %.2f |\n", test.name, recall, fpr, lift)
+	}
 }
 
 // classes are the rules a run can be restricted to, in the order `inspect`

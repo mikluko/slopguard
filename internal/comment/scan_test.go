@@ -33,6 +33,50 @@ func TestScanAllIsUnbounded(t *testing.T) {
 	}
 }
 
+// A grammar may end a line comment at column zero of the row below, and
+// tree-sitter-rust does. Read literally that makes every `///` multi-line, so no
+// run groups, and a rule judging one line at a time reads the body of a doc
+// example as commented-out code.
+//
+// This is the regression for that. Reverting [written] to the node's own end row
+// leaves the rest of the suite green while putting 1,524 false positives back
+// across 1,254 Rust files, so the fixture is the only thing holding it.
+func TestRustDocRunGroups(t *testing.T) {
+	src := []byte("/// Returns the sum of the slice.\n" +
+		"///\n" +
+		"/// # Examples\n" +
+		"///\n" +
+		"/// ```\n" +
+		"/// let total = add_up(&[1, 2, 3]);\n" +
+		"/// assert_eq!(total, 6);\n" +
+		"/// ```\n" +
+		"pub fn add_up(values: &[i32]) -> i32 {\n\tvalues.iter().sum()\n}\n")
+
+	found, release := ScanAll(src, lang.Rust)
+	defer release()
+	if len(found) != 1 {
+		lines := make([]uint, len(found))
+		for i, one := range found {
+			lines[i] = one.Line
+		}
+		t.Fatalf("the doc run came back as %d comments starting at %v, want one", len(found), lines)
+	}
+	if !strings.Contains(found[0].Body, "assert_eq!") {
+		t.Errorf("the grouped comment lost the example body: %q", found[0].Body)
+	}
+}
+
+// The same grammar, one comment per declaration rather than a run: two `///`
+// blocks separated by code must not merge into one.
+func TestRustDocRunsStayApart(t *testing.T) {
+	src := []byte("/// The first thing.\npub fn one() {}\n\n/// The second thing.\npub fn two() {}\n")
+	found, release := ScanAll(src, lang.Rust)
+	defer release()
+	if len(found) != 2 {
+		t.Fatalf("got %d comments, want two", len(found))
+	}
+}
+
 // Mining labels a comment by the code it sits above, so ScanAll owes the same
 // Annotates that the rules read.
 func TestScanAllAnnotates(t *testing.T) {

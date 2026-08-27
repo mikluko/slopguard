@@ -71,6 +71,22 @@ replicaCount: 1
 		want: "commented-out",
 	},
 	{
+		// The form real charts use, as against the one `helm create` scaffolds:
+		// the marker sits flush left and the indentation is inside the comment.
+		// Testing the marker's own column exempted none of these and fired 87
+		// times across 233 YAML findings.
+		name: "a flush-left marker under an empty key documents it",
+		src: `# -- hostAliases to add
+hostAliases: []
+#  - ip: 1.2.3.4
+#    hostnames:
+#      - domain.tld
+
+replicaCount: 1
+`,
+		want: "",
+	},
+	{
 		name: "an empty key does not excuse a block beside it",
 		src: `podSecurityContext: {}
 

@@ -29,7 +29,7 @@ rediscovered by whoever hits it next.
   three section banners and a `// done (label)` note — and costs no catch on the mined corpus. It also silences
   `// var timeout = 5 * time.Second`, because commenting out the last use of a package takes the import with it, so the
   cleanest true positive there is grounds nothing. Four findings is not worth a systematic miss on that shape.
-- A compiler pass sketching the code it emits is the largest single false-positive family, about 29 of the Go standard
+- A compiler pass sketching the code it emits is the largest single false-positive family, about 27 of the Go standard
   library's findings and nearly all of `cmd/compile/internal/walk`: `// hv1 := 0`, `// hp = &a[0]`. The sketch names the
   variables the pass manipulates, so it grounds every name and reads as legal Go. It fails to *type* check —
   `no new variables on left side of :=` — and that is the only thing measured that separates it. A type checker is two

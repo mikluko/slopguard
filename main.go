@@ -163,32 +163,56 @@ func review(in payload) []rule.Finding {
 // Every line has to be found. A run that is half old code and half prose is
 // somebody writing a note next to what they disabled, and the part this can
 // vouch for is not the part being reported.
+//
+// One edit at a time, and the line has to be gone from that edit's replacement.
+// Present-in-the-before is not the claim: a comment quoting a line that is still
+// live two lines down was present before and after, and reporting that as a
+// transition is the strongest thing this tool says about a comment nobody
+// touched. Pooling several edits' before-text is the same error across a file:
+// a line edit one deleted would vouch for a comment edit two wrote elsewhere.
 func switched(f rule.Finding, in payload) bool {
-	was := in.ToolInput.OldString
+	type change struct{ was, now string }
+	edits := []change{{in.ToolInput.OldString, in.ToolInput.NewString}}
 	for _, e := range in.ToolInput.Edits {
-		was += "\n" + e.OldString
+		edits = append(edits, change{e.OldString, e.NewString})
 	}
-	if strings.TrimSpace(was) == "" {
-		return false
+	for _, e := range edits {
+		if strings.TrimSpace(e.was) == "" {
+			continue
+		}
+		if moved(f.Source, e.was, e.now) {
+			return true
+		}
 	}
-	// Whole lines, not substrings. `return v * 3` occurs inside
-	// `// return v * 3`, so a substring test reports a line that was already a
-	// comment before this write as one this write commented out — which is the
-	// opposite finding. Comparing trimmed lines also keeps this free of any
-	// knowledge of what a comment marker looks like, which belongs elsewhere.
-	live := map[string]bool{}
-	for _, line := range strings.Split(was, "\n") {
-		live[strings.TrimSpace(line)] = true
+	return false
+}
+
+// moved reports whether every line of a comment's text was a line of was and is
+// no longer a line of now.
+//
+// Whole lines, not substrings. `return v * 3` occurs inside `// return v * 3`,
+// so a substring test reports a line that was already a comment before this
+// write as one this write commented out — the opposite finding. Comparing
+// trimmed lines also keeps this free of any knowledge of what a comment marker
+// looks like, which belongs elsewhere.
+func moved(source, was, now string) bool {
+	lines := func(text string) map[string]bool {
+		out := map[string]bool{}
+		for _, line := range strings.Split(text, "\n") {
+			out[strings.TrimSpace(line)] = true
+		}
+		return out
 	}
+	before, after := lines(was), lines(now)
 	found := false
-	for _, line := range strings.Split(f.Source, "\n") {
+	for _, line := range strings.Split(source, "\n") {
 		line = strings.TrimSpace(line)
 		// A blank line and a stray delimiter are in every fragment and occur in
 		// every file, so neither is evidence that this one moved.
 		if len(line) < 3 {
 			continue
 		}
-		if !live[line] {
+		if !before[line] || after[line] {
 			return false
 		}
 		found = true

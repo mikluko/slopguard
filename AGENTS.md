@@ -38,8 +38,9 @@ wc -l /tmp/sweep.txt          # 130 over 4,065 files, all leftover
 Diff the file, not the count: the same total over different lines is not the same behaviour.
 
 The standard library holds no YAML, so it cannot see the exemptions that matter most. The second invariant is a sweep of
-the mined clones, where 24 repositories and 11 languages give 168 findings; `tools/harvest -clones <dir>` puts them
-there. A change that moves the 130 and not the 168, or the other way round, has moved one language and should say which.
+the mined clones, where 23 repositories with content and 10 languages give 168 findings; `tools/harvest -clones <dir>`
+puts them there, and `go-chi/chi` clones empty, which is why 23 rather than 24. A change that moves the 130 and not the
+168, or the other way round, has moved one language and should say which.
 
 Neither number is a score. Hand-judged, about half of what the tool says is wrong, and the share splits by population
 rather than averaging: near nine in ten on application code, near one in four on compilers and spec implementations.

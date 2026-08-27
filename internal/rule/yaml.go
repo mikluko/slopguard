@@ -74,24 +74,25 @@ func yamlConfig(c comment.Comment, root *tree_sitter.Node, body, src []byte) boo
 func explained(body []byte) bool {
 	for _, line := range strings.Split(string(body), "\n") {
 		line = strings.TrimSpace(line)
-		line = strings.TrimSpace(strings.TrimPrefix(line, "-"))
 		if line == "" {
 			continue
 		}
+		// A sequence item is configuration however many spaces it holds. Testing
+		// the line before its dash comes off is what keeps a commented-out
+		// argument list — `- --storage.tsdb.retention=15d` under a live `args:`
+		// — from reading as prose on the strength of the space inside a flag.
+		item := strings.HasPrefix(line, "-")
 		key, _, found := strings.Cut(line, ":")
 		if !found {
+			// A bare word is a scalar; a bare clause is a sentence.
+			if !item && strings.Contains(line, " ") {
+				return true
+			}
 			continue
 		}
 		// A key with a space in it is a sentence that happens to end in a colon.
 		// Configuration keys are identifiers.
-		//
-		// This is the whole test. A second branch here read any colon-less line
-		// holding a space as prose, which exempted a commented-out argument list
-		// — `- --storage.tsdb.retention=15d` under a live `args:` — on the
-		// strength of the space inside a flag. Measured over 24 repositories it
-		// spared nothing this branch does not, and it was the only path by which
-		// residue was exempted.
-		if strings.Contains(strings.TrimSpace(key), " ") {
+		if !item && strings.Contains(strings.TrimSpace(key), " ") {
 			return true
 		}
 	}

@@ -48,6 +48,14 @@ func scan(src []byte, language *lang.Language, added []Span, most int) (comments
 	}
 	var out []Comment
 	root := tree.RootNode()
+	// Deliberately not gated on root.HasError(). The contract claimed for a long
+	// time that a file which does not parse yields silence, and implementing it
+	// costs real findings rather than noise: an error node means tree-sitter
+	// could not parse the file, not that the file is broken. Measured, it drops
+	// 16 of 168 findings on the mined clones and every one is a valid C file jq
+	// wrote, where the grammar loses its footing in the preprocessor — several
+	// of them hand-judged as residue. The standard library does not move, which
+	// is what makes the cost invisible to the invariant that would catch it.
 	for _, c := range group(root, collect(root, language, false), src) {
 		if c.Within(added) && !c.pragma() {
 			// Deferred to here rather than done in [group]: locating the code

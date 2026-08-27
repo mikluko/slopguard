@@ -87,8 +87,8 @@ business.
 
 Only the first ships. The other three are one variable away — `SLOPGUARD_WIDER=1` — and turning them on loads a 90 MB
 sentence embedding model, because two of them are decided by what a sentence means rather than by its shape. They are
-off because they were measured: on the mined corpus the four of them together buy one extra catch for twenty extra false
-positives, and on the Go standard library they are three quarters of everything the tool says.
+off because they were measured: on the mined corpus the four of them together buy one extra catch for nineteen extra
+false alarms, and on the Go standard library they are four fifths of everything the tool says.
 
 Change-event comments — `// we now use the pooled client` — were the original point of this tool and are not in it,
 because the class could not be made to work. [docs/limits.md](docs/limits.md) says what was tried.
@@ -124,8 +124,13 @@ carrying a sentence beside its structure is an option being documented rather th
 ## Languages
 
 Go, Python, JavaScript, TypeScript, TSX, Rust, C, C++, Java, Ruby, PHP, shell, YAML and Terraform, plus `Dockerfile`,
-`Containerfile` and `Makefile` by name rather than by extension. A file nothing here reads produces nothing, and so does
-a file that fails to parse — a broken tree is not evidence of a comment.
+`Containerfile` and `Makefile` by name rather than by extension. A file nothing here reads produces nothing.
+
+A file that does not parse is still judged, and this document claimed the opposite for a long time. Declining a file whose
+tree carries an error was tried and reverted: an error node means tree-sitter could not parse the file, not that the file
+is broken, and it drops 16 of 168 findings on the mined corpus — every one a valid C file, where the grammar loses its
+footing in the preprocessor. What is skipped is a *comment* whose own text does not parse as source, which is a different
+test and the one that stops prose being read as code.
 
 Two languages are read as something other than themselves. Helm templates are read as the YAML they become, so a manifest
 opening with `{{- if }}` keeps its comments, and `.tpl`, `.gotmpl` and `.tftpl` are mapped the same way — skipping them by
@@ -196,8 +201,9 @@ Reads the hook payload on stdin, writes a `PostToolUse` result on stdout, always
 produces no output at all.
 
 It fails open. A payload it cannot decode, a tool other than `Write`, `Edit` or `MultiEdit`, an extension with no
-grammar, a file that is gone or is not a regular file or is over 2 MB, replacement text it cannot locate in the file, and
-a source that does not parse all yield silence, because none of them is evidence of a comment.
+grammar, a file that is gone or is not a regular file or is over 2 MB, and replacement text it cannot locate in the file
+all yield silence, because none of them is evidence of a comment. A source that does not parse is **not** on that list —
+see [Languages](#languages).
 
 The default never opens ONNX Runtime, so a machine without it runs the shipped build unchanged. Under
 `SLOPGUARD_WIDER=1` a missing runtime does not go silent, it goes stupid: the structural rules still run and a phrase

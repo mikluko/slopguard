@@ -1,8 +1,6 @@
 package rule
 
 import (
-	"strings"
-
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/mikluko/slopguard/internal/comment"
@@ -113,13 +111,18 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 //
 // Both forms occur, above the label and as the arm's first line, and both write
 // the construct in the host language because that is what makes them legible.
-// Hand-judged, this one position was 20 of 189 findings across 24 repositories
-// and 6 of 142 on the Go standard library, and essentially none of them was
-// residue: a case arm is where a reader most needs an example of what is being
-// matched.
+// Hand-judged, this one position was 21 of 189 findings across 24 repositories
+// and 12 of 142 on the Go standard library, and all but a handful were the
+// naming shape rather than residue: a case arm is where a reader most needs an
+// example of what is being matched.
 //
-// The arm's first line only, not anywhere inside it. A comment further down has
-// statements before it and is disabling one of them as readily as any other.
+// **The arm's first line or the label's own line, never further in.** Both
+// branches below apply that test, and the first one did not until a review found
+// four true positives it had silenced — a `//dump(...)` in `staticinit`, a whole
+// commented-out `case goimporterMagic:` arm, a disabled `if` block in
+// `reflectlite`, and jq's `/*create_pt_key();*/` — every one of them a comment at
+// the *tail* of an arm, which passed because the next node happened to be the
+// following label.
 func arm(c comment.Comment) bool {
 	if len(c.Nodes) == 0 {
 		return false
@@ -131,9 +134,13 @@ func arm(c comment.Comment) bool {
 	if parent == nil || !labelled(parent.Kind()) {
 		return false
 	}
-	// Nothing but the label itself before it. Every grammar here spells the
-	// matched expression as the arm's `value`, so a comment whose only earlier
-	// sibling is that value opens the arm.
+	return opens(c, parent)
+}
+
+// opens reports whether nothing but a case label precedes a comment in its arm.
+// Every grammar here spells the matched expression as the arm's `value`, so a
+// comment whose only earlier sibling is that value opens the arm.
+func opens(c comment.Comment, parent *tree_sitter.Node) bool {
 	previous := c.Nodes[0].PrevNamedSibling()
 	if previous == nil {
 		return true
@@ -142,12 +149,30 @@ func arm(c comment.Comment) bool {
 	return value != nil && previous.StartByte() == value.StartByte()
 }
 
-// labelled reports whether a node kind is a switch arm. Matched on the name
-// because every grammar spells it differently — `expression_case`, `switch_case`,
-// `case_statement` — and all of them say so.
-func labelled(kind string) bool {
-	return strings.Contains(kind, "case") || strings.Contains(kind, "default")
-}
+// labelled reports whether a node kind is a switch arm.
+//
+// Named exhaustively rather than matched as a substring. `strings.Contains` on
+// "case" or "default" both over- and under-matches: it misses Rust's `match_arm`
+// and Java's `switch_label`, which spell neither, and it catches Python's
+// `default_parameter`, PHP's `enum_case` and C++'s `lambda_default_capture`,
+// which are not arms at all — a commented-out line above `timeout=5` was exempt
+// while the same line above `timeout` fired.
+var labels = set(
+	// Go
+	"expression_case", "default_case", "type_case", "communication_case",
+	// JavaScript, TypeScript, TSX
+	"switch_case", "switch_default",
+	// C, C++, Java, PHP
+	"case_statement", "switch_label", "case_expression",
+	// Rust
+	"match_arm",
+	// Python
+	"case_clause",
+	// Ruby
+	"when",
+)
+
+func labelled(kind string) bool { return labels[kind] }
 
 // scopes returns the positions a fragment is tried in, in the order to try
 // them. A language with no wrapper is parsed as a file and nothing else, which

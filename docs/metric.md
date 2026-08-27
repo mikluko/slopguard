@@ -135,13 +135,17 @@ baselines and ran none of them. Measured since:
 `SLOPGUARD_WIDER=1` and off by default.
 
     build                    caught   nudged   recall   FPR      lift
-    everything on                21       25    0.091   0.007     7.6
-    leftover alone               20        5    0.087   0.001    13.3
+    everything on                21       20    0.093   0.006     8.3
     leftover, four exemptions    20        1    0.088   0.000    15.3
 
-One catch for twenty false positives. On the Go standard library the default
-gives 130 findings over 4,065 files against 690 with everything on, and 1,034
-before this cycle began. User time on one real file: 0.05s against 0.71s,
+Both rows are the current build on the ninth corpus, which an earlier revision of
+this table did not manage: it carried `everything on` at 21 and 25 from before
+the exemptions and footed on 231 positives, beside a `leftover` row footed on
+227, and called the difference a comparison.
+
+One catch for nineteen false alarms. On the Go standard library the default gives
+130 findings over 4,065 files against 678 with everything on, and 1,034 before
+this cycle began. User time on one real file: 0.05s against 0.71s,
 because the semantic pass loads 90 MB of ONNX before it can say anything.
 
 **It does not shrink the binary, and an earlier version of this document implied
@@ -168,7 +172,7 @@ makes. A faithful port of Steidl to the population his metric was validated on,
 documentation against the signature, scores below chance.
 
 So the value is unmeasurable and will stay so on this instrument, and the cost is
-86 MB, most of a second per write, and three quarters of everything the tool
+90 MB, most of a second per write, and four fifths of everything the tool
 says. That asymmetry is the whole argument, and it was answerable from the first
 round.
 
@@ -190,10 +194,18 @@ Lift over a rule firing at random at the same rate is **7.1**, hypergeometric
 z about 10.9. `leftover` alone is **12.4** at z about 15, and supplies 20 of the
 21 catches.
 
-Each class is now also measured with the others switched off, and the two tables
-agree, so the precedence order is not distorting the partition on this corpus.
-That was an open worry for three rounds and it is closed by measurement rather
-than by argument.
+Each class is now also measured with the others switched off, and this section
+used to claim the two tables agree, so the precedence order was not distorting
+the partition. They do not agree, on either corpus. `echo` catches nothing in the
+run and one alone; `tautology` takes 13 nudges in the run and 14 alone; the
+isolated rows sum to 22 catches against the run's 21. That is exactly the
+distortion the isolated table exists to expose, and it was declared absent while
+the numbers to refute it were printed beside the claim.
+
+The distortion is small and it runs the way precedence predicts — a class below
+`leftover` sees only what `leftover` declined — so nothing else in this document
+turns on it. Read the isolated table for what a class costs and the run table for
+what it adds.
 
 ## The baselines, run at last
 
@@ -225,17 +237,25 @@ printed its recall as 0.088 above this table and 0.087 inside it.
 **Read lift as precision, because that is what it is.** With `rate` the share of
 all rows a rule fires on,
 
-    lift = recall / rate = (N/P) × caught/(caught+nudged)
+    rate = (caught + nudged) / (P + N)
+    lift = recall / rate = ((P + N) / P) × caught/(caught + nudged)
 
-so it is corpus precision multiplied by `N/P`, a constant of the mining
-thresholds. Two consequences, neither of them small. The first is that this
-document rejected precision for depending on `endured` and then quoted, in every
-comparison it made, precision multiplied by exactly that dependence. The second
-is that lift saturates: as false positives go to zero it pins at `N/P` regardless
-of how many positives the rule caught. `exposure == 0` catches 149 at zero cost
-and the tool catches 20 at nearly zero cost, and lift cannot tell them apart —
-16.10 against 15.33 is not the tool nearly matching an oracle, it is both rules
-sitting against the same ceiling. Prefer the counts.
+so it is corpus precision multiplied by `(P+N)/P`, a constant of the mining
+thresholds. On this corpus that constant is 16.10.
+
+An earlier revision of this passage wrote the constant as `N/P` and was refuted
+by the table twenty lines above it: `N/P` is 15.10, and both `exposure == 0` at
+16.10 and the tool at 15.33 sit above it, which no ceiling permits. The
+arithmetic below is the same either way; the number is not.
+
+Two consequences, neither of them small. The first is that this document rejected
+precision for depending on `endured` and then quoted, in every comparison it
+made, precision multiplied by exactly that dependence. The second is that lift
+saturates: as false positives go to zero it pins at `(P+N)/P` regardless of how
+many positives the rule caught. `exposure == 0` catches 149 at zero cost and
+therefore scores exactly 16.10, the ceiling; the tool catches 20 at nearly zero
+cost and scores 15.33. That gap is not the tool nearly matching an oracle, it is
+both rules pressed against the same wall. Prefer the counts.
 
 **One row above the tool is a field the harvester wrote.** An earlier revision of
 this section said two; `annotates` under 60 bytes is eleventh. `exposure` is an
@@ -251,7 +271,7 @@ real and worth about 2%.
 An earlier revision here said the regex edged the tool, 6.85 against 6.40, on a
 corpus this is no longer. On the ninth corpus the point estimate reverses: the
 tool 15.33 against the regex 6.94, or in counts, 20 catches and 1 false alarm
-against 25 and 35.
+against 25 and 33.
 
 The interval that was quoted here — a paired gap of +6.11 with a 95% range of
 [−0.17, +12.66] — was bootstrapped on the pre-exemption build at lift 13.3
@@ -266,9 +286,9 @@ mandate the form, so a tracked-debt marker is not a misplaced explanation and th
 tool is deliberately not chasing it.
 
 Two baselines that beat the whole pipeline on earlier corpora are now near the
-floor: `text opens with @` fell from lift 7.2 to 2.28 when a per-commit cap
+floor: `text opens with @` fell from lift 7.2 to 2.93 when a per-commit cap
 stopped one repository's JSDoc codemod contributing 119 positives, and `lines >
-5` from 2.72 to 1.10. **A baseline that suddenly wins is how a corpus reports its
+5` from 2.72 to 1.30. **A baseline that suddenly wins is how a corpus reports its
 own contamination**, which is why they are printed on every run.
 
 **Five conclusions have been recorded on five corpora and four are withdrawn.**
@@ -298,10 +318,10 @@ the operating point is not, and precision is what a hook interrupting a write is
 paid in.
 
 Two things this section said and had wrong. Precision *is* computable here — it
-is `lift × P/N`, about 0.95 — it is simply meaningless, because it is precision
+is `lift × P/(P+N)`, about 0.95 — it is simply meaningless, because it is precision
 on a population the hook never sees. And the corpus FPR was said to understate
 real-code false positives "by more than an order of magnitude", which cannot be
-true: measured over the Go standard library's 120,192 comment runs, 142 findings
+true: measured over the Go standard library's 120,192 comment runs, 130 findings
 put the false-alarm rate below 0.0012 even if every one were wrong, against a
 corpus FPR of 0.0003. The gap is a factor of about four, not ten, and the reason
 to distrust the corpus figure is not its size.
@@ -356,7 +376,12 @@ annotation another tool consumes. Two are now fixed. The annotation families wen
 with the directive list, and the `case` arm went with a structural test — the
 comment opens the arm or sits directly above the label — which removed 12 of 142
 findings on the Go standard library and 21 of 189 across the clones, at no cost
-in recall. That one shape was 21 findings in a single Vue file.
+in recall. Twenty of those twenty-one were a single Vue file; the twenty-first
+was jq's `/*create_pt_key();*/`, which is residue, and the exemption is wrong
+about it. It is wrong about three more in the standard library for the same
+reason: a comment at the *tail* of an arm has a case label as its next node just
+as a label comment does, and the two are the same shape in the tree. Structure
+cannot separate them, so this exemption is about 88% right and knowingly so.
 
 The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not
@@ -364,13 +389,20 @@ distinguishable from the syntax. What separates the compiler sketches is that
 they fail to *type* check, and a type checker is two orders of magnitude outside
 a hook's budget and exists for one of the fourteen languages.
 
-**Precision is bimodal, and the pooled number is nobody's experience.** Reading
-whole populations rather than a stratified sample: go-chi 26 findings and about
-26 right, a pydantic sample 20 of 20, the Go standard library about 35 of 142.
-Application code, library code and tests run near nine in ten; compilers, code
-generators, crypto and spec implementations near one in four. The five shapes
-above are concentrated in exactly the second group, which is why the average sits
-where it does and why it describes no actual repository.
+**Precision is bimodal, and the pooled number is nobody's experience.**
+Application code, library code and tests run high; compilers, code generators,
+crypto and spec implementations run low, because the five shapes above are
+concentrated in exactly the second group. The Go standard library is the low end
+and is measured: about 35 right of 142 before the case-arm exemption. The high
+end is read from clone findings and a pydantic sample, and lands somewhere
+between six and nine in ten.
+
+Quote it as that range and no tighter. A previous revision here cited "go-chi 26
+findings and about 26 right" as one of two whole-population reads supporting
+"near nine in ten". `tmp/clones/go-chi_chi` is an empty clone with no working
+tree — its 110 corpus rows are exactly the scorer's "110 missing blob" — so it
+produced no findings in any sweep and that read cannot be reproduced. It also
+means the corpus is 23 repositories with content rather than 24.
 
 **This is also how a recommendation was refused.** A reviewer, hand-judging the
 19 multi-line findings in the standard library at 11 right of 19, proposed
@@ -424,9 +456,10 @@ annotated-code-length stratum 7.5 to 27.0, row-weighted 17.8 against a pooled
 requires the annotated code to survive the commit verbatim, and the survived side
 has no equivalent test, so long-annotated positives are selectively filtered out:
 median 84 bytes against 158. A one-field rule, `annotates` under 60 bytes, scores
-lift 2.24 [1.64, 2.91]. `baselines` tests two thresholds on that field which are
-both dead — under 40 catches nothing, truncation at 400 scores 0.21 — and misses
-the live one. Apply the survival test to both sides or to neither.
+lift 2.16. `baselines` used to test two thresholds on that field which were both
+dead — under 40 catches nothing, truncation at 400 scores 0.22 — and to miss the
+live one; it now sweeps 60, 80, 100 and 160, which is the table above. What is
+still open is the cause: apply the survival test to both sides or to neither.
 
 ## Comparing two corpora is not a measurement
 
@@ -445,44 +478,64 @@ rules should produce.
 
 Stated here rather than in a ticket, because anyone reading a figure needs them.
 
-- **Markers.** `TODO|FIXME|XXX|HACK` is 14.9% of young deletions against 0.90% of
-  survivors. A share of `deleted` is debt resolution, not a judgement.
-- **Codemods.** 298 of 1,526 deleted rows come from ten commits. One date-fns
-  commit contributes 134 rows across 134 files. The `burst` guard is per file and
-  applies after the other filters, so a repo-wide sweep passes unbounded.
-- **Exposure.** As above.
-- **Repository skew.** date-fns is 16% of the positives and 0% of the negatives.
-  86% of `leftover`'s false positives are Rust and YAML from four repositories at
-  the cap.
+**Every figure below is on the ninth corpus, 231 deleted and 3,618 survived.** An
+earlier revision of this section quoted the second corpus — 1,526 deleted rows —
+while presenting itself as current, and two reviews in a row flagged it before it
+was rewritten. Four of its bullets described defects the harvester had since
+fixed, which is worse than a stale number: a reader is warned off a figure that
+is sound and not warned about the one that is not.
+
+- **Markers.** `TODO|FIXME|XXX|HACK` is 26 of 231 deleted rows against 36 of
+  3,618 survivors. A share of `deleted` is debt resolution, not a judgement.
+- **Exposure.** The largest live defect. See the section above: the gate deletes
+  every survived row at zero, so `exposure == 0` remains an oracle, and matching
+  the window on both sides takes recall from 0.088 to 0.064.
+- **`annotates` length.** The other live one, at lift 2.16. The positive side
+  carries a survival test the negative side does not.
+- **Repository skew.** The 20 catches come from 8 of 24 repositories, and jq and
+  pydantic supply 10 of them. Four of the 20 are one jq commit's two copies of
+  the same manual. No repository is at the 800-row cap; the largest contributes
+  388.
+- **A repository with no content.** `go-chi/chi` cloned empty — its 110 rows are
+  exactly the scorer's "110 missing blob" — so the corpus is 23 repositories, and
+  any figure quoted as a whole-population read of go-chi is unreproducible.
 - **Lifetime.** `lifetime_days` dates the comment by the last touch to its first
-  line, so a reflow resets it. The identical pragma removed by one commit carries
-  lifetimes from 40 to 2,059 days across sibling files.
-- **Same-day deletions dropped.** `omitempty` on a float encodes a zero-day
-  lifetime as absent, and the filter then discards those 39 rows. They are the
-  tool's best subset at recall 0.231.
-- **Shallow clones.** Five of twenty-four. In vuejs/core, 345 rows carry the
-  graft boundary as their authoring commit.
-- **Double counting.** The scorer iterates comments rather than rows, so a
-  trailing comment sharing a start line scores its row twice.
-- **Non-independence.** 462 young deletions come from 345 commits; 23% of deleted
-  rows share exact text with another. Design effect 2.73, so recall 0.110 is
-  [0.072, 0.167] clustered rather than [0.085, 0.142].
+  line, so a reflow resets it.
+- **Shallow clones.** Five of twenty-four. In vuejs/core the graft boundary is
+  the authoring commit for part of the 295 rows it contributes.
+- **Non-independence.** Design effect about 2.9, so recall 0.088 is roughly
+  [0.022, 0.152] clustered rather than [0.058, 0.132].
+- **Resolution.** 20 catches across 8 repositories detects a change of about 30%
+  relative and nothing finer, and the false-positive side is one event, so no FPR
+  comparison between two builds is possible at all.
 - **Population.** Every row is human-written prose in a mature reviewed project.
   The tool judges comments an agent just wrote. The corpus corrects for the
-  labeller's taste and not for the population.
+  labeller's taste and not for the population, and no amount of mining reaches
+  the second one.
+
+Fixed since, and listed because an earlier revision still warned about them:
+codemods (`sweep` caps files per commit and `burst` caps comments per file, and
+both are now pinned two-sided), same-day deletions (all 231 rows carry a
+lifetime), and the scorer's double counting (one verdict per row).
 
 ## What has to hold before a figure is quoted again
 
-1. `survived` re-derived from line-local exposure.
-2. Marker rows excluded from `deleted`, or every recall figure reported twice.
-3. Codemods excluded: cap per commit, and drop commits touching many files.
-4. Both labels harvested under matched eligibility and capped identically, or
+Done, and struck rather than deleted so the list is not re-derived from scratch:
+`survived` is re-derived from line-local exposure; per-class figures are produced
+with the other classes disabled rather than read off a precedence-ordered
+partition; the baselines are run, including the marker rule; codemods are capped
+per commit and per file, both pinned two-sided.
+
+Still open:
+
+1. Marker rows excluded from `deleted`, or every recall figure reported twice.
+2. Both labels harvested under matched eligibility and capped identically, or
    the survived pool reweighted to the deleted pool's repository mix.
-5. Uniform clone depth, with graft-terminated blame recorded as a field.
-6. Intervals on everything, clustered by removing commit.
-7. Per-class figures produced with the other classes disabled, not read off a
-   precedence-ordered partition.
-8. The four original baselines plus the marker baseline actually run.
+3. Uniform clone depth, with graft-terminated blame recorded as a field.
+4. Intervals on everything, clustered by repository — the clustering unit is the
+   repository rather than the removing commit, since 8 repositories is what the
+   catches actually span.
+5. The `annotates` survival test applied to both labels or to neither.
 
 ## The operating point this document chose does not exist
 

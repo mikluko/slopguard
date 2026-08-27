@@ -87,6 +87,31 @@ replicaCount: 1
 		want: "",
 	},
 	{
+		// The majority form in every chart measured, and the one the empty-key
+		// exemption misses: the sentences above the block are part of the same
+		// run and parse as mapping keys of their own. It is also the example the
+		// README prints as exempt, which for one round it was not.
+		name: "a setting introduced by prose is being documented",
+		src: `image:
+  repository: example/app
+  ## Optionally specify an array of imagePullSecrets.
+  # pullSecrets:
+  #   - myRegistrKeySecretName
+`,
+		want: "",
+	},
+	{
+		// The sentence test reads the line before its dash comes off, so a flag
+		// list is configuration however many spaces it holds.
+		name: "a commented-out argument list is not prose",
+		src: `args:
+  # - --log.level=debug --web.enable-lifecycle
+  # - --storage.tsdb.retention=15d
+  live: true
+`,
+		want: "commented-out",
+	},
+	{
 		name: "a heading that ends in a colon is still prose",
 		src: `# Example proxy configuration:
 # proxy_url: http://proxy:3128

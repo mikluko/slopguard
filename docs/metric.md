@@ -100,56 +100,63 @@ argued per change.** A change that could plausibly be picking up codemod shape,
 marker shape, or language shape has to be checked against those strata directly
 before its headline movement is believed.
 
-## What `survived` actually means
+## What `survived` means, after two wrong definitions
 
-`survived` was defined as a comment "kept through many readings of a file
-somebody was editing". **That is false for the typical row and the claim is
-withdrawn.**
+It was first defined as a comment kept through many readings of a file somebody
+was editing, and counted commits to the **file**. Checked with `git log -L`, a
+row recorded at 72 file edits had one commit that ever touched its line. That
+version meant only "still present".
 
-The label counts commits touching the *file*. Checked at the comment's own lines
-with `git log -L`, a row recorded at 72 file-edits has one commit that ever
-touched its line; rows at 267 have two and three. Survived comments start at
-median line 359 and p90 line 1,843, so most of them sit far from where the file's
-churn happens.
+The second version counted commits touching the comment's **own line**, over all
+history. `git log -L` lists newest-first and the newest commit is the one that
+wrote whatever stands there now, so it was counting churn from before the comment
+existed: 98.4% of survivors had nothing touch their line after their own text was
+written, and half were kept on the strength of a single pre-authorship edit.
 
-`survived` therefore means **still present**, and nothing stronger. Until
-exposure is re-derived at the hunk level — later commits whose diff touches the
-comment's line range — no FPR figure here can be described as a rate on prose
-people actively valued.
+The current version counts commits **after the comment was written** that touched
+the **code it annotates**. That is the question the label always claimed to ask:
+how often did somebody edit the thing being described and leave the description
+standing. `seen = 1`, because the window no longer includes the comment's own
+authorship.
+
+Both wrong versions passed review once each. The instrument is the part of this
+work that has needed the most correction, and it is worth saying that the two
+defects were found by review rather than by the tests, which were green
+throughout.
 
 ## Baselines, which must be run and mostly were not
 
 A number with no baseline says nothing, and the first version named four
 baselines and ran none of them. Measured since:
 
-Measured on the rebuilt corpus, 3,892 rows with markers excluded, 887 deleted:
+Measured on the third corpus, 3,799 rows scored with markers excluded, 497
+deleted:
 
-| rule | recall | FPR | lift |
-|---|---|---|---|
-| `lines > 5` | 0.218 | 0.060 | **2.26** |
-| language prior, leave-one-repo-out | 0.418 | 0.142 | **2.04** |
-| `trailing` | 0.161 | 0.079 | **1.65** |
-| text length >= 120 | 0.463 | 0.308 | 1.35 |
-| **the shipped build** | **0.042** | **0.021** | **~1.25** |
-| `doc` | 0.073 | 0.090 | 0.85 |
-| `buried` | 0.399 | 0.493 | 0.85 |
+| | catches | nudges | recall | FPR |
+|---|---|---|---|---|
+| `leftover` | 19 | 11 | 0.038 | 0.003 |
+| `tautology` | 0 | 20 | 0 | 0.006 |
+| `echo` | 0 | 9 | 0 | 0.003 |
+| `compat` | 1 | 0 | 0.002 | 0 |
+| **the shipped build** | **20** | **40** | **0.040** | **0.012** |
 
-On the full corpus with markers counted, `\b(TODO|FIXME|XXX|HACK)\b` scores
-recall 0.091 at FPR 0.011, lift 2.98.
+Hypergeometric over 60 firings and 497 positives: expected 7.9, observed 20,
+**z about 4.7**. Lift over a rule firing at random at the same rate is about 2.5,
+and `leftover` alone is about 4.8 at z near 8. **The tool is above chance on this
+corpus and the lift is `leftover`'s.**
 
-**The tool is not distinguishable from chance on this corpus.** Hypergeometric
-over 137 firings and 887 positives: expected 31.2, observed 39, exact one-sided
-p = 0.068, clustered by repository p = 0.129, and the lift interval is [0.947,
-1.603] which contains 1.0. An earlier version of this document said the tool beat
-chance at z = 6.2. That was measured on the broken corpus and is withdrawn.
+Two earlier claims are withdrawn rather than merely updated. An earlier version
+said the tool beat chance at z = 6.2; that was the first, broken corpus. A later
+one said it did not beat chance at all, and that `echo` was a significant
+negative predictor at p = 3.6e-5; that was the second corpus, whose negative
+class was selected by a gate that reweighted the classes against each other by a
+factor of three. **At 9 and 20 firings neither `echo` nor `tautology` is now
+distinguishable from chance in either direction.** They catch nothing, which is a
+fact; that they are worse than nothing is not established.
 
-**Two classes are individually significant and they point opposite ways.**
-`leftover` catches 36 of 60 firings against 13.7 expected: z = +6.9, exact
-p = 4.7e-10, lift 2.63 with interval [2.08, 3.13], and it survives clustering
-and multiplicity. `echo` catches 2 of 59 against 13.4 expected: z = -3.6, exact
-p = 3.6e-5. **It is a significant negative predictor**, not merely a weak one.
-`tautology` at 0 of 29 is p = 0.049 after Bonferroni, suggestive only. `compat`
-fired once and carries no information.
+The one-bit baselines have to be re-run against this corpus before any of them
+is quoted again. On the previous one, `lines > 5`, a leave-one-repo-out language
+prior, and `trailing` all beat the tool.
 
 **The marker answer, restated.** Markers are a tracked-debt convention Google's
 C++ and Java guides mandate, so the tool is deliberately not chasing them.
@@ -157,34 +164,27 @@ Excluding them is not conservative, though: all 89 excluded rows are positives,
 none are negatives, and the tool's recall on them is 2/89, worse than its overall
 rate. So `-markers=false` slightly *raises* the reported recall. Report both.
 
-## The two classes are not exchangeable, and that is the deepest problem left
+## Exchangeability, which took three corpora to get close to
 
-`exposure` is 0 on all 887 deleted rows and at least 2 on all 3,005 survived
-ones, because it is only computed for survivors. `edits_since` is absent on every
-deleted row and at least 8 on every survived one. **A one-line rule
-`exposure == 0` scores recall 1.000 at FPR 0.000.**
+`exposure` used to be 0 on every deleted row and at least 2 on every survived
+one, because it was computed for survivors alone: a one-line rule on the field
+scored recall 1.000 at FPR 0.000. It is now computed for both labels, over the
+same window, and the classes overlap: 297 of 535 deleted rows sit at 1 or more,
+against every survived row.
 
-No rule reads those fields, so nothing leaks into the score. What it proves is
-that the negative class is a doubly filtered subpopulation with no counterpart
-filter on the positive side, and the imbalance shows up in everything a rule
-does read:
+What separation remains is inherent rather than an artifact. A comment can be
+deleted before anybody comes back to the code it describes, so a deleted row may
+legitimately be 0 where a survived row may not. That is the label, not a filter.
 
-    lines, mean              deleted 11.17    survived 2.94     SMD +0.31
-    text length, mean        deleted 427      survived 157      SMD +0.35
-    start line, mean         deleted 232      survived 677      SMD -0.65
+Both labels are now capped per repository, the positive class at a quarter of the
+negative one. Before that, one repository was 28% of the positives and the tool
+caught 1 of its 250, which moved the measured lift by a quarter on its own.
 
-113 of the 116 deleted rows longer than 20 lines are one repository. Any rule
-correlated with block size gets lift for free, and `leftover` is a
-commented-out-code detector, which is exactly such a rule. Its significance
-survives every correction applied so far, but this is the confound that would
-explain it away if one did.
-
-`tokio` is 28.2% of the deleted class and the tool catches 1 of its 250. Leaving
-it out moves the tool's lift from 1.25 to 1.58 and `leftover`'s from 2.63 to
-3.23. Repository identity alone, fitted, scores recall 0.70 at lift 1.86.
-
-**Until both labels are drawn under matched eligibility and capped identically,
-a rate measured here is a statement about this corpus and not about the tool.**
+**The confound still open** is block size. `leftover` is a commented-out-code
+detector and commented-out code is long, so any rule correlated with block size
+gets lift for free. On the second corpus 113 of the 116 deleted rows longer than
+20 lines were one repository. That has to be re-measured here before
+`leftover`'s lift is treated as settled.
 
 ## Comparing two corpora is not a measurement
 

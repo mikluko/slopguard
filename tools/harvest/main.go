@@ -209,9 +209,16 @@ func balance(rows []corpus.Row, keep int) []corpus.Row {
 // bounded depth is enough: the deletions are sampled from recent history, and a
 // full clone of every repository in the set costs tens of gigabytes.
 func fetch(repo Repo, dir string, depth int) error {
+	// An existing clone is a cache and a stale one still harvests: every row is
+	// pinned to a commit, so a fetch only adds history newer than any of them.
+	// Treating a fetch failure as fatal skipped ten of twenty-four repositories
+	// on a machine whose git rewrites https to ssh, and the corpus lost every
+	// Rust, Java and Ruby row without the summary saying so.
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-		_, err := corpus.Git(dir, "fetch", "--quiet", "origin")
-		return err
+		if _, err := corpus.Git(dir, "fetch", "--quiet", "origin"); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: harvesting the clone as it stands: %v\n", repo.Name, err)
+		}
+		return nil
 	}
 	// No template directory. A mining clone is read-only, so the sample hooks
 	// git copies in are dead weight, and an environment that refuses to let

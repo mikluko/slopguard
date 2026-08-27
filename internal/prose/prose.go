@@ -140,7 +140,10 @@ var directives = []string{
 	// program: a Renovate datasource annotation, an editor modeline, and the
 	// call pytest-examples rewrites in place. Renovate's object form is already
 	// covered above; its comment form is the one repositories actually use.
-	"renovate:", "yaml-language-server:", "insert_assert",
+	// The call keeps its parenthesis: every other entry here ends in punctuation
+	// that anchors it, and a bare identifier prefix also silences
+	// `insert_assertion(result, expected)`.
+	"renovate:", "yaml-language-server:", "insert_assert(",
 }
 
 // Normalize lowercases text and reduces everything that is not a letter or

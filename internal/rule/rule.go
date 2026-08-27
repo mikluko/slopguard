@@ -46,6 +46,12 @@ type Finding struct {
 	// Key identifies this comment by what it says, so that a comment already
 	// named once is not named again when the agent's own edit re-enters.
 	Key uint64
+	// Source is what the comment says with its markers removed, line breaks
+	// kept. It is here so a caller holding the text this write replaced can ask
+	// whether these lines were live code a moment ago, which is the difference
+	// between a comment that reads like source and one that just stopped being
+	// source. Nothing in this package reads it.
+	Source string
 }
 
 // Judge parses src and returns what the rules object to in the text just
@@ -162,6 +168,7 @@ func weigh(candidates []comment.Comment, language *lang.Language, src []byte, of
 				Score:  v.score,
 				Class:  v.class,
 				Key:    site(candidates[i].Text),
+				Source: candidates[i].Body,
 			})
 		}
 	}

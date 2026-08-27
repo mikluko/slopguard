@@ -147,6 +147,55 @@ func review(in payload) []rule.Finding {
 	return findings
 }
 
+// switched reports whether this write is what commented the finding out: the
+// lines it names were live code in the text the edit replaced.
+//
+// This is the defect itself rather than evidence for it. Everything else the
+// tool does asks whether a comment reads like source, which is a question about
+// shape, and shape is where it goes wrong — a compiler sketching what it emits
+// and a spec written as an assignment are source-shaped and correct. Whether a
+// line was code a moment ago is not a question about shape at all, and the
+// answer is already in the payload.
+//
+// Only an Edit carries one. A Write hands over the whole file with no before, so
+// this cannot speak for it and says no rather than guessing.
+//
+// Every line has to be found. A run that is half old code and half prose is
+// somebody writing a note next to what they disabled, and the part this can
+// vouch for is not the part being reported.
+func switched(f rule.Finding, in payload) bool {
+	was := in.ToolInput.OldString
+	for _, e := range in.ToolInput.Edits {
+		was += "\n" + e.OldString
+	}
+	if strings.TrimSpace(was) == "" {
+		return false
+	}
+	// Whole lines, not substrings. `return v * 3` occurs inside
+	// `// return v * 3`, so a substring test reports a line that was already a
+	// comment before this write as one this write commented out — which is the
+	// opposite finding. Comparing trimmed lines also keeps this free of any
+	// knowledge of what a comment marker looks like, which belongs elsewhere.
+	live := map[string]bool{}
+	for _, line := range strings.Split(was, "\n") {
+		live[strings.TrimSpace(line)] = true
+	}
+	found := false
+	for _, line := range strings.Split(f.Source, "\n") {
+		line = strings.TrimSpace(line)
+		// A blank line and a stray delimiter are in every fragment and occur in
+		// every file, so neither is evidence that this one moved.
+		if len(line) < 3 {
+			continue
+		}
+		if !live[line] {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
 // readable returns the contents of a file worth judging: a regular file, small
 // enough that parsing and embedding it are worth their cost. A named pipe under
 // a known extension would otherwise block the hook until the harness kills it,
@@ -335,10 +384,34 @@ var repeat bool
 // does not ask for an edit is read as commentary and answered in prose.
 func report(name string, findings []rule.Finding, in payload) string {
 	var b strings.Builder
-	b.WriteString("slopguard is a heuristic and about half of its findings are wrong. It parsed these comments in " +
-		name + " as valid source:\n\n")
+	certain := 0
 	for _, f := range findings {
-		b.WriteString("  " + name + ":" + strconv.FormatUint(uint64(f.Line), 10) + "  " + f.Reason + "\n")
+		if switched(f, in) {
+			certain++
+		}
+	}
+	// A confirmed line is not a heuristic and must not be hedged like one: this
+	// write turned that code into a comment, and the tool watched it happen.
+	// Hedging it costs the one finding the tool is sure of.
+	switch {
+	case certain == len(findings):
+		b.WriteString("This write commented out live code in " + name + ". Delete it or restore it — git has it.\n\n")
+	case certain > 0:
+		b.WriteString("This write commented out live code in " + name + ", marked below. The rest is a heuristic " +
+			"that is wrong about half the time.\n\n")
+	default:
+		b.WriteString("slopguard is a heuristic and about half of its findings are wrong. It parsed these comments in " +
+			name + " as valid source:\n\n")
+	}
+	for _, f := range findings {
+		mark := "  "
+		if certain > 0 && certain < len(findings) && switched(f, in) {
+			mark = "* "
+		}
+		b.WriteString(mark + name + ":" + strconv.FormatUint(uint64(f.Line), 10) + "  " + f.Reason + "\n")
+	}
+	if certain == len(findings) {
+		return b.String()
 	}
 	// The long form is worth its tokens once. After that the agent has read
 	// it, and re-sending it every time is the one place this tool spends

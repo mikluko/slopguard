@@ -204,14 +204,9 @@ var (
 	// it, and only the commented-out-code rule reads the flag. Hand-judged over
 	// 24 repositories, values.yaml supplied 51 findings and no true positive;
 	// the two the rule gets right in YAML are both CI workflows.
-	Values = &Language{
-		Name:      "yaml",
-		Grammar:   tsyaml.Language,
-		Comments:  set("comment"),
-		Functions: set(),
-		Templated: true,
-		Registers: true,
-	}
+	// Derived from YAML rather than written out beside it, so a field added
+	// there cannot silently fail to reach here.
+	Values = registers(YAML)
 	// hcl has no function bodies, so every comment in a Terraform file is judged
 	// as documentation of the block it sits in.
 	HCL = &Language{
@@ -301,6 +296,14 @@ var byName = map[string]*Language{
 	"GNUmakefile":   Makefile,
 	"values.yaml":   Values,
 	"values.yml":    Values,
+}
+
+// registers returns a copy of a language whose files publish the settings they
+// accept by writing them commented out.
+func registers(of *Language) *Language {
+	out := *of
+	out.Registers = true
+	return &out
 }
 
 func set(names ...string) map[string]bool {

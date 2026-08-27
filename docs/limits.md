@@ -40,6 +40,12 @@ rediscovered by whoever hits it next.
   `java.time.zone.ZoneOffsetTransitionRule` documents three enum constants in parallel — "The STANDARD type uses the
   standard offset" — over a method whose parameters are `standardOffset` and `wallOffset`, so every word is one the
   declaration spells. Two findings in 15,605 JDK files, and the shape has no tell beyond being right.
+- A chart's `values.yaml` is exempt from the commented-out-code rule outright, and that is too broad in two directions.
+  It loses real residue — `# repository: richih/modbus_exporter` sitting directly above the live `repository:` it was
+  replaced by is the target class, not documentation — and it is keyed on the filename, so `ci/default-values.yaml` and
+  `values.test.yaml` are not exempt at all. There are 188 such files across the 24 mined repositories. The shape the
+  exemption is really after is a commented key with no live sibling of the same name at the same indent, which would
+  keep the modbus finding and still drop the fifty documentation blocks. Not built.
 - A commented option under a key that already has values is reported, which on a stock `helm create` scaffold is two
   findings. A commented block indented under a key whose value is an empty collection is documentation rather than
   residue and is spared: `podSecurityContext: {}` over `# fsGroup: 2000` is how a chart shows what a setting takes.

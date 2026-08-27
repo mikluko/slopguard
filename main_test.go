@@ -164,6 +164,82 @@ func TestReviewMemoryOff(t *testing.T) {
 	}
 }
 
+// Commenting code out is a thing that happens to a file, not a property of the
+// text left behind, and an Edit carries the before. Where the payload shows the
+// lines were live a moment ago the tool is not guessing and does not say it is.
+//
+// This is the one channel that cannot fire on the shapes hand adjudication keeps
+// finding: a compiler sketching what it emits and a spec step written as an
+// assignment were never live code in this write.
+func TestSwitchedReadsTheEditRatherThanTheComment(t *testing.T) {
+	const live = "func double(v int) int {\n\treturn v * 3\n}"
+	const off = "func double(v int) int {\n\t// return v * 3\n}"
+
+	for _, c := range []struct {
+		name string
+		in   payload
+		want bool
+	}{
+		{
+			name: "the edit turned this line into a comment",
+			in:   edit(live, off),
+			want: true,
+		},
+		{
+			name: "the line was already a comment before the edit",
+			in:   edit("func double(v int) int {\n\t// return v * 3\n\treturn v * 2\n}", off),
+			want: false,
+		},
+		{
+			name: "a Write carries no before to read",
+			in:   payload{ToolName: "Write"},
+			want: false,
+		},
+		{
+			name: "notation that was never code here",
+			in:   edit("func lsh(x, s uint) uint {\n\treturn x << s\n}", "// z = x << s\nfunc lsh(x, s uint) uint {\n\treturn x << s\n}"),
+			want: false,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := rule.Finding{Line: 2, Source: "return v * 3"}
+			if c.name == "notation that was never code here" {
+				f.Source = "z = x << s"
+			}
+			if got := switched(f, c.in); got != c.want {
+				t.Fatalf("switched = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// A confirmed transition is not hedged. Saying "about half of these are wrong"
+// over a line the tool watched being commented out spends the one finding it is
+// certain of to protect the ones it is not.
+func TestReportDoesNotHedgeWhatItWatchedHappen(t *testing.T) {
+	in := edit("func double(v int) int {\n\treturn v * 3\n}", "func double(v int) int {\n\t// return v * 3\n}")
+	findings := []rule.Finding{{Line: 2, Reason: "commented-out code: delete it, or make it real", Source: "return v * 3"}}
+
+	repeat = false
+	out := report("double.go", findings, in)
+	if strings.Contains(out, "half") {
+		t.Errorf("hedged a confirmed transition:\n%s", out)
+	}
+	for _, want := range []string{"commented out live code", "git has it", "double.go:2"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the nudge does not carry %q:\n%s", want, out)
+		}
+	}
+}
+
+// edit builds the payload an Edit hands the hook.
+func edit(old, new string) payload {
+	in := payload{ToolName: "Edit"}
+	in.ToolInput.OldString = old
+	in.ToolInput.NewString = new
+	return in
+}
+
 // The text handed to the agent is the tool's whole interface to it, and nothing
 // asserted anything about it: the payload could be rewritten end to end with the
 // suite green. What it must carry follows from the measurement rather than from

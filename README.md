@@ -26,12 +26,13 @@ git ls-files -z | xargs -0 slopguard -v
 `-v` prints each comment with the line under it, which is what you need in order to say whether a finding is right:
 
 ```
-internal/store/lifecycle.go:88	leftover	1.000	commented-out code: delete it, or make it real
+internal/store/lifecycle.go:4	leftover	1.000	commented-out code: delete it, or make it real
 	| // if item.Status == StatusDraft {
-	| // 	return errDraft
-	| // }
 	| return nil
 ```
+
+It prints the comment's first line and the first line of code under it, which is what you need in order to say whether a
+finding is right. The run continues past what is shown.
 
 A file in a language it does not read produces nothing, so passing the whole index is safe. The sweep writes nothing and
 remembers nothing; it is the same judgment the hook makes, without the hook. For scale, the Go standard library gives
@@ -40,23 +41,27 @@ rule fired, not about how many are right. On that particular library, most are n
 
 **What ships is `leftover` alone.** `echo`, `hollow`, `tautology` and `compat` are behind `SLOPGUARD_WIDER=1`, off by
 default. On a corpus of comments other people deleted or kept, `leftover` catches 20 and nudges 1 where the whole set
-catches 21 and nudges 25. The two semantic classes are also what loads the 90 MB model, which is a second on the first
-write that reaches it. The binary is the same size either way, since the model is embedded at compile time.
-`docs/metric.md` carries the measurement and the argument for why this is a default rather than a deletion.
+catches 21 and nudges 20: one extra catch for nineteen extra false alarms. The two semantic classes are also what loads
+the 90 MB model, which is a second on the first write that reaches it. The binary is the same size either way, since the
+model is embedded at compile time. `docs/metric.md` carries the measurement and the argument for why this is a default
+rather than a deletion.
 
-**How often it is right, and where.** 214 findings over 24 repositories and the Go standard library, judged by hand in
-context, came out at about half — but the average is not what anyone experiences, because precision splits hard by what
-the code is:
+**How often it is right, and where.** Judged by hand in context, precision splits hard by what the code is, and the
+average across them describes no actual repository:
 
 | population | roughly right |
 |---|---|
-| application and library code, tests | 9 in 10 |
-| compilers, codegen, crypto and spec implementations | 1 in 4 |
+| application and library code, tests, config | 6 to 9 in 10 |
+| compilers, codegen, crypto and spec implementations | about 1 in 4 |
 
-The wrong ones are all one thing: notation that is valid source. A compiler pass sketching the code it emits, an RFC or
-NIST step written as an assignment, a comment naming what a `case` arm handles. Those live where the tool is weakest and
-are rare where it is strong. The corpus cannot produce this number at all — labelled by deletion, it measures whether a
-nudge predicts what somebody removed, not whether a nudge is correct. Read a finding before acting on it.
+The Go standard library sits at the bottom of that range and is the honest figure for anyone writing systems code. The
+wrong ones are all one thing: notation that is valid source. A compiler pass sketching the code it emits, an RFC or NIST
+step written as an assignment, a section banner. Those live where the tool is weakest and are rare where it is strong.
+
+Treat these as a range, not a measurement. The exemptions above were chosen by reading the same hand-judged findings the
+figures are computed over, so they are fitted to that sample and no held-out set has been judged; four readers worked on
+disjoint findings, so there is no agreement rate behind them either. `docs/metric.md` says what would have to be done to
+turn them into an estimate. **Read a finding before acting on it.**
 
 **Wire it.** Add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and
 restart the session.
@@ -123,9 +128,11 @@ Go, Python, JavaScript, TypeScript, TSX, Rust, C, C++, Java, Ruby, PHP, shell, Y
 a file that fails to parse — a broken tree is not evidence of a comment.
 
 Two languages are read as something other than themselves. Helm templates are read as the YAML they become, so a manifest
-opening with `{{- if }}` keeps its comments; a `.tpl` file is deliberately not mapped, since those are mostly
-`{{ define }}` bodies and calling them YAML would be a false claim of coverage. A commented-out Dockerfile instruction is
-told from prose by its case, because `# copy the buffer first` parses as a perfectly good `COPY`.
+opening with `{{- if }}` keeps its comments, and `.tpl`, `.gotmpl` and `.tftpl` are mapped the same way — skipping them by
+extension left `templates/_helpers.tpl` unread in every chart. A commented-out Dockerfile instruction is told from prose
+by its case, because `# copy the buffer first` parses as a perfectly good `COPY`.
+
+`values.yaml` is read as YAML that documents itself, so the commented-out-code rule does not run there at all.
 
 ## Install
 

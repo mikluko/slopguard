@@ -323,10 +323,31 @@ every-third sample of the single-line ones — and judged in context by four
 readers on disjoint packets, blind to each other.
 
     population                  judged   right   precision
-    before this cycle (stdlib)      72      20       0.28
     multi-line                     115      35       0.30
     single-line                     99      43       0.43
-    after three exemptions         160      78       0.49
+    both strata, as judged         214      78       0.36
+    the same rows, exemptions in   160      78       0.49
+
+**That last row is not an estimate of anything, and an earlier revision of this
+document presented it as one.** The exemptions were chosen by reading these same
+214 judgements, and every one of the 54 findings they removed had been judged
+wrong — `right` does not move, only `judged`. Fitting a filter to an outcome and
+then reporting the filtered rate is a training-set figure. No held-out packet was
+drawn, so the honest statement is that on the judged sample the exemptions
+removed 54 false positives and no true ones, and that precision on findings
+nobody has judged is unmeasured.
+
+Two further defects in how it was pooled. The strata were sampled at different
+rates — every multi-line finding, one single-line finding in three — so the naive
+pooled figure is wrong by design; it happens to be right here (0.4875 naive
+against 0.4884 weighted) only because the exemptions left the two strata almost
+equal, and it was off by 3.4 points before them. And the four readers judged
+disjoint packets, so nothing was double-judged and there is no agreement rate.
+
+An earlier revision also read `0.28 → 0.49` off the top of this table. The 0.28
+was a separate, earlier, standard-library-only pass, and the standard library's
+output was byte-identical before and after those three exemptions. Same
+population before and after is `0.398 → 0.488`.
 
 The false positives are five shapes, all of them valid source in the language
 they sit in: a compiler pass sketching the code it emits, spec or algebraic
@@ -465,13 +486,17 @@ Stated here rather than in a ticket, because anyone reading a figure needs them.
 
 ## The operating point this document chose does not exist
 
-This part stands and is the most useful thing the exercise produced.
+The design conclusion stands. The numbers it was stated with do not, and the
+heading said "this part stands" over both for several corpora.
 
 Sweeping the semantic thresholds moves them only. `echo`, `leftover` and the YAML
 carve-out carry no threshold, so they fire identically at every offset and their
-combined false-positive rate is a floor: 0.044 on this corpus, of which
-`leftover` is 0.024 and `echo` 0.020. **Turning the model off entirely still
-lands above FPR 0.02.**
+combined false-positive rate is a floor. That floor was quoted here as 0.044,
+`leftover` 0.024 and `echo` 0.020, with the claim that turning the model off
+still lands above 0.02. On the ninth corpus the shipped default's floor is
+**0.0003** and the wider build's is about **0.005**, so the figure was an order
+of magnitude high and its bolded claim is refuted by the corpus this document
+otherwise reports.
 
 A rule with no threshold cannot be traded off, so the floor moves only by making
 one thresholdable or by cutting it. That is a design conclusion no aggregate

@@ -40,13 +40,22 @@ func echoes(c comment.Comment, src []byte) bool {
 	// since a doc comment sits above a declaration rather than inside a body; a
 	// Python docstring is inside the body it opens, so a one-line docstring over
 	// a one-line function was read as repeating it.
-	//
-	// What does not belong beside it is a test on what follows the line. The
-	// same test in [restates] accepts a comment, it does not turn one away, and
-	// read as a gate it takes the plainest case there is: four consecutive
-	// restatements of four trivial lines leave one finding, because only the
-	// last of them has nothing after it.
 	if c.Doc {
+		return false
+	}
+	// A comment with more code after it in the same block heads a run, and this
+	// rule can only see the first statement of that run. Scored against it, a
+	// section heading reads as a restatement of a line it was never about.
+	//
+	// This test was declined here once, on the grounds that four consecutive
+	// restatements would leave one finding because only the last has nothing
+	// after it. The measured cost of declining it is worse than that: on a mined
+	// corpus 43 of this rule's 57 false positives were headings scored against a
+	// run's first statement, and both of its catches were the same section
+	// heading in two files. Reporting one of four trivial lines is a cost the
+	// three-finding budget already imposes; reporting a heading as an echo is a
+	// claim about a span the rule never read.
+	if !last(c.Annotates) {
 		return false
 	}
 	// A comment beside code is a note about that line, and the words it shares

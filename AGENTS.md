@@ -42,8 +42,9 @@ the mined clones, where 23 repositories with content and 10 languages give 168 f
 puts them there, and `go-chi/chi` clones empty, which is why 23 rather than 24. A change that moves the 130 and not the
 168, or the other way round, has moved one language and should say which.
 
-Neither number is a score. Hand-judged, about half of what the tool says is wrong, and the share splits by population
-rather than averaging: near nine in ten on application code, near one in four on compilers and spec implementations.
+Neither number is a score. Hand-judged, the share that is right splits by population rather than averaging: six to nine
+in ten on application code, about one in four on compilers and spec implementations, and the figures are fitted to the
+sample the exemptions were chosen from rather than estimated on a held-out one. `docs/metric.md` says what that costs.
 A change that moves a count has to say which findings it moved, because moving the wrong half and the right half are the
 same arithmetic and opposite work.
 

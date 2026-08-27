@@ -126,7 +126,7 @@ func weigh(candidates []comment.Comment, language *lang.Language, src []byte, of
 		// semantic pass would only add what this call is meant to exclude.
 		pending = nil
 	}
-	// The model is loaded lazily, so skipping the pass skips the 86 MB and the
+	// The model is loaded lazily, so skipping the pass skips the 90 MB and the
 	// second it costs. `only` naming a semantic class overrides the default,
 	// which is what lets the scorer measure them without the hook running them.
 	if !wider && only != "tautology" && only != "compat" {
@@ -198,7 +198,7 @@ const widerEnv = "SLOPGUARD_WIDER"
 // `leftover` alone catches 20 and nudges 5. So the other four classes buy one
 // catch for twenty false positives, and lift goes from 7.6 to about 13 when they
 // go. On the Go standard library they are three quarters of everything the tool
-// says. And the semantic half of them costs a second per invocation and 86 MB of
+// says. And the semantic half of them costs a second per invocation and 90 MB of
 // embedded model: measured on one real file, 1.207s against 0.026s.
 //
 // This is a default rather than a deletion because the corpus provably cannot

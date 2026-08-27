@@ -187,14 +187,21 @@ func switched(f rule.Finding, in payload) bool {
 	return false
 }
 
-// moved reports whether every line of a comment's text was a line of was and is
-// no longer a line of now.
+// moved reports whether every line of a comment's text was a line of was, is no
+// longer a line of now, and is still somewhere in now inside a longer line.
 //
-// Whole lines, not substrings. `return v * 3` occurs inside `// return v * 3`,
-// so a substring test reports a line that was already a comment before this
-// write as one this write commented out — the opposite finding. Comparing
-// trimmed lines also keeps this free of any knowledge of what a comment marker
-// looks like, which belongs elsewhere.
+// Three conditions, and the third is what ties the edit that deleted the code to
+// the edit that wrote the comment. Without it, testing each edit separately is
+// still not per-edit: one edit deleting `foo()` in one function and another
+// writing `// foo()` in a second reports a transition, because the first
+// satisfies "was live, now gone" on its own. That is the tool's only unhedged
+// message, spent on a comment that was never live code where it sits.
+//
+// Whole lines for the first two, because `return v * 3` occurs inside
+// `// return v * 3`, so a substring test reports a line that was already a
+// comment as one this write commented out — the opposite finding. A substring
+// for the third, because the comment marker is exactly what the stripped text
+// no longer carries, and which marker it is belongs to another package.
 func moved(source, was, now string) bool {
 	lines := func(text string) map[string]bool {
 		out := map[string]bool{}
@@ -212,7 +219,7 @@ func moved(source, was, now string) bool {
 		if len(line) < 3 {
 			continue
 		}
-		if !before[line] || after[line] {
+		if !before[line] || after[line] || !strings.Contains(now, line) {
 			return false
 		}
 		found = true

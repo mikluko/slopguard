@@ -116,13 +116,17 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // naming shape rather than residue: a case arm is where a reader most needs an
 // example of what is being matched.
 //
-// **The arm's first line or the label's own line, never further in.** Both
-// branches below apply that test, and the first one did not until a review found
-// four true positives it had silenced — a `//dump(...)` in `staticinit`, a whole
-// commented-out `case goimporterMagic:` arm, a disabled `if` block in
-// `reflectlite`, and jq's `/*create_pt_key();*/` — every one of them a comment at
-// the *tail* of an arm, which passed because the next node happened to be the
-// following label.
+// **A comment at the tail of an arm is exempt too, and should not be.** Where a
+// grammar files a trailing comment beside the arms rather than inside one — Go
+// and TypeScript both do — it is the same tree shape as a label comment: a case
+// on either side of it. Two repairs were built and measured and both reverted.
+// Testing the previous sibling recovers two of the true positives below and
+// brings twenty Vue false positives with it; testing the parent moves nothing.
+//
+// So this silences a `//dump(...)` in `staticinit`, a commented-out
+// `case goimporterMagic:` arm, a disabled `if` block in `reflectlite`, and jq's
+// `/*create_pt_key();*/`. Four of the thirty-three findings it removes are
+// residue, which makes it about 88% right, and the alternative measured worse.
 func arm(c comment.Comment) bool {
 	if len(c.Nodes) == 0 {
 		return false
@@ -138,8 +142,13 @@ func arm(c comment.Comment) bool {
 }
 
 // opens reports whether nothing but a case label precedes a comment in its arm.
-// Every grammar here spells the matched expression as the arm's `value`, so a
-// comment whose only earlier sibling is that value opens the arm.
+//
+// Most grammars here spell the matched expression as the arm's `value`, so a
+// comment whose only earlier sibling is that value opens the arm. Three do not —
+// Go's `type_case` uses `type` and its `communication_case` uses
+// `communication`, Python's `case_clause` uses `alternative` — so in those a
+// comment on the arm's first line is not exempt. That is a gap rather than a
+// design: it errs toward reporting, which is the safe direction here.
 func opens(c comment.Comment, parent *tree_sitter.Node) bool {
 	previous := c.Nodes[0].PrevNamedSibling()
 	if previous == nil {
@@ -162,8 +171,10 @@ var labels = set(
 	"expression_case", "default_case", "type_case", "communication_case",
 	// JavaScript, TypeScript, TSX
 	"switch_case", "switch_default",
-	// C, C++, Java, PHP
-	"case_statement", "switch_label", "case_expression",
+	// C, C++, Java
+	"case_statement", "switch_label",
+	// PHP, which spells the two halves separately
+	"default_statement",
 	// Rust
 	"match_arm",
 	// Python

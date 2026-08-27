@@ -240,6 +240,62 @@ func edit(old, new string) payload {
 	return in
 }
 
+// The edit that deleted the code has to be the edit that wrote the comment.
+//
+// Each of these fails a mutation the suite used to pass: dropping the
+// absent-from-the-replacement test, dropping the still-present-as-a-comment
+// test, and pooling every edit's before-text. The first version of this fix
+// removed the pooling and kept the disjunction, which is the same defect wearing
+// a loop — one edit deleting `foo()` in one function still vouched for another
+// edit writing `// foo()` in a second, through the one message that carries no
+// hedge.
+func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
+	multi := func(pairs ...[2]string) payload {
+		in := payload{ToolName: "MultiEdit"}
+		for _, p := range pairs {
+			in.ToolInput.Edits = append(in.ToolInput.Edits, struct {
+				OldString string `json:"old_string"`
+				NewString string `json:"new_string"`
+			}{p[0], p[1]})
+		}
+		return in
+	}
+
+	for _, c := range []struct {
+		name string
+		in   payload
+		want bool
+	}{
+		{
+			name: "one edit deleted it and the same edit commented it",
+			in:   multi([2]string{"\tfoo()\n\tbar()\n", "\t// foo()\n\tbar()\n"}),
+			want: true,
+		},
+		{
+			// The shape the previous fix still reported: edit one deletes a
+			// live call, edit two writes the comment somewhere else entirely.
+			name: "one edit deleted it and a different edit wrote the comment",
+			in: multi(
+				[2]string{"\tfoo()\n\tbar()\n", "\tbar()\n"},
+				[2]string{"\tqux()\n", "\tqux()\n\t// foo()\n"},
+			),
+			want: false,
+		},
+		{
+			name: "the line is still live in the replacement",
+			in:   edit("\tfoo()\n\tbar()\n", "\t// foo()\n\tfoo()\n\tbar()\n"),
+			want: false,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := rule.Finding{Line: 1, Source: "foo()"}
+			if got := switched(f, c.in); got != c.want {
+				t.Fatalf("switched = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 // The text handed to the agent is the tool's whole interface to it, and nothing
 // asserted anything about it: the payload could be rewritten end to end with the
 // suite green. What it must carry follows from the measurement rather than from

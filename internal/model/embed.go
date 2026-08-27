@@ -19,7 +19,7 @@ import (
 
 // The transformer and its tokenizer travel inside the binary. A runtime
 // download would put a second artifact between installing slopguard and having
-// it work, and a hook that pauses to fetch 86 MB on its first call is worse
+// it work, and a hook that pauses to fetch 90 MB on its first call is worse
 // than a hook that is simply larger.
 
 //go:embed assets/model.onnx

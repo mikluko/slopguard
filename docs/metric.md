@@ -89,11 +89,18 @@ Measured recall is `d·f_g + (1−d)·r`. Measured recall is below true recall *
 and only if `f_g ≤ r`** — that is a property of the tool under test, not of the
 labels, and nothing here has established it.
 
-The corpus contains a case that breaks it. Two mechanical date-fns migrations
-contribute 158 deleted rows whose comments are long `@param`/`@returns` JSDoc
-blocks and `@flow` pragmas, a shape almost absent from the survived pool. A build
-that learned "long tagged doc block" would raise measured recall with no rise in
-measured FPR. It would score better and be worse.
+The second corpus contained a case that broke it. Two mechanical date-fns
+migrations contributed 158 deleted rows whose comments were long
+`@param`/`@returns` JSDoc blocks and `@flow` pragmas, a shape almost absent from
+the survived pool, and a build that learned "long tagged doc block" would have
+raised measured recall with no rise in measured FPR: better score, worse tool.
+
+That example is history, and this passage asserted it in the present tense for
+several corpora after the per-commit cap destroyed it. On the ninth corpus
+date-fns contributes 8 deleted rows in total, none of them a JSDoc block, and
+only 2 deleted rows anywhere open with `@`. The argument stands without the
+example — a filter cannot be assumed to bias against the tool merely because it
+removes positives — but the example is no longer evidence for it.
 
 What replaces the claim: **the direction of the bias is unknown and must be
 argued per change.** A change that could plausibly be picking up codemod shape,
@@ -135,7 +142,7 @@ baselines and ran none of them. Measured since:
 `SLOPGUARD_WIDER=1` and off by default.
 
     build                    caught   nudged   recall   FPR      lift
-    everything on                21       20    0.093   0.006     8.3
+    everything on                21       20    0.093   0.006    8.25
     leftover, four exemptions    20        1    0.088   0.000    15.3
 
 Both rows are the current build on the ninth corpus, which an earlier revision of
@@ -209,7 +216,7 @@ what it adds.
 
 ## The baselines, run at last
 
-On the ninth corpus, over the 3,655 rows the tool could score, with the three
+On the ninth corpus, over the 3,655 rows the tool could score, with all four
 exemptions in:
 
 | rule | recall | FPR | lift |
@@ -258,14 +265,14 @@ cost and scores 15.33. That gap is not the tool nearly matching an oracle, it is
 both rules pressed against the same wall. Prefer the counts.
 
 **One row above the tool is a field the harvester wrote.** An earlier revision of
-this section said two; `annotates` under 60 bytes is eleventh. `exposure` is an
+this section said two; `annotates` under 60 bytes is sixth. `exposure` is an
 artifact of a filter and is discussed below. `annotates` length still separates
 the labels, at lift 2.16, because the positive side additionally requires the
 annotated code to survive its commit verbatim and long code is likelier to
 change, so long-annotated positives are filtered out: median 84 bytes against the
 negative class's 158. Standardised to the deleted class's own `annotates`
 distribution the tool scores 15.50 against its pooled figure, so the confound is
-real and worth about 2%.
+real and worth about 1%.
 
 **Against the marker regex the comparison is not resolved, in either direction.**
 An earlier revision here said the regex edged the tool, 6.85 against 6.40, on a
@@ -307,9 +314,12 @@ the tool, and the last of those was one repository's codemod, now capped out.
 
 **The marker answer, restated.** Markers are a tracked-debt convention Google's
 C++ and Java guides mandate, so the tool is deliberately not chasing them.
-Excluding them is not conservative, though: all 89 excluded rows are positives,
-none are negatives, and the tool's recall on them is 2/89, worse than its overall
-rate. So `-markers=false` slightly *raises* the reported recall. Report both.
+Excluding them is not conservative, though: on the ninth corpus 26 deleted rows
+carry a marker, the tool catches none of them, and dropping them raises reported
+recall from 0.088 to 0.099 on the same 20 catches. So `-markers=false` *flatters*
+the tool rather than penalising it. Report both. (An earlier revision put the
+count at 89 with recall 2/89, from a corpus four generations back, while its own
+defect list two hundred lines below already said 26.)
 
 ## The number this corpus cannot produce
 
@@ -321,9 +331,9 @@ Two things this section said and had wrong. Precision *is* computable here — i
 is `lift × P/(P+N)`, about 0.95 — it is simply meaningless, because it is precision
 on a population the hook never sees. And the corpus FPR was said to understate
 real-code false positives "by more than an order of magnitude", which cannot be
-true: measured over the Go standard library's 120,192 comment runs, 130 findings
-put the false-alarm rate below 0.0012 even if every one were wrong, against a
-corpus FPR of 0.0003. The gap is a factor of about four, not ten, and the reason
+true: measured over the Go standard library's 146,739 comment runs, 130 findings
+put the false-alarm rate below 0.00089 even if every one were wrong, against a
+corpus FPR of 0.0003. The gap is a factor of about three, not ten, and the reason
 to distrust the corpus figure is not its size.
 
 The reason is the denominator. Roughly four fifths of the positive class is not
@@ -422,8 +432,9 @@ same window, and the classes overlap.
 
 **They overlap because a filter makes them, and this document said otherwise for
 two revisions.** `expose` drops every survived row reading 0, so no survived row
-can read 0 and `exposure == 0` remains an oracle: recall 0.654 at FPR 0.000, lift
-16.7, above the tool on the same corpus. The earlier claim here — that what
+can read 0 and `exposure == 0` remains an oracle: recall 0.656 at FPR 0.000, lift
+16.10, above the tool on the same corpus and exactly at the ceiling the lift
+statistic permits. The earlier claim here — that what
 separation remains is inherent, "the label, not a filter" — was wrong. Rebuilt
 with the gate off, 32.2% of survived candidates in one repository read 0 and are
 discarded.
@@ -449,8 +460,11 @@ commented-out-code detector and commented-out code is long, so any rule
 correlated with block size gets lift for free; on the second corpus 113 of the
 116 deleted rows longer than 20 lines were one repository. Measured here:
 within every comment-length stratum the lift is 11.7 to 19.3, and within every
-annotated-code-length stratum 7.5 to 27.0, row-weighted 17.8 against a pooled
-13.3. Conditioning on block size raises the tool's lift rather than removing it.
+annotated-code-length stratum 7.5 to 27.0, row-weighted 17.8 against that build's
+pooled 13.3. Conditioning on block size raises the tool's lift rather than
+removing it. The figures are the pre-exemption build's, which is what was
+measured; the shipped build's pooled lift is 15.33 and the stratification has not
+been re-run on it.
 
 **What is open instead** is `annotates` length. The deleted side additionally
 requires the annotated code to survive the commit verbatim, and the survived side
@@ -547,9 +561,10 @@ carve-out carry no threshold, so they fire identically at every offset and their
 combined false-positive rate is a floor. That floor was quoted here as 0.044,
 `leftover` 0.024 and `echo` 0.020, with the claim that turning the model off
 still lands above 0.02. On the ninth corpus the shipped default's floor is
-**0.0003** and the wider build's is about **0.005**, so the figure was an order
-of magnitude high and its bolded claim is refuted by the corpus this document
-otherwise reports.
+**0.0003** and the wider build's is **0.0029**, taken as the minimum over the
+sweep rather than read off the shipped offset, where it is 0.0058. Either way the
+old figure was an order of magnitude high and its bolded claim is refuted by the
+corpus this document otherwise reports.
 
 A rule with no threshold cannot be traded off, so the floor moves only by making
 one thresholdable or by cutting it. That is a design conclusion no aggregate

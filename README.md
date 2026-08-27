@@ -23,7 +23,7 @@ cd <a repo>
 git ls-files -z | xargs -0 slopguard -v
 ```
 
-`-v` prints each comment with the line under it, which is what you need in order to say whether a finding is right:
+`-v` prints each comment with the line under it:
 
 ```
 internal/store/lifecycle.go:4	leftover	1.000	commented-out code: delete it, or make it real
@@ -128,7 +128,7 @@ Go, Python, JavaScript, TypeScript, TSX, Rust, C, C++, Java, Ruby, PHP, shell, Y
 
 A file that does not parse is still judged, and this document claimed the opposite for a long time. Declining a file whose
 tree carries an error was tried and reverted: an error node means tree-sitter could not parse the file, not that the file
-is broken, and it drops 16 of 168 findings on the mined corpus — every one a valid C file, where the grammar loses its
+is broken, and it drops 16 of the 168 findings on a sweep of the mined clones — every one C, where the grammar loses its
 footing in the preprocessor. What is skipped is a *comment* whose own text does not parse as source, which is a different
 test and the one that stops prose being read as code.
 
@@ -228,7 +228,8 @@ about a second on the first call, most of it opening the ONNX session, and 115 t
 
 ## Limits
 
-- **About half of what it says is wrong**, hand-judged over 214 findings. Read the finding; do not act on the count.
+- **A large share of what it says is wrong** — see the table above for how large, and note it is fitted rather than
+  estimated. Read the finding; do not act on the count.
 - The shapes it gets wrong are notation that is valid source: a compiler pass sketching the code it emits
   (`// hp = &a[0]`), a spec step (`// V = HMAC(K, V)`), a comment naming what a `case` arm handles, a section heading.
   All four are legitimate and all four parse.

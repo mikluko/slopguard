@@ -15,7 +15,7 @@ const examined = 64
 
 // Scan parses src and returns the comments inside added, at most [examined] of
 // them, together with the function that releases them. A file that does not
-// parse yields nothing: a broken tree is not evidence of a comment.
+// parse is still read, for the reason given where the gate would go.
 //
 // A Comment is a handful of pointers into the parse tree, so the tree has to
 // outlive every rule that reads one. Releasing is the caller's because only the
@@ -52,10 +52,12 @@ func scan(src []byte, language *lang.Language, added []Span, most int) (comments
 	// time that a file which does not parse yields silence, and implementing it
 	// costs real findings rather than noise: an error node means tree-sitter
 	// could not parse the file, not that the file is broken. Measured, it drops
-	// 16 of 168 findings on the mined clones and every one is a valid C file jq
-	// wrote, where the grammar loses its footing in the preprocessor — several
-	// of them hand-judged as residue. The standard library does not move, which
-	// is what makes the cost invisible to the invariant that would catch it.
+	// 16 of 168 findings on the mined clones, every one of them C — jq's own
+	// sources and the decNumber it vendors, where the grammar loses its footing
+	// in the preprocessor and, for the vendored files, on a translation unit
+	// that is `#include`d rather than compiled alone. Several were hand-judged
+	// as residue. The standard library does not move, which is what makes the
+	// cost invisible to the invariant that would otherwise catch it.
 	for _, c := range group(root, collect(root, language, false), src) {
 		if c.Within(added) && !c.pragma() {
 			// Deferred to here rather than done in [group]: locating the code

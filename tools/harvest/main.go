@@ -133,16 +133,17 @@ func expose(dir string, rows []corpus.Row) []corpus.Row {
 			continue
 		}
 		row.Exposure = edits
-		// Both labels, or the field is an oracle. Applied to survivors alone it
-		// made a minimum of one exposure true of every negative by construction,
-		// so the 238 positives sitting at zero were separable at zero false
-		// positives: `exposure == 0` scored recall 0.44 at FPR 0.000, z = 39.
+		// The gate defines the survived label and is applied only there. Applied
+		// to both it closes an oracle and costs most of the positive class: the
+		// deleted rows at exposure zero are 44% of it, and requiring somebody to
+		// have edited the annotated code between a comment being written and
+		// being removed took 535 positives to 96, which measures nothing.
 		//
-		// Matched, both labels answer the same question. Somebody came back to
-		// this code at least once, and then they either removed the comment or
-		// left it. A comment deleted before anyone returned is a real deletion
-		// and it is dropped anyway, because it has no comparable negative.
-		if edits < seen {
+		// The oracle is real and is closed in the analysis instead. `score
+		// -matched` restricts the deleted side to the same gate, so the headline
+		// keeps its power and the confound-free subset is one flag away. Nothing
+		// is discarded to buy either.
+		if row.Label == corpus.Survived && edits < seen {
 			continue
 		}
 		kept = append(kept, row)

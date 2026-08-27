@@ -48,10 +48,11 @@ func main() {
 		dump       = flag.String("dump", "", "print every row this class fired on, with its label; \"all\" prints them for every class")
 		maxLife    = flag.Float64("maxlife", 0, "keep only deletions this many days old or younger; zero keeps all of them")
 		markers    = flag.Bool("markers", true, "count deletions of TODO, FIXME, XXX and HACK comments")
+		matched    = flag.Bool("matched", false, "keep only deletions whose annotated code somebody came back to, as the survived rows require")
 	)
 	flag.Parse()
 
-	if err := run(*corpusPath, *clones, *sweep, *dump, *maxLife, *markers); err != nil {
+	if err := run(*corpusPath, *clones, *sweep, *dump, *maxLife, *markers, *matched); err != nil {
 		fmt.Fprintln(os.Stderr, "score:", err)
 		os.Exit(1)
 	}
@@ -123,7 +124,7 @@ func (m misses) String() string {
 // the whole pipeline.
 var marked = regexp.MustCompile(`\b(TODO|FIXME|XXX|HACK)\b`)
 
-func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, markers bool) error {
+func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, markers, matched bool) error {
 	rows, err := corpus.Load(corpusPath)
 	if err != nil {
 		return err
@@ -138,6 +139,27 @@ func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, ma
 			"> Only the structural rules are measured below, and the sweep is flat by construction.\n\n", absent)
 	}
 	rows = recent(rows, maxLife)
+	if matched {
+		// The survived label requires that somebody came back to the annotated
+		// code and left the comment standing. Nothing requires it of a deletion,
+		// so `exposure == 0` holds on part of the positive class and on no
+		// negative at all, and a rule reading it would separate the two at no
+		// cost. Requiring it of both makes the classes answer one question:
+		// somebody returned to this code, and then they did or did not remove
+		// the comment. It costs most of the positives, which is why it is a
+		// check on the headline rather than the headline.
+		kept := rows[:0]
+		dropped := 0
+		for _, row := range rows {
+			if row.Label == corpus.Deleted && row.Exposure == 0 {
+				dropped++
+				continue
+			}
+			kept = append(kept, row)
+		}
+		rows = kept
+		fmt.Printf("%d deletions nobody came back to left out.\n\n", dropped)
+	}
 	if !markers {
 		kept := rows[:0]
 		dropped := 0

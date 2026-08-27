@@ -5,15 +5,13 @@ else: in the commit message, in a test, or nowhere.
 
 ## TL;DR
 
-**Why.** An agent writes comments that read fine today and mislead after the next commit: notes about what changed,
-restatements of the line below, prose walking through what a test should have asserted. Nobody re-checks a comment, so
-they rot in place and the next reader believes them. slopguard reads every comment a write adds and names the ones whose
-claim belongs elsewhere, at the moment it is cheapest to move. It objects and never blocks.
+**Why.** An agent comments code out instead of deleting it, and leaves it there. The next reader cannot tell dead code
+from a note, git already remembers what was removed, and nobody re-checks a comment. slopguard reads every comment a
+write adds and names the ones that are source in disguise, at the moment it is cheapest to delete. It objects and never
+blocks.
 
 ```
-line 3  padded documentation: cut "This function takes a value and returns a value.", which says nothing the
-        signature does not
-line 7  restates what the code already says: the line below is the documentation
+line 42  commented-out code: delete it, or make it real
 ```
 
 **Try it on a repository, wiring nothing.** Given paths instead of a hook payload it judges those files and prints what
@@ -28,9 +26,11 @@ git ls-files -z | xargs -0 slopguard -v
 `-v` prints each comment with the line under it, which is what you need in order to say whether a finding is right:
 
 ```
-internal/store/lifecycle_test.go:63	echo	0.950	restates what the code already says: the line below is the documentation
-	| // Reason/until are postponed-only.
-	| {name: "ready with reason", from: Item{Status: str(StatusDraft)}, status: StatusReady, ...},
+internal/store/lifecycle.go:88	leftover	1.000	commented-out code: delete it, or make it real
+	| // if item.Status == StatusDraft {
+	| // 	return errDraft
+	| // }
+	| return nil
 ```
 
 A file in a language it does not read produces nothing, so passing the whole index is safe. The sweep writes nothing and
@@ -38,65 +38,51 @@ remembers nothing; it is the same judgment the hook makes, without the hook. For
 142 findings over 4,065 files, all of them commented-out code.
 
 **What ships is `leftover` alone.** `echo`, `hollow`, `tautology` and `compat` are behind `SLOPGUARD_WIDER=1`, off by
-default. On a corpus of comments other people deleted or kept, `leftover` catches 20 and nudges 5 where the whole set
-catches 21 and nudges 25: one extra catch for twenty extra false positives. The two semantic classes are also what
-loads the 90 MB model, which is most of a second on every write. The binary is the same size either way, since the
-model is embedded at compile time. `docs/metric.md` carries the measurement and the argument for why this is a default
-rather than a deletion.
+default. On a corpus of comments other people deleted or kept, `leftover` catches 20 and nudges 1 where the whole set
+catches 21 and nudges 25. The two semantic classes are also what loads the 90 MB model, which is a second on the first
+write that reaches it. The binary is the same size either way, since the model is embedded at compile time.
+`docs/metric.md` carries the measurement and the argument for why this is a default rather than a deletion.
+
+**How often it is right.** 214 findings over 24 repositories and the Go standard library, judged by hand in context,
+came out at about half. That is the honest number for the class that ships, and the corpus cannot produce it: a corpus
+labelled by deletion measures whether a nudge predicts what somebody removed, not whether a nudge is correct. Read a
+finding before acting on it.
 
 **Wire it.** Add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and
 restart the session.
 
 ## Why this is not a lint rule
 
-None of it is about syntax. What separates `// the caller has already bounded v, so this cannot overflow` from
-`// multiply it by two` is what the sentence is doing, and the only way to tell is to read it. So slopguard reads it:
-tree-sitter finds the comments, and a sentence embedding model decides what each one is by how it compares against a
-corpus of comments that earned their place and a corpus of comments that did not.
+A linter reads a comment as a token. Whether `// x = y` is a disabled statement or the notation a spec step is written
+in depends on what is around it, so slopguard parses the comment as source in the language of the file it sits in, in
+the scope it sits in, and asks whether the tree that comes back is one the compiler would have taken. A comment that
+merely looks like code does not survive that; a comment that is code does.
 
 `PostToolUse` fires after the write, the finding comes back as context, and what the agent does about it is the agent's
 business.
 
 ## What it says something about
 
-| Class              | What fires it                                                    |
-|--------------------|------------------------------------------------------------------|
-| restatement        | `// close the connection` above `conn.Close()`                   |
-| self-justification | `// kept for backwards compatibility`                            |
-| commented-out code | a comment that parses as source the compiler would take          |
-| padded documentation | a sentence past the first that says nothing the signature does |
+| Class                | What fires it                                                    | Default |
+|----------------------|------------------------------------------------------------------|---------|
+| commented-out code   | a comment that parses as source the compiler would take          | on      |
+| restatement          | `// close the connection` above `conn.Close()`                   | off     |
+| self-justification   | `// kept for backwards compatibility`                            | off     |
+| padded documentation | a sentence past the first that says nothing the signature does   | off     |
 
-The first two are read by the model. The last two are structural, and so is half of restatement: a comment whose content
-words are already spelled by the identifiers on the line below it is a restatement on the evidence, with no model
-involved.
+Only the first ships. The other three are one variable away — `SLOPGUARD_WIDER=1` — and turning them on loads a 90 MB
+sentence embedding model, because two of them are decided by what a sentence means rather than by its shape. They are
+off because they were measured: on the mined corpus the four of them together buy one extra catch for twenty extra false
+positives, and on the Go standard library they are three quarters of everything the tool says.
 
 Change-event comments — `// we now use the pooled client` — were the original point of this tool and are not in it,
 because the class could not be made to work. [docs/limits.md](docs/limits.md) says what was tried.
 
 ## What it leaves alone
 
-Everything that states a contract. A precondition, an invariant, a failure mode, a cost the signature cannot show, a
-constraint enforced somewhere the reader cannot see, a reason a non-obvious choice was made. The negative corpus is drawn
-from the Go standard library, the DOOM sources and Django, plus the register of Kubernetes and Terraform configuration,
-and it includes the hard cases:
-
-```
-the stop method is no longer necessary to help the garbage collector
-kept for binary compatibility and exported only for the type descriptors
-returns every durable the consumer no longer runs
-```
-
-All three spell a change-event marker and all three are contracts. A phrase list flags every one of them, which is why
-there is a model here at all.
-
-Machine-readable comments are skipped outright: shebangs, build constraints, `//go:generate`, `//nolint`,
-`// Deprecated:`, `# noqa`, `# type:`, `// eslint-disable`, and their neighbours.
-
-A licence notice is exempt from every rule. Some of them ask in their own text to be preserved.
-
-A comment sharing a line with code is exempt from the rules that read it against that line. The words it shares with the
-line are what the note is about rather than evidence it repeats one, and the notation those notes use is the notation the
-commented-out-code rule would otherwise read as source:
+A comment sharing a line with code, whatever it parses as. Code is disabled by commenting the line it is on, which
+leaves the comment alone on that line; a comment after a live statement is a note about it, and the notation those notes
+use is the notation this rule would otherwise read as source:
 
 ```
 num -= old.cap - old.len // preserve memory of old[old.len:old.cap]
@@ -104,7 +90,21 @@ x2 := Sqrt(x1)           // x2 = sqrt(1 - x*x)
 B2 = 696219795           // (664-0.03306235651)*2**20
 ```
 
-The cost is `i++ // increment i`, which nothing else here catches.
+Machine-readable comments are skipped outright: shebangs, build constraints, `//go:generate`, `//nolint`,
+`// Deprecated:`, `# noqa`, `# type:`, `// eslint-disable`, Renovate annotations, editor modelines, and their
+neighbours.
+
+A licence notice is exempt from every rule. Some of them ask in their own text to be preserved.
+
+Configuration that documents itself is exempt where the idiom is unambiguous. A chart's `values.yaml` publishes the
+settings it accepts by writing them commented out, so nothing there is read as residue; elsewhere in YAML, a run
+carrying a sentence beside its structure is an option being documented rather than one removed:
+
+```yaml
+## Optionally specify an array of imagePullSecrets.
+# pullSecrets:
+#   - myRegistrKeySecretName
+```
 
 ## Languages
 
@@ -123,15 +123,16 @@ told from prose by its case, because `# copy the buffer first` parses as a perfe
 brew install mikluko/tap/slopguard
 ```
 
-The formula depends on `onnxruntime` and pulls it in. To build instead:
+Or build it:
 
 ```sh
 git clone https://github.com/mikluko/slopguard && cd slopguard && go build .
-brew install onnxruntime
 ```
 
-Either way the binary dlopens the library at run time, looking in Homebrew's prefix on both architectures, Linuxbrew's,
-and the two places a Linux package manager puts it.
+The default needs nothing else. ONNX Runtime is required only by `SLOPGUARD_WIDER=1`, which is what loads the model;
+without it the wider classes that read a sentence stay quiet and the rest run unchanged. Install it with
+`brew install onnxruntime` if you want them. The binary dlopens the library at run time, looking in Homebrew's prefix on
+both architectures, Linuxbrew's, and the two places a Linux package manager puts it.
 
 ## Configure
 
@@ -160,8 +161,9 @@ Use an absolute path if sessions start without the Homebrew prefix on `PATH`. Re
 
 | Variable                        | Effect                                                                               |
 |---------------------------------|--------------------------------------------------------------------------------------|
+| `SLOPGUARD_WIDER`               | `1` adds restatement, self-justification and padded documentation; off by default    |
 | `SLOPGUARD_ONNXRUNTIME_LIBRARY` | where to dlopen ONNX Runtime from, when it is in none of the usual places            |
-| `SLOPGUARD_NO_MODEL`            | turns the semantic pass off, leaving the structural rules                            |
+| `SLOPGUARD_NO_MODEL`            | turns the semantic pass off, leaving the structural rules; a no-op unless `WIDER`    |
 | `SLOPGUARD_STATE`               | where the per-session memory of what has already been said lives; empty turns it off |
 | `SLOPGUARD_LOG`                 | a file every finding is appended to, one JSON object per line                        |
 
@@ -180,9 +182,9 @@ It fails open. A payload it cannot decode, a tool other than `Write`, `Edit` or 
 grammar, a file that is gone or is not a regular file or is over 2 MB, replacement text it cannot locate in the file, and
 a source that does not parse all yield silence, because none of them is evidence of a comment.
 
-Without ONNX Runtime it does not go silent, it goes stupid: the structural rules still run, and a phrase list stands in
-for the one model class it can approximate. That fallback judges differently from the model in both directions, and
-`SLOPGUARD_NO_MODEL=1` is how to see what it says.
+The default never opens ONNX Runtime, so a machine without it runs the shipped build unchanged. Under
+`SLOPGUARD_WIDER=1` a missing runtime does not go silent, it goes stupid: the structural rules still run and a phrase
+list stands in for the one model class it can approximate, judging differently from the model in both directions.
 
 A finding names the line and the rule, at most three per write, strongest first:
 
@@ -190,24 +192,24 @@ A finding names the line and the rule, at most three per write, strongest first:
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "Edit store.go before your next step: these comments it just gained say things that belong elsewhere.\n\n  line 42  restates what the code already says: the line below is the documentation\n\nPer line: if the claim still binds the next editor, restate it as the symbol's contract or as a test. If it only records this change, cut it and carry it into the commit message. What is judged is where the claim lives, not which words carry it, so rewording is not a fix. If a line is right where it is, keep it and say so in one line."
+    "additionalContext": "Edit store.go before your next step: these comments it just gained say things that belong elsewhere.\n\n  line 42  commented-out code: delete it, or make it real\n\nPer line: if the claim still binds the next editor, restate it as the symbol's contract or as a test. If it only records this change, cut it and carry it into the commit message. What is judged is where the claim lives, not which words carry it, so rewording is not a fix. If a line is right where it is, keep it and say so in one line."
   },
   "systemMessage": "slopguard: 1 comment in store.go to reconsider"
 }
 ```
 
-A write with nothing for the model to read returns in single-digit to low-teens milliseconds; one that reaches the model
-pays 115 to 145 ms, most of it opening the ONNX session.
+A write is judged in single-digit to low-teens milliseconds. Under `SLOPGUARD_WIDER=1` one that reaches the model pays
+about a second on the first call, most of it opening the ONNX session, and 115 to 145 ms after that.
 
 ## Limits
 
-- Recall is modest by construction: held out, restatement reaches about half and self-justification a quarter, at the
-  precision the thresholds are fitted for. **A comment this tool passes over is not a comment it approves of.**
-- Change-event comments are not caught. Neither is implementation narrative.
-- A step comment inside a long function is a finding, and plenty of engineers would defend it. On the Go standard library
-  that is the largest class the tool has, 623 of 1034.
-- Rust documentation never reaches the padding rule, so a sweep reporting nothing on Rust is reporting that the rule did
-  not run.
+- **About half of what it says is wrong**, hand-judged over 214 findings. Read the finding; do not act on the count.
+- The shapes it gets wrong are notation that is valid source: a compiler pass sketching the code it emits
+  (`// hp = &a[0]`), a spec step (`// V = HMAC(K, V)`), a comment naming what a `case` arm handles, a section heading.
+  All four are legitimate and all four parse.
+- Recall is modest by construction. **A comment this tool passes over is not a comment it approves of.**
+- Change-event comments are not caught. Neither is implementation narrative, restatement, or padded documentation —
+  the last two only under `SLOPGUARD_WIDER=1`.
 - A finding is remembered when it is named, not when it is acted on: ignoring a nudge silences it for the session.
 - Generated files are not skipped unless they carry a `//go:generate` marker.
 
@@ -235,6 +237,7 @@ a row added there first.
 
 Tests that judge text skip when ONNX Runtime is absent; the parsing and structural tests run either way, so a checkout
 without it still exercises the language table, the commented-out-code rules and the identifier echo.
+`TestShippedRunsLeftoverAlone` is the one that asserts the default configuration, and it needs no runtime.
 
 `go test ./internal/model -v -run TestStability` reports how far each class's direction moves when it is fitted from one
 half of its own examples rather than the other. It fails below cos 0.45. That is the measurement the deleted change-event

@@ -38,6 +38,10 @@ SLOPGUARD_WIDER=1 …           # 690: 355 tautology, 172 echo, 142 leftover, 21
 
 Diff the file, not the count: the same total over different lines is not the same behaviour.
 
+The standard library holds no YAML, so it cannot see the exemptions that matter most. The second invariant is a sweep of
+the mined clones, where 24 repositories and 11 languages give 189 findings; `tools/harvest -clones <dir>` puts them
+there. A change that moves the 142 and not the 189, or the other way round, has moved one language and should say which.
+
 The tool over its own source returns nothing, which is the cheap version of the same check:
 
 ```sh

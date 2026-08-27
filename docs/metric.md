@@ -137,6 +137,7 @@ baselines and ran none of them. Measured since:
     build                    caught   nudged   recall   FPR      lift
     everything on                21       25    0.091   0.007     7.6
     leftover alone               20        5    0.087   0.001    13.3
+    leftover, three exemptions   20        1    0.088   0.000    15.3
 
 One catch for twenty false positives. On the Go standard library the default
 gives 142 findings over 4,065 files against 690 with everything on, and 1,034
@@ -209,11 +210,14 @@ than by argument.
 
 All on the same footing, with markers counted on both sides.
 
-**The tool beats every one-bit baseline except the marker regex, which still
-edges it**, 6.85 against 6.40. That is stated rather than hidden: excluding
-markers from the positive class removes the comparator and moves the tool's own
-lift to 7.1, which flatters it. The answer to the marker rule is not a number, it
-is that Google's C++ and Java guides mandate the form, so a tracked-debt marker
+**Against the marker regex the comparison is not resolved, in either direction.**
+An earlier revision here said the regex edged the tool, 6.85 against 6.40, on a
+corpus this is no longer. On the ninth corpus the point estimate reverses — the
+tool 13.3 against the regex 7.0 — but with repositories as the clustering unit
+the paired gap is +6.11 lift with a 95% interval of [−0.17, +12.66], and the tool
+is behind the regex on recall. So "the tool beats the baselines" is not a finding
+at 95%, and neither is its negation. The answer to the marker rule is still not a
+number: Google's C++ and Java guides mandate the form, so a tracked-debt marker
 is not a misplaced explanation and the tool is deliberately not chasing it.
 
 Two baselines that beat the whole pipeline on earlier corpora are now near the
@@ -242,27 +246,87 @@ Excluding them is not conservative, though: all 89 excluded rows are positives,
 none are negatives, and the tool's recall on them is 2/89, worse than its overall
 rate. So `-markers=false` slightly *raises* the reported recall. Report both.
 
+## The number this corpus cannot produce
+
+Recall and lift are what a corpus labelled by deletion can measure. Precision at
+the operating point is not, and precision is what a hook interrupting a write is
+paid in. The corpus samples comment lines that somebody edited; the tool fires on
+code nobody has touched, so the corpus's own FPR of 0.001 understates real-code
+false positives by more than an order of magnitude.
+
+So it was measured directly. 214 findings over 24 repositories and the Go
+standard library, drawn as two strata — every multi-line finding, and an
+every-third sample of the single-line ones — and judged in context by four
+readers on disjoint packets, blind to each other.
+
+    population                  judged   right   precision
+    before this cycle (stdlib)      72      20       0.28
+    multi-line                     115      35       0.30
+    single-line                     99      43       0.43
+    after three exemptions         160      78       0.49
+
+The false positives are five shapes, all of them valid source in the language
+they sit in: a compiler pass sketching the code it emits, spec or algebraic
+notation, a comment naming what a `case` arm handles, a section heading, and an
+annotation another tool consumes. The last of those is fixed; the other four are
+not, and the first two are not obviously fixable, since a pseudocode convention
+that uses the host language's own syntax is indistinguishable from the syntax.
+
+**This is also how a recommendation was refused.** A reviewer, hand-judging the
+19 multi-line findings in the standard library at 11 right of 19, proposed
+restricting the rule to runs of two or more comment lines. On the whole
+population it inverts: multi-line is the *worse* stratum, 0.30 against 0.43,
+because it is mostly Helm `values.yaml` and the standard library has none. The
+rule would have cost 8 of 20 catches to keep the worse half. With `values.yaml`
+exempt the two strata are 0.486 and 0.489, so line count was never the axis. A
+sample drawn from one population does not price a rule applied to another.
+
 ## Exchangeability, which took three corpora to get close to
 
 `exposure` used to be 0 on every deleted row and at least 2 on every survived
 one, because it was computed for survivors alone: a one-line rule on the field
-scored recall 1.000 at FPR 0.000. It is now computed for both labels, over the
-same window, and the classes overlap: 297 of 535 deleted rows sit at 1 or more,
-against every survived row.
+scored recall 1.000 at FPR 0.000. It is now computed for both labels over the
+same window, and the classes overlap.
 
-What separation remains is inherent rather than an artifact. A comment can be
-deleted before anybody comes back to the code it describes, so a deleted row may
-legitimately be 0 where a survived row may not. That is the label, not a filter.
+**They overlap because a filter makes them, and this document said otherwise for
+two revisions.** `expose` drops every survived row reading 0, so no survived row
+can read 0 and `exposure == 0` remains an oracle: recall 0.654 at FPR 0.000, lift
+16.7, above the tool on the same corpus. The earlier claim here — that what
+separation remains is inherent, "the label, not a filter" — was wrong. Rebuilt
+with the gate off, 32.2% of survived candidates in one repository read 0 and are
+discarded.
+
+The window is the other half. Truncating each survived row's history to a length
+drawn from the deleted class's own lifetime distribution puts 48.7% of survived
+rows at 0, against the deleted class's 65.4%, and takes the oracle's lift from
+16.7 to about 1.3. So most of the distributional gap is window asymmetry and none
+of the zero is: the zero is arithmetic.
+
+Neither is fixed here. The field ships on every row and defines the negative
+label, which is a thing a corpus may not do, and `-matched` conditions only the
+positive side. Until it is fixed, no reading of this corpus may use `exposure`,
+`CodeFrom` or `CodeTo`, and the tool's lift is not to be compared against a rule
+that reads them.
 
 Both labels are now capped per repository, the positive class at a quarter of the
 negative one. Before that, one repository was 28% of the positives and the tool
 caught 1 of its 250, which moved the measured lift by a quarter on its own.
 
-**The confound still open** is block size. `leftover` is a commented-out-code
-detector and commented-out code is long, so any rule correlated with block size
-gets lift for free. On the second corpus 113 of the 116 deleted rows longer than
-20 lines were one repository. That has to be re-measured here before
-`leftover`'s lift is treated as settled.
+**Block size is closed, and it was not the explanation.** `leftover` is a
+commented-out-code detector and commented-out code is long, so any rule
+correlated with block size gets lift for free; on the second corpus 113 of the
+116 deleted rows longer than 20 lines were one repository. Measured here:
+within every comment-length stratum the lift is 11.7 to 19.3, and within every
+annotated-code-length stratum 7.5 to 27.0, row-weighted 17.8 against a pooled
+13.3. Conditioning on block size raises the tool's lift rather than removing it.
+
+**What is open instead** is `annotates` length. The deleted side additionally
+requires the annotated code to survive the commit verbatim, and the survived side
+has no equivalent test, so long-annotated positives are selectively filtered out:
+median 84 bytes against 158. A one-field rule, `annotates` under 60 bytes, scores
+lift 2.24 [1.64, 2.91]. `baselines` tests two thresholds on that field which are
+both dead — under 40 catches nothing, truncation at 400 scores 0.21 — and misses
+the live one. Apply the survival test to both sides or to neither.
 
 ## Comparing two corpora is not a measurement
 

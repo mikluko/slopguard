@@ -42,8 +42,9 @@ rediscovered by whoever hits it next.
 - A step comment inside a long function — `// Sort edges.` over `sort.Sort(edges)` — is a finding, and plenty of
   engineers would defend it as what makes a two-hundred-line routine readable. The rule this tool serves reads the urge
   to write one as a signal the block wants to be a function. It fires wherever the comment's words are already spelled by
-  the line under it, whatever follows, and on the Go standard library that is the largest class the tool has: 623 of
-  1034. A run of them restating four consecutive trivial lines is the shape the rule is aimed at, and a gate on what
+  the line under it, whatever follows. Under `SLOPGUARD_WIDER=1` on the Go standard library that was the largest class
+  the tool had, 623 of 1034; the shipped default runs neither `echo` nor `tautology`, so the figure is history rather
+  than behaviour. A run of them restating four consecutive trivial lines is the shape the rule is aimed at, and a gate on what
   follows the line reduces that run to one finding, so there is no version of this that flags the run and spares the
   banner.
 - The padding rule fires only where its own instruction has a target: not on a file's own documentation, since that is

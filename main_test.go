@@ -368,8 +368,10 @@ func TestReportQuotesNoRate(t *testing.T) {
 	// This is an enumeration of joins rather than a test of shape, and it says so
 	// because a previous version of this comment claimed otherwise: a reviewer
 	// got eleven phrasings past it, "nine times out of ten" among them. The list
-	// below is what those eleven taught it. A denominator it does not name still
-	// slips through, and the digit check is what catches those.
+	// below is what those eleven taught it. A ratio whose denominator is a word
+	// this list does not name — "nine in twelve" — still passes everything here,
+	// digit check included. That is the known hole, and closing it properly
+	// wants a parser rather than a longer list.
 	// The previous list dropped "one in" while the commit adding it claimed to
 	// have verified against "four in ten", which it passed — and "one in four on
 	// compilers" is the phrasing in `report`'s own doc and in AGENTS.md, so it
@@ -464,6 +466,10 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 		name string
 		in   payload
 		want bool
+		// raw and text override the single-line fixture, for the rows whose
+		// shape only a multi-line run can carry.
+		raw  string
+		text string
 	}{
 		{
 			name: "one edit deleted it and the same edit commented it",
@@ -497,9 +503,13 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 		},
 		{
 			// The same carried-through comment, reindented by the edit that
-			// carried it. `Raw` holds the indentation between a run's lines, so
-			// without flattening this reads as a comment the edit wrote.
+			// carried it. Only a run reaches this: `Raw` holds the indentation
+			// *between* a run's lines, and a one-line comment has none, so the
+			// row that used the shared single-line fixture passed with and
+			// without the flattening it was written for.
 			name: "the edit reindented an older comment while deleting what it quotes",
+			raw:  "// foo()\n\t\t// bar()",
+			text: "foo()\nbar()",
 			in: edit(
 				"\t// foo()\n\t// bar()\n\tfoo()\n\tbar()\n",
 				"\tif cond {\n\t\t// foo()\n\t\t// bar()\n\t}\n",
@@ -520,6 +530,9 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := rule.Finding{Line: 1, Source: "foo()", Raw: "// foo()"}
+			if c.raw != "" {
+				f.Raw, f.Source = c.raw, c.text
+			}
 			if got := switched(f, c.in); got != c.want {
 				t.Fatalf("switched = %v, want %v", got, c.want)
 			}

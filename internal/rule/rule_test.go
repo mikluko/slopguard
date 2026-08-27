@@ -58,10 +58,11 @@ var cases = []struct {
 `,
 	},
 	{
-		// Java files a run of colon arms sharing a body under
-		// `switch_block_statement_group`. The comment is exempt here through
-		// `switch_label`, the kind of the arm it sits above, which is why the
-		// group kind itself was dropped from `labels`: nothing reaches it.
+		// Java wraps each colon label with the statements under it in a
+		// `switch_block_statement_group` — one per label, not one per run. The
+		// comment is exempt here through `switch_label`, the kind of the arm it
+		// sits above, which is why the group kind was dropped from `labels`:
+		// its first named child is always that label, so nothing reaches it.
 		name: "a comment above a java arm group names what the group handles",
 		lang: java,
 		src: `class C {

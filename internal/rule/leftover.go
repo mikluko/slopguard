@@ -122,30 +122,39 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // case label is spared wherever it sits. Three alternatives were built and
 // measured, and all three reverted:
 //
-//	shipped                        130 stdlib   168 clones
-//	previous sibling is a label    135          188         recovers sched.go:372
-//	nothing precedes the comment   136          188         recovers that and importer.go:234
-//	parent is a label              130          168         moves nothing
+// Every row states the condition under which the exemption is *kept*, because
+// naming some as disqualifiers and some as qualifiers is how one revision of
+// this paragraph came to put one variant's numbers under another's name:
 //
-// Read as sets rather than counts, there is only one alternative. The second
-// variant's output is byte-identical to deleting this branch outright, and the
-// first's exemptions are a strict subset of the second's: of the twenty-six
-// exemptions this branch buys, the first keeps exactly one, and that one is
-// itself residue the doc names below. It preserves no correct exemption. So it
-// is deletion minus a recovery, not a separation, and both variants sweep in the
-// same twenty Vue label comments and the same four in the standard library.
+//	keep the exemption when...        stdlib   clones   recovers
+//	  (shipped: always)                  130      168   —
+//	  the previous sibling is not a      135      188   sched.go:372
+//	    label
+//	  nothing precedes the comment       136      188   that and importer.go:234
+//	  the parent is not a label          130      168   nothing: never false here
+//	  the previous sibling *is* a        131      168   importer.go:234 only
+//	    label
 //
-// **The tree does not separate a tail comment from a label comment**, which is
-// what the third variant confirms by moving nothing at all. The opposite
-// polarity — exempt only where the previous sibling *is* a label — does separate
-// them, at 131 and 168, but breaks five of the spec table's own fixtures, so the
-// table rejects it independently.
+// The last row is the one that separates. It recovers a residue finding and
+// costs nothing on either sweep — no Vue label comments, no standard library
+// ones — so **the tree can tell a tail comment from a label comment**, and the
+// paragraph said otherwise once. What rejects it is the spec table: five
+// fixtures across Java, TypeScript and PHP assert exemptions it withdraws, which
+// is an objection about the other grammars rather than about separability.
 //
-// The choice is therefore between keeping this branch and dropping it, at two
-// true positives against twenty-four false ones. Five revisions of this paragraph
-// have got that wrong in five different ways, each refuted by a measurement
-// already in this file; the one that said the tree cannot separate them was
-// right and was corrected away.
+// The two middle rows are not separations. Row three is byte-identical to
+// deleting this branch, and row two keeps exactly one of the twenty-six
+// exemptions the branch buys — itself residue — so it is deletion minus a
+// recovery. Both sweep in the same twenty Vue label comments and the same four
+// in the standard library. Row four's condition is never false: a comment above
+// a Go or TypeScript case label is parented by the switch, never by an arm, so
+// it fired zero times across both corpora and confirms nothing either way.
+//
+// So the live choice is between keeping this branch and dropping it, at two true
+// positives against twenty-four false ones, with the fifth row available if the
+// spec table's five fixtures are ever revisited. Six revisions of this paragraph
+// have been wrong in six different ways, every one refuted by a measurement
+// already in this file.
 //
 // This branch silences a `//dump(...)` at the tail of an arm in `staticinit` and
 // the continuation of a commented-out `case goimporterMagic:` arm at
@@ -215,11 +224,13 @@ var labels = set(
 	// `case_statement` is the whole construct.
 	"case_statement", "default_statement",
 	// Java, whose colon form and arrow form are different kinds.
-	// `switch_block_statement_group`, which files a run of colon arms sharing a
-	// body, was here too and is gone: a comment above such a run is exempt
-	// through the `switch_label` beneath it, so no fixture ever reached the
-	// group kind and removing it moves neither sweep. A kind nothing reaches is
-	// a guess about a grammar, which is what put a phantom in this set once.
+	// `switch_block_statement_group` was here too and is gone: it wraps a label
+	// with the statements under it — one group per label, not one per run — and
+	// its first named child is always the `switch_label`, so a comment above it
+	// is exempt through that label and a comment inside it is rejected by
+	// [opens], which finds no `value`. Nothing reaches the group kind and
+	// removing it moves neither sweep. A kind nothing reaches is a guess about a
+	// grammar, which is what put a phantom in this set once.
 	"switch_label", "switch_rule",
 	// PHP's match expression, where these two are the only thing exempting a
 	// comment above an arm: removing either adds a finding to the fixture for

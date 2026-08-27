@@ -406,11 +406,15 @@ other branch spares an arm's *first* line deliberately, and takes jq's and
 
 Three revisions of this paragraph got that wrong in three different ways: the
 first offered a tree-shape argument for all four, the second said it covered one,
-and and the fourth said the previous-sibling test separates a between-arms comment
-from a label. Read as sets rather than counts it does not: its exemptions are a
-strict subset of deleting the branch, it keeps exactly one of the twenty-six the
-branch buys, and that one is residue. The third revision, which said the tree
-cannot separate them, was right and was corrected away.
+and the fourth and fifth argued in turn that the previous-sibling test does and
+does not separate a between-arms comment from a label. It depends entirely on
+which way the test points, which no revision said: keeping the exemption *unless*
+the previous sibling is a label is deletion minus a recovery, and keeping it
+*only where* the previous sibling is a label recovers a residue finding at no cost
+on either sweep. The tree can separate them. What rejects the separating variant
+is the spec table, where five fixtures assert exemptions it withdraws. The table
+in `arm`'s own doc states all five variants as conditions for keeping the
+exemption, which is the ambiguity that produced four of the six wrong versions.
 
 The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not

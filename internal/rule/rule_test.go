@@ -42,6 +42,36 @@ var cases = []struct {
 `,
 	},
 	{
+		// The colon form, in the same `labels` entry as the arrow form above and
+		// unpinned while only the arrow form had a fixture.
+		name: "a comment above a java colon arm names what the arm handles",
+		lang: java,
+		src: `class C {
+  void f(int k) {
+    switch (k) {
+      // report(k);
+      case 1:
+        other(k);
+    }
+  }
+}
+`,
+	},
+	{
+		// PHP's match arms, whose two kinds carry the whole exemption there.
+		name: "a comment above a php match arm names what the arm handles",
+		lang: php,
+		src: `<?php
+function f($k) {
+  return match ($k) {
+    // report($k);
+    1 => other($k),
+    default => none(),
+  };
+}
+`,
+	},
+	{
 		// A case arm is where a reader most needs an example of what is being
 		// matched, and the example is written in the language being matched.
 		name: "a comment opening a case arm names what the arm handles",

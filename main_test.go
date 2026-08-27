@@ -53,6 +53,53 @@ func TestReviewEdit(t *testing.T) {
 	}
 }
 
+// A comment with an identical twin elsewhere in the file cannot be claimed as
+// this write's, because the only thing distinguishing the two is position and
+// the transition test compares text.
+//
+// Through [review] rather than [report], which is where the blanking happens.
+// Three tests were added with that fix and all three built their findings by
+// hand, so deleting the loop left the suite green and restored the false
+// certainty it was written to remove.
+func TestReviewWillNotClaimACommentWithATwin(t *testing.T) {
+	t.Setenv(session.MemoryEnv, t.TempDir())
+	const twice = `package p
+
+func a() {
+	// return v * 3
+	return v * 2
+}
+
+func b() {
+	// return v * 3
+	return v * 2
+}
+`
+	in := payload{ToolName: "Edit"}
+	in.ToolInput.FilePath = file(t, "twice.go", twice)
+	in.ToolInput.OldString = "\treturn v * 3\n\treturn v * 2\n}\n"
+	in.ToolInput.NewString = "\t// return v * 3\n\treturn v * 2\n}\n"
+
+	findings := review(in)
+	if len(findings) == 0 {
+		t.Fatal("the fixture yielded no finding, so this asserts nothing")
+	}
+	for _, f := range findings {
+		if f.Raw != "" {
+			t.Errorf("line %d keeps its claim to certainty though its text occurs twice", f.Line)
+		}
+		if switched(f, in) {
+			t.Errorf("line %d is reported as this write's transition", f.Line)
+		}
+	}
+	// The opening sentence, not the per-line instruction, which asks the agent
+	// to consider whether this write commented something out and is present in
+	// every form of the nudge.
+	if strings.Contains(report("twice.go", findings, in), "This write commented out live code") {
+		t.Error("the nudge claims a transition it cannot attribute")
+	}
+}
+
 // An edit is credited with the bytes it changed, not with everything its
 // replacement text happens to match. The same three lines appear twice here,
 // and only the copy the edit inserted a comment into is this write's.
@@ -266,19 +313,42 @@ func TestReportMarksTheConfirmedFindingAmongGuesses(t *testing.T) {
 // an agent a number the method section retracts.
 //
 // Asserting the presence of "wrong" does not pin this: the wording it replaced
-// contained that word too, and restoring it verbatim passed the suite.
+// contained that word too, and restoring it verbatim passed the suite. Nor does
+// a list of the phrasings already used — a first version listed five and passed
+// a nudge carrying "four in ten", "a third" and "40 to 75 percent".
+//
+// So the test is on the shape of a rate rather than on its wording: no digit, no
+// percent sign, and none of the words English counts small fractions with. A
+// finding's line number is the one number the nudge may carry, so it is stripped
+// before the check.
 func TestReportQuotesNoRate(t *testing.T) {
 	findings := []rule.Finding{{Line: 42, Reason: "commented-out code: delete it, or make it real"}}
-	for _, repeated := range []bool{false, true} {
-		repeat = repeated
-		t.Cleanup(func() { repeat = false })
-		out := report("store.go", findings, payload{})
-		for _, rate := range []string{"half", "%", "one in", "two thirds", "a quarter"} {
-			if strings.Contains(out, rate) {
-				t.Errorf("the nudge quotes a rate (%q):\n%s", rate, out)
+	fractions := []string{
+		"half", "third", "quarter", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
+		"percent", "%", "most of the time", "of the time",
+	}
+	for _, certain := range []bool{false, true} {
+		for _, repeated := range []bool{false, true} {
+			repeat = repeated
+			out := report("store.go", findings, edit("x", "y"))
+			if certain {
+				out = report("store.go", findings, payload{})
+			}
+			bare := strings.ReplaceAll(out, "store.go:42", "")
+			for _, digit := range "0123456789" {
+				if strings.ContainsRune(bare, digit) {
+					t.Errorf("the nudge carries a digit:\n%s", out)
+					break
+				}
+			}
+			for _, word := range fractions {
+				if strings.Contains(strings.ToLower(bare), word) {
+					t.Errorf("the nudge quotes a rate (%q):\n%s", word, out)
+				}
 			}
 		}
 	}
+	repeat = false
 }
 
 // edit builds the payload an Edit hands the hook.

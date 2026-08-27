@@ -145,6 +145,13 @@ func review(in payload) []rule.Finding {
 	// pre-existing copy gets the tool's only unhedged sentence. The finding
 	// stands; only its claim to certainty goes, which is what an empty Raw
 	// means to [switched].
+	//
+	// Counted over the file's bytes rather than over its comments, so it also
+	// fires where there is no twin: the same text in unrelated prose, inside a
+	// string literal, or at every site of a replace-all edit. Those lose a
+	// certainty they had earned, which is the safe direction and the reason the
+	// crude test is tolerable. Comparing the scanned comments would be exact and
+	// needs them threaded out of [rule.Judge].
 	for i, f := range findings {
 		if f.Raw != "" && strings.Count(string(src), f.Raw) > 1 {
 			findings[i].Raw = ""

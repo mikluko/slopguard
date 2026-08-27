@@ -192,9 +192,11 @@ var labels = set(
 	"case_statement", "default_statement",
 	// Java, whose colon form and arrow form are different kinds
 	"switch_label", "switch_rule", "switch_block_statement_group",
-	// PHP's match expression. Emitted by the grammar and reachable only in
-	// principle: no fixture pins these two, because a comment inside a PHP
-	// `match` does not reach this rule for other reasons.
+	// PHP's match expression, where these two are the only thing exempting a
+	// comment above an arm: removing them adds three findings to a PHP match
+	// fixture. A previous revision of this comment said the opposite — that they
+	// were unreachable and decorative — on the strength of a fixture that failed
+	// to reach the rule for a reason of its own.
 	"match_conditional_expression", "match_default_expression",
 	// Rust
 	"match_arm",

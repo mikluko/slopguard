@@ -1,229 +1,223 @@
 # What says the rule got better
 
-slopguard's existing number is per-class precision and recall on a held-out
-split of hand-labelled comments, with the threshold set at the lowest score
-where the class still fires at 0.85 precision on the fitting half. That is sound
-over labels one person assigned, and it stays. What it cannot answer is whether
-the taxonomy is right or whether anyone else would have labelled those rows the
-same way, so a second evaluation is added beside it rather than replacing it.
+slopguard's existing number is per-class precision and recall on a held-out split
+of hand-labelled comments, with the threshold set at the lowest score where the
+class still fires at 0.85 precision on the fitting half. What it cannot answer is
+whether the taxonomy is right, or whether anyone else would have labelled those
+rows the same way, so a second evaluation is added beside it.
+
+**This document has been through one round of independent review and most of its
+first version did not survive.** The figures it used to report are withdrawn, the
+argument that justified accepting mined labels was circular, and one of the two
+labels does not measure what it was defined to measure. What follows is the
+corrected design plus a standing account of what is still wrong, because a metric
+document that hides its own defects is worth less than no metric at all.
 
 ## The second evaluation
 
-The mined corpus does not carry class names. It carries two labels neither of
-which is this project's opinion: `deleted`, a comment its own author removed in a
-commit that kept the code under it, and `survived`, a comment left standing
-through at least eight later commits to the same file. So the question it can
-answer is not *is this comment a tautology* but the one the tool's bar is
-actually about: **does slopguard fire on comments people threw away, and stay
-quiet on comments people kept?**
+The mined corpus carries two labels, neither of which is this project's opinion.
+`deleted`: a comment its author removed in a commit that kept the code under it.
+`survived`: a comment still present after at least eight later commits to the
+same file.
 
-The evaluation is therefore binary and class-agnostic. Any class firing counts
-as firing.
+The question it can answer is not *is this comment a tautology* but *does
+slopguard fire on comments people threw away and stay quiet on comments people
+kept?*
+
+## Withdrawn
+
+The following were reported and are withdrawn. They are listed rather than
+deleted so that anyone holding the old numbers knows they were retracted.
+
+**Partial AUC 0.011.** An off-by-one. The trapezoid loop guarded accumulation
+with `i > 0` while `previous` was already initialised to the origin, so the
+trapezoid from (0, 0) to the lowest-FPR point was discarded. That region is 88%
+of the width. Corrected the figure is about 0.056 against 0.025 for a random
+classifier. As published it asserted worse-than-chance performance, which the
+direct test refutes at z = 6.2.
+
+**"Closing to ninety days raises recall with the false-positive rate unmoved."**
+Circular: the window filters deleted rows only, so the false-positive rate is
+structurally incapable of moving. The honest comparison is recall 0.110 within
+ninety days against 0.058 beyond it, z = 3.60.
+
+**"The semantic classes buy 0.005 of recall for 0.003 of FPR."** That
+differenced two threshold tilts rather than turning the model off. Measured
+properly with `SLOPGUARD_NO_MODEL=1`, the semantic pass buys 6 catches for 38
+nudges: +0.013 recall for +0.003 FPR.
+
+**"`leftover` has more than twice `echo`'s recall."** The ratio interval is
+[1.31, 4.64], and pooling `echo` with `tautology` as one defect, which
+`docs/limits.md` already does, erases the difference at p = 0.092.
+
+**The terminator fix measured on this corpus.** One row of 12,436, McNemar
+p = 1.0. The corpus has no power to detect it in either direction. The
+minimal-pair measurement in the commit message is the real evidence.
+
+**Every recall figure, pending the repairs below.** They are not wrong
+arithmetic, they are measurements of a corpus whose positive set is 20%
+non-defects by this project's own definitions and whose negative set does not
+mean what it was defined to mean.
 
 ## The headline is recall at a fixed false-positive rate, not precision
 
-**Precision is not comparable here and false-positive rate is.** Precision
-depends on the ratio of positives to negatives in the corpus, and that ratio is
-an artifact of how the harvest happened to run: `survived` rows are plentiful and
-`deleted` rows are rare, in whatever proportion the mining thresholds produced.
-Change `endured` from eight to four and every precision figure moves without the
-tool having changed at all. Recall and false-positive rate are each computed
-within one label's rows, so neither moves when the mix does.
+This part stands. Precision depends on the ratio of positives to negatives, and
+that ratio is an artifact of the mining thresholds: change `endured` from eight
+to four and every precision figure moves without the tool changing. Recall and
+false-positive rate are each computed inside one label's rows.
 
-False-positive rate is also the quantity the user actually experiences.
-[1092](http://127.0.0.1:9876/item/1092) fixes the bar as a false positive rate
-that gets the hook disabled, and what that means concretely is the share of
-good comments the tool nags about. That share is FPR on `survived`. Precision
-answers a different question, "of the things it flagged, how many deserved it",
-which nobody is asking while deciding whether to turn the hook off.
+False-positive rate is also closer to what the user experiences. The bar is a
+false-positive rate that gets the hook disabled, which is the share of good
+comments it nags about.
 
-So:
+**One caveat that the first version got wrong.** Recall and FPR are invariant to
+the ratio *between* labels. They are not invariant to the composition *within* a
+label, and the survived pool's composition is set by `-keep`. Removing the four
+repositories sitting at the 800-row cap moves FPR from 0.047 to 0.035 without
+touching the tool. So any FPR figure must be reported against a stated pool, and
+preferably stratified by repository and language.
 
-- **Primary: recall on `deleted` at FPR 0.02 on `survived`**, with the same pair
-  reported at FPR 0.01 and 0.05 so the shape near the operating point is visible.
-- **Single number for ranking builds: partial AUC over FPR in [0, 0.05]**,
-  normalised to that range. Full AUC is rejected below.
-- **Per class: the same pair with only that class's rule enabled.** A class that
-  adds no recall at fixed FPR is not paying for its share of the model load, and
-  this is the number that says so.
+## The noise does not simply run one way
 
-## The noise runs one way, and that is what makes the number usable
+The first version argued that mislabels are pessimistic in both directions, so a
+build that improves under the metric improved and the metric cannot flatter.
+**That argument is invalid and is withdrawn.**
 
-Both labels are wrong some of the time, and the two errors are the same error
-seen from either side. Some `deleted` rows are good comments removed for reasons
-other than their quality. Some `survived` rows are bad comments nobody got round
-to deleting.
+Write `d` for the share of `deleted` rows that are good, `f_g` for the rate at
+which the tool fires on those, and `r` for its true recall on real defects.
+Measured recall is `d·f_g + (1−d)·r`. Measured recall is below true recall **if
+and only if `f_g ≤ r`** — that is a property of the tool under test, not of the
+labels, and nothing here has established it.
 
-Call `d` the share of `deleted` rows that are good and `s` the share of
-`survived` rows that are bad. Then:
+The corpus contains a case that breaks it. Two mechanical date-fns migrations
+contribute 158 deleted rows whose comments are long `@param`/`@returns` JSDoc
+blocks and `@flow` pragmas, a shape almost absent from the survived pool. A build
+that learned "long tagged doc block" would raise measured recall with no rise in
+measured FPR. It would score better and be worse.
 
-- a good comment mislabelled `deleted` is one slopguard should stay silent on,
-  and silence there is scored as a miss, so **measured recall is a lower bound**;
-- a bad comment mislabelled `survived` is one slopguard should fire on, and
-  firing there is scored as a false positive, so **measured FPR is an upper
-  bound**.
+What replaces the claim: **the direction of the bias is unknown and must be
+argued per change.** A change that could plausibly be picking up codemod shape,
+marker shape, or language shape has to be checked against those strata directly
+before its headline movement is believed.
 
-Both errors are pessimistic. A build that improves under this metric improved,
-and the metric cannot flatter. That property is the reason to accept mined
-labels at all, and it is worth more than the precision the noise costs.
+## What `survived` actually means
 
-**The numbers are reported, never corrected for.** A correction would have to
-assume the mislabelling is independent of the score, and it is not: a good
-comment that happened to get deleted is exactly the kind that reads as contract,
-which is exactly the kind slopguard is built not to fire on. Correcting would
-therefore subtract the errors the tool gets right. `d` and `s` are measured by
-hand-sampling one hundred rows of each label, restated beside every figure, and
-`recall / (1 - d)` may be quoted as an estimate of recall among rows that were
-actually judged, marked as an estimate.
+`survived` was defined as a comment "kept through many readings of a file
+somebody was editing". **That is false for the typical row and the claim is
+withdrawn.**
 
-`d` is also the ceiling on everything. If a third of `deleted` rows are good
-comments, no build reaches recall above about two thirds, and a run reporting
-0.6 is near the ceiling rather than mediocre.
+The label counts commits touching the *file*. Checked at the comment's own lines
+with `git log -L`, a row recorded at 72 file-edits has one commit that ever
+touched its line; rows at 267 have two and three. Survived comments start at
+median line 359 and p90 line 1,843, so most of them sit far from where the file's
+churn happens.
 
-## What the corpus cannot see, and what to do about it
+`survived` therefore means **still present**, and nothing stronger. Until
+exposure is re-derived at the hunk level — later commits whose diff touches the
+comment's line range — no FPR figure here can be described as a rate on prose
+people actively valued.
 
-The paragraph above says the noise runs one way and is therefore safe. That
-holds, but on one class the bound is loose enough to be useless, and the reason
-is structural rather than a matter of sample size.
+## Baselines, which must be run and mostly were not
 
-Measured on 11,387 harvested rows, `echo` catches 25 deleted comments and nudges
-254 survived ones. Reading those 254 rather than counting them: `Copy
-axios.prototype to instance`, `Iterate over object keys`, `Update the Host
-header.`, `Set the sequence.`, `Recursively delete all child buckets.`
-`tautology` looks the same: `Convert to a byte array.`, `Create a cursor for
-iteration.`, `Increment and return the sequence.`
+A number with no baseline says nothing, and the first version named four
+baselines and ran none of them. Measured since:
 
-Every one of those is the class Steidl's sixteen developers agreed above 80% was
-trivial, and that Jabrayilzade measures at a 31% base rate. They are correct
-firings scored as false positives.
+| rule | recall | FPR | note |
+|---|---|---|---|
+| `\b(TODO\|FIXME\|XXX\|HACK)\b` | 0.149 | 0.009 | beats the tool on both axes |
+| `trailing` boolean from the parser | 0.130 | 0.053 | sits on the shipped ROC curve |
+| fire on every JavaScript comment | 0.106 | 0.036 | same recall, 22% fewer nudges |
+| the shipped build | 0.110 | 0.047 | |
+| the shipped build, model off | 0.100 | 0.046 | |
+| fire on length alone | ≈ chance | | AUC ≈ 0.5 |
+| fire at random on 4.9% of rows | 0.049 | 0.049 | |
 
-**The cause is that deletion and triviality are not the same judgement.** A
-comment gets deleted when somebody is actively bothered by it. A trivial comment
-bothers nobody: it is cheap to skim, and removing it is a diff nobody wants to
-review. So triviality is systematically absent from the `deleted` side and
-abundant on the `survived` side, and a build tuned to maximise recall on
-`deleted` would be tuned away from the best-attested defect in the literature.
+The tool beats chance decisively: z = 6.2 unstratified, z = 7.3 stratified by
+language, z = 3.8 after a worst-case clustering correction, lift 2.25 to 2.54.
+**It does not beat three one-bit baselines at its shipped operating point.**
 
-That is a trap rather than a reason to discard the corpus. What follows from it:
+Two of those three are corpus artifacts and dissolve with the repairs below: the
+JavaScript baseline is half date-fns, which contributes 246 deleted rows and zero
+survived, and `trailing` rides a position skew created by harvesting the two
+labels under different eligibility rules. **The marker baseline is not an
+artifact.** It is real, and the answer to it is that markers are a tracked-debt
+convention that Google's C++ and Java guides mandate, so the tool is deliberately
+not trying to catch them. That answer is only honest if marker rows are excluded
+from `deleted` rather than counted as recall the tool failed to earn.
 
-- **`survived` means *nobody removed this*, never *this is good*.** Every report
-  says it in those words.
-- **The corpus is strong evidence in one direction and weak in the other.** It
-  measures false positives on prose people actively valued well, because a
-  comment kept through many readings of a file somebody was editing is a real
-  positive. It measures recall on triviality badly, because triviality does not
-  generate deletions.
-- **The classes split by which evidence governs them.** `leftover`, and any
-  narration or change-event class, produce deletions and are properly judged
-  against the mined labels. `echo` and `tautology` target a defect that does not
-  produce deletions, and are properly judged against Steidl's validated
-  coherence-coefficient criterion and a human pass, with the mined corpus used
-  only for the false-positive half.
-- **The hundred-row adjudication is therefore the linchpin, not a nicety.** What
-  it has to produce is not only `d` and `s` but a split of the `survived` rows
-  into prose that states a contract and prose that is merely trivial and was
-  left alone. Only the first is a true negative. The second is not evidence in
-  either direction and belongs in neither denominator.
+## What is known to be wrong with the corpus
 
-Until that split exists, `echo` and `tautology` are reported with their FPR
-figures marked as upper bounds that are known to be loose, and no threshold is
-moved on the strength of them.
+Stated here rather than in a ticket, because anyone reading a figure needs them.
+
+- **Markers.** `TODO|FIXME|XXX|HACK` is 14.9% of young deletions against 0.90% of
+  survivors. A share of `deleted` is debt resolution, not a judgement.
+- **Codemods.** 298 of 1,526 deleted rows come from ten commits. One date-fns
+  commit contributes 134 rows across 134 files. The `burst` guard is per file and
+  applies after the other filters, so a repo-wide sweep passes unbounded.
+- **Exposure.** As above.
+- **Repository skew.** date-fns is 16% of the positives and 0% of the negatives.
+  86% of `leftover`'s false positives are Rust and YAML from four repositories at
+  the cap.
+- **Lifetime.** `lifetime_days` dates the comment by the last touch to its first
+  line, so a reflow resets it. The identical pragma removed by one commit carries
+  lifetimes from 40 to 2,059 days across sibling files.
+- **Same-day deletions dropped.** `omitempty` on a float encodes a zero-day
+  lifetime as absent, and the filter then discards those 39 rows. They are the
+  tool's best subset at recall 0.231.
+- **Shallow clones.** Five of twenty-four. In vuejs/core, 345 rows carry the
+  graft boundary as their authoring commit.
+- **Double counting.** The scorer iterates comments rather than rows, so a
+  trailing comment sharing a start line scores its row twice.
+- **Non-independence.** 462 young deletions come from 345 commits; 23% of deleted
+  rows share exact text with another. Design effect 2.73, so recall 0.110 is
+  [0.072, 0.167] clustered rather than [0.085, 0.142].
+- **Population.** Every row is human-written prose in a mature reviewed project.
+  The tool judges comments an agent just wrote. The corpus corrects for the
+  labeller's taste and not for the population.
+
+## What has to hold before a figure is quoted again
+
+1. `survived` re-derived from line-local exposure.
+2. Marker rows excluded from `deleted`, or every recall figure reported twice.
+3. Codemods excluded: cap per commit, and drop commits touching many files.
+4. Both labels harvested under matched eligibility and capped identically, or
+   the survived pool reweighted to the deleted pool's repository mix.
+5. Uniform clone depth, with graft-terminated blame recorded as a field.
+6. Intervals on everything, clustered by removing commit.
+7. Per-class figures produced with the other classes disabled, not read off a
+   precedence-ordered partition.
+8. The four original baselines plus the marker baseline actually run.
 
 ## The operating point this document chose does not exist
 
-Measured on the committed corpus at a ninety-day deletion window, sweeping the
-semantic thresholds from -0.10 to +0.32:
+This part stands and is the most useful thing the exercise produced.
 
-    offset   recall    FPR
-    -0.10    0.097    0.0442
-     0.00    0.110    0.0467
-    +0.04    0.128    0.0517
-    +0.10    0.158    0.0691
-    +0.18    0.232    0.1112
-    +0.32    0.359    0.2675
+Sweeping the semantic thresholds moves them only. `echo`, `leftover` and the YAML
+carve-out carry no threshold, so they fire identically at every offset and their
+combined false-positive rate is a floor: 0.044 on this corpus, of which
+`leftover` is 0.024 and `echo` 0.020. **Turning the model off entirely still
+lands above FPR 0.02.**
 
-**The curve never reaches FPR 0.02, and cannot.** Sweeping moves the semantic
-thresholds only; `echo`, `leftover` and the YAML carve-out carry no threshold, so
-they fire identically at every offset. Their combined false-positive rate, 0.044
-on this corpus, is a floor. Turning the model off entirely lands above the
-operating point this document named.
+A rule with no threshold cannot be traded off, so the floor moves only by making
+one thresholdable or by cutting it. That is a design conclusion no aggregate
+number would have shown. The caveat above applies: the floor's *level* is a
+composition figure, but its *existence* is a property of the rules.
 
-So "recall at FPR 0.02" is undefined for this build, and the partial AUC over
-[0, 0.05] comes out at 0.011 for the same reason rather than as a verdict on
-quality: almost all of that region has no curve in it.
+## The two evaluations answer different questions
 
-What replaces it, until a build exists whose floor is lower:
+The mined corpus records only that something fired, never which class, so it
+cannot catch `tautology` starting to fire on `compat` rows at unchanged totals.
+The hand-labelled held-out set can, and stays.
 
-- **The floor itself, reported as a number**, with the per-class split that makes
-  it up. Today: 0.044, of which `leftover` is 0.024 and `echo` 0.020.
-- **Recall at the floor**, which is 0.110 at the shipped thresholds.
-- **Recall at FPR 0.05**, the first named point above the floor, which is 0.115.
-  The gap between those two is what the semantic classes buy over the structural
-  ones: 0.005 of recall for 0.003 of FPR.
-
-**And the floor is the finding, not a nuisance.** A rule with no threshold cannot
-be traded off, so the only ways to move it are to make one thresholdable or to
-cut it. That is a design conclusion the aggregate number would have hidden, and
-it is why the sweep was worth running rather than reporting the shipped point
-alone.
-
-The caveat from the previous section applies to the floor hardest: much of what
-`echo` and `leftover` contribute to it is correct firings on comments nobody
-removed. The floor is real as a measure of how much the tool speaks; how much of
-it is unwanted is what the adjudication decides.
-
-## What has to be beaten
-
-A number with no baseline says nothing. Four, in increasing order of what they
-demand:
-
-1. **Fire on nothing.** Recall 0 at FPR 0. Any positive recall beats it, which
-   is why it is the floor and not a real competitor.
-2. **Fire on length alone**, the `padding` rule as the only signal. The README
-   currently claims the length rule is seven of nine findings on a real Go
-   corpus, so this is the baseline the semantic classes most need to beat. A
-   model that does not beat sentence-counting is not worth ninety milliseconds
-   of ONNX session build.
-3. **The phrase list**, which already exists as the degraded path when ONNX
-   Runtime is absent. It is known to have produced seven false positives out of
-   seven on real code, so it should lose badly. If it does not, the model is not
-   doing what the exemplars claim.
-4. **The shipped build**, which is the comparison every later change is judged
-   against.
-
-## Rejected
-
-**Full AUC-ROC.** It averages over operating points nobody would ship. A build
-that is excellent at FPR 0.4 and poor at FPR 0.02 outscores one that is good
-exactly where the hook runs. Restricting to FPR in [0, 0.05] keeps the
-threshold-independence and drops the region that cannot be used.
-
-**F1.** It is a precision-recall composite, so it inherits precision's dependence
-on the corpus mix, and it weights a false positive and a false negative equally,
-which contradicts the tool's own bar. Those failures are not symmetric here.
-
-**Accuracy.** With `survived` rows outnumbering `deleted` rows by an order of
-magnitude, firing on nothing scores above ninety per cent.
-
-**Replacing the hand-labelled held-out set.** The mined corpus cannot say which
-class fired, only that something did, so it cannot catch a build where
-`tautology` starts firing on `compat` rows at unchanged aggregate numbers. The
-two evaluations answer different questions and a build has to hold both:
-**no regression on per-class held-out precision, and no regression on recall at
-FPR 0.02.** That conjunction is the shipping rule.
-
-**Correcting for label noise.** Argued above.
+That set has its own defect, found in the same review: four calibration tests
+read it, and the doc comments on `precision`, `marginWindow`, `clear`, `perDraw`
+and `BuriedBias` each say the constant was chosen from those printouts. It is a
+selection set, not a test set, and its numbers are validation scores after at
+least six decisions. A third split that nothing reads until a build ships is
+owed, and it should be carved by project rather than by row.
 
 ## Where it runs
 
-Against the tables `internal/model` already has. `TestHeldOut` and
-`TestCalibrate` read a labelled table and report against it; this needs one more
-table, the mined rows with their `deleted` / `survived` label, and the same
-sweep the `slopguard <files...>` path already performs to get a score per
-comment. The scoring machinery, the fitted directions and the thresholds are all
-unchanged. What is new is a second table and a second report.
-
-One table the repository does not have and this metric needs: the hand-sampled
-adjudication of one hundred rows per label that produces `d` and `s`. It is a
-one-off human pass, it is small, and without it none of the figures above can be
-interpreted.
+`tools/score`, against `internal/corpus/testdata/harvest.jsonl.gz`. `-maxlife`
+restricts the deletion window, `-dump <class>` prints the rows a class fired on,
+which is how a false-positive rate is read rather than trusted.

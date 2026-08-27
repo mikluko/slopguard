@@ -201,10 +201,16 @@ var (
 	// out, so a commented structure there is the file doing its job.
 	//
 	// The name is YAML's, so every predicate keyed on the language still finds
-	// it, and only the commented-out-code rule reads the flag. Hand-judged over
-	// the 23 mined repositories with content, values.yaml supplied 51 findings
-	// and no true positive;
-	// the two the rule gets right in YAML are both CI workflows.
+	// it, and only the commented-out-code rule reads the flag.
+	//
+	// Measured over the 23 mined repositories with content, `values.yaml`
+	// supplies 53 findings, of which the hand-read judged one to be residue: the
+	// superseded `# repository: richih/modbus_exporter` sitting directly above
+	// the live key it was replaced by. So the exemption costs a true positive,
+	// and docs/limits.md carries that as a known limit. This note said 51 and no
+	// true positive for several rounds, the second half contradicted by the
+	// sibling document naming the one.
+	//
 	// Derived from YAML rather than written out beside it, so a field added
 	// there cannot silently fail to reach here.
 	Values = registers(YAML)

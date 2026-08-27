@@ -119,8 +119,8 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 //
 // **A comment at the tail of an arm is exempt too, and should not be.** This
 // branch applies no positional test at all, so anything whose next node is a
-// case label is spared wherever it sits. Three alternatives were built and
-// measured, and all three reverted:
+// case label is spared wherever it sits. Four alternatives were built and
+// measured, and all four reverted:
 //
 // Every row states the condition under which the exemption is *kept*, because
 // naming some as disqualifiers and some as qualifiers is how one revision of
@@ -135,12 +135,22 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 //	  the previous sibling *is* a        131      168   importer.go:234 only
 //	    label
 //
-// The last row is the one that separates. It recovers a residue finding and
-// costs nothing on either sweep — no Vue label comments, no standard library
-// ones — so **the tree can tell a tail comment from a label comment**, and the
-// paragraph said otherwise once. What rejects it is the spec table: five
-// fixtures across Java, TypeScript and PHP assert exemptions it withdraws, which
-// is an objection about the other grammars rather than about separability.
+// **The tree cannot tell a tail comment from a label comment.** The last row
+// looks like it does — one residue finding recovered, nothing swept in — and
+// that is a coincidence of the file it recovers. `importer.go:234` follows a
+// blank line that split a commented-out arm into two runs, so its previous
+// sibling is another *comment*; what row five separates is "preceded by a
+// comment" from "preceded by a label", which is a fact about run-splitting. The
+// tail comment this paragraph is actually about, `sched.go:372`, has
+// `expression_case` as its previous sibling — the same signature as all twenty
+// Vue label comments — so row five keeps it exempt too:
+//
+//	sched.go:372         prev expression_case   parent switch statement   residue
+//	babelUtils.ts:387    prev switch_case       parent switch body        a label comment
+//
+// Row five also breaks five spec fixtures across Java, TypeScript and PHP, but
+// that is a second objection, not the reason. Two revisions of this paragraph
+// had the inseparability right and the seventh called them wrong.
 //
 // The two middle rows are not separations. Row three is byte-identical to
 // deleting this branch, and row two keeps exactly one of the twenty-six
@@ -151,10 +161,10 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // it fired zero times across both corpora and confirms nothing either way.
 //
 // So the live choice is between keeping this branch and dropping it, at two true
-// positives against twenty-four false ones, with the fifth row available if the
-// spec table's five fixtures are ever revisited. Six revisions of this paragraph
-// have been wrong in six different ways, every one refuted by a measurement
-// already in this file.
+// positives against twenty-four false ones. Seven revisions of this paragraph
+// have been wrong in seven different ways, every one refuted by a measurement
+// already in this file, and two of the seven were corrections of a version that
+// had been right.
 //
 // This branch silences a `//dump(...)` at the tail of an arm in `staticinit` and
 // the continuation of a commented-out `case goimporterMagic:` arm at
@@ -224,13 +234,16 @@ var labels = set(
 	// `case_statement` is the whole construct.
 	"case_statement", "default_statement",
 	// Java, whose colon form and arrow form are different kinds.
-	// `switch_block_statement_group` was here too and is gone: it wraps a label
+	// `switch_block_statement_group` was here too and is gone. It wraps a label
 	// with the statements under it — one group per label, not one per run — and
-	// its first named child is always the `switch_label`, so a comment above it
-	// is exempt through that label and a comment inside it is rejected by
-	// [opens], which finds no `value`. Nothing reaches the group kind and
-	// removing it moves neither sweep. A kind nothing reaches is a guess about a
-	// grammar, which is what put a phantom in this set once.
+	// nothing reaches it: `comment.Container` matches the substring "block" in
+	// its name, so the climb that finds what a comment sits above stops before
+	// it and lands on the `switch_label` instead, and a comment inside a group
+	// is rejected by [opens], which finds no `value`. Removing it moves neither
+	// sweep. A kind nothing reaches is a guess about a grammar, which is what
+	// put a phantom in this set once — and the first version of this note gave
+	// the group's first-child property as the mechanism, which is the condition
+	// under which the climb would have *continued* into it.
 	"switch_label", "switch_rule",
 	// PHP's match expression, where these two are the only thing exempting a
 	// comment above an arm: removing either adds a finding to the fixture for

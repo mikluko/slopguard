@@ -152,8 +152,15 @@ func review(in payload) []rule.Finding {
 	// certainty they had earned, which is the safe direction and the reason the
 	// crude test is tolerable. Comparing the scanned comments would be exact and
 	// needs them threaded out of [rule.Judge].
+	//
+	// Flattened, because [moved] is. The two ran on different notions of the
+	// same word for one commit: this counted literally while `moved` compared
+	// with indentation removed, so two runs alike but for their indentation were
+	// not twins here and were indistinguishable there, and one edit commenting
+	// out a run could vouch for another edit merely reindenting its likeness.
+	// Whatever identity `switched` uses, this has to use.
 	for i, f := range findings {
-		if f.Raw != "" && strings.Count(string(src), f.Raw) > 1 {
+		if f.Raw != "" && strings.Count(flat(string(src)), flat(f.Raw)) > 1 {
 			findings[i].Raw = ""
 		}
 	}
@@ -205,14 +212,33 @@ func switched(f rule.Finding, in payload) bool {
 	return false
 }
 
+// flat strips each line's own indentation, leaving the line breaks.
+//
+// It is what "the same comment" means to both [switched] and the twin guard in
+// [review], and it has to mean the same thing to both: for one commit `moved`
+// compared flattened while the guard counted literally, so two runs alike but
+// for their indentation were not twins to one and were identical to the other,
+// and one edit commenting out a run could vouch for another edit merely
+// reindenting its likeness.
+func flat(text string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimSpace(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // moved reports whether one edit both wrote this comment and stopped its lines
 // being code.
 //
 // Four conditions, and the pair on the raw text is what makes it one edit rather
-// than two. The comment as written must appear in what the edit inserted and not
-// in what it replaced: present on both sides it is a comment the edit carried
-// through untouched, and absent from the replacement it is not this edit's at
-// all. Two earlier versions tested only the stripped text and both let a
+// than two. The comment must appear in what the edit inserted and not in what it
+// replaced: present on both sides it is a comment the edit carried through
+// untouched, and absent from the replacement it is not this edit's at all. Both
+// sides are compared through [flat], so "the comment" means its text with each
+// line's own indentation removed — which also means a comment is refused where
+// an identical one at another indentation stood in the replaced text, a miss in
+// the safe direction. Two earlier versions tested only the stripped text and both let a
 // deleting edit vouch for a comment it never touched — first by pooling every
 // edit's before-text, then by asking merely that the stripped line occur
 // somewhere in the replacement, which `defer foo()` satisfies for `foo()`.
@@ -233,13 +259,6 @@ func moved(f rule.Finding, was, now string) bool {
 	// run's text differ from what it replaced, and the carried-through test
 	// passes it as new. Deleting the live lines it quotes in the same edit is
 	// then enough for the unhedged claim.
-	flat := func(text string) string {
-		lines := strings.Split(text, "\n")
-		for i, line := range lines {
-			lines[i] = strings.TrimSpace(line)
-		}
-		return strings.Join(lines, "\n")
-	}
 	raw, was, now := flat(f.Raw), flat(was), flat(now)
 	if raw == "" || !strings.Contains(now, raw) || strings.Contains(was, raw) {
 		return false

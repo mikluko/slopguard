@@ -368,13 +368,16 @@ func TestReportQuotesNoRate(t *testing.T) {
 	// This is an enumeration of joins rather than a test of shape, and it says so
 	// because a previous version of this comment claimed otherwise: a reviewer
 	// got eleven phrasings past it, "nine times out of ten" among them. The list
-	// below is what those eleven taught it. A ratio whose denominator is a word
-	// this list does not name — "nine in twelve" — still passes everything here,
-	// digit check included. That is the known hole, and closing it properly
-	// wants a parser rather than a longer list.
+	// below is what those eleven taught it. What still passes, digit check
+	// included: a denominator the list does not name ("nine in twelve"), a
+	// plural noun where the joins are singular ("nine cases in ten"), an article
+	// between the halves ("one in a hundred", "nine of the ten"), and "to" as
+	// the join ("nine to one"). Closing those properly wants a parser rather
+	// than a longer list, and a note claiming one hole where there are four is
+	// the failure this file keeps making one level up.
 	// The previous list dropped "one in" while the commit adding it claimed to
 	// have verified against "four in ten", which it passed — and "one in four on
-	// compilers" is the phrasing in `report`'s own doc and in AGENTS.md, so it
+	// compilers" is the phrasing in `report`'s default branch and in AGENTS.md, so it
 	// is the likeliest thing to leak. Built as pairs rather than banned outright
 	// because the nudge legitimately says "those four are the measured false
 	// positives".
@@ -477,6 +480,22 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 			want: true,
 		},
 		{
+			// A run commented out at one indentation and reported at another,
+			// which is what an edit inserting into a nested scope produces. This
+			// is the only row with a multi-line Raw that wants a yes, and
+			// without it `flat(now)` could be dropped with the suite green —
+			// which would silence the confirmed claim on every run of more than
+			// one line, and silently, since the invariant sweeps take no payload.
+			name: "a run commented out across two lines is confirmed",
+			raw:  "// foo()\n// bar()",
+			text: "foo()\nbar()",
+			in: edit(
+				"\tfoo()\n\tbar()\n",
+				"\tif cond {\n\t\t// foo()\n\t\t// bar()\n\t}\n",
+			),
+			want: true,
+		},
+		{
 			// The shape the previous fix still reported: edit one deletes a
 			// live call, edit two writes the comment somewhere else entirely.
 			name: "one edit deleted it and a different edit wrote the comment",
@@ -532,6 +551,14 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 			f := rule.Finding{Line: 1, Source: "foo()", Raw: "// foo()"}
 			if c.raw != "" {
 				f.Raw, f.Source = c.raw, c.text
+			}
+			// A row asking for a run has to get one. Both override rows answer
+			// the same way when they fall back to the shared single-line
+			// fixture, so without this the plumbing could be deleted and they
+			// would pass on the wrong shape — the vacuous-fixture defect this
+			// table has now hit twice.
+			if strings.Contains(c.raw, "\n") && !strings.Contains(f.Raw, "\n") {
+				t.Fatalf("this row is about a multi-line run and got %q", f.Raw)
 			}
 			if got := switched(f, c.in); got != c.want {
 				t.Fatalf("switched = %v, want %v", got, c.want)

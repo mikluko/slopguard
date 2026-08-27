@@ -62,7 +62,7 @@ var cases = []struct {
 		// `switch_block_statement_group` — one per label, not one per run. The
 		// comment is exempt here through `switch_label`, the kind of the arm it
 		// sits above, which is why the group kind was dropped from `labels`:
-		// its first named child is always that label, so nothing reaches it.
+		// `comment.Container` matches "block" in its name, so nothing reaches it.
 		name: "a comment above a java arm group names what the group handles",
 		lang: java,
 		src: `class C {

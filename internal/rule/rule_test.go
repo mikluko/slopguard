@@ -324,6 +324,52 @@ func judged(want string) bool {
 	return model.Speaks(want)
 }
 
+// Every kind in [labels] is one a grammar in the table actually emits, and every
+// grammar that has switch arms has its kinds here.
+//
+// Neither invariant sweep touches most of these, so nothing measured them:
+// `case_expression` sat in the set for a round while no grammar emitted it, and
+// PHP's `default_statement` was missing for the same round, both invisible
+// because the mined corpus holds no PHP. The fixtures below reach the rule
+// through the real scanner, so a kind that is misspelled or gone from a grammar
+// fails here rather than silently exempting nothing.
+func TestEveryLabelIsAKindItsGrammarEmits(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		lang *language
+		src  string
+	}{
+		{"go expression case", golang, "package p\n\nfunc f(k int) {\n\tswitch k {\n\t// step(k)\n\tcase 1:\n\t\treport(k)\n\t}\n}\n"},
+		{"typescript switch case", typescript, "function f(k: number) {\n  switch (k) {\n    // step(k)\n    case 1:\n      report(k)\n  }\n}\n"},
+		{"python case clause", python, "def f(k):\n    match k:\n        # step(k)\n        case 1:\n            report(k)\n"},
+		{"rust match arm", rust, "fn f(k: i32) {\n    match k {\n        // step(k);\n        1 => report(k),\n        _ => (),\n    }\n}\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			src := []byte(c.src)
+			candidates, release := comment.ScanAll(src, c.lang)
+			defer release()
+			if len(candidates) == 0 {
+				t.Fatal("the fixture yielded no comment, so it tests nothing")
+			}
+			var seen []string
+			for _, one := range candidates {
+				if one.Annotates != nil {
+					seen = append(seen, one.Annotates.Kind())
+				}
+				if parent := one.Nodes[0].Parent(); parent != nil {
+					seen = append(seen, parent.Kind())
+				}
+			}
+			for _, kind := range seen {
+				if labels[kind] {
+					return
+				}
+			}
+			t.Fatalf("no kind around this comment is in labels; the grammar emits %q", seen)
+		})
+	}
+}
+
 // What ships is `leftover` alone. Every other class is behind [Wider], and this
 // is the only place that says so: the spec tables all run with the wider set on,
 // because they specify what a rule reads rather than whether it is switched on.

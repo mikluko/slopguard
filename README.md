@@ -237,7 +237,8 @@ about a second on the first call, most of it opening the ONNX session, and 115 t
 - Change-event comments are not caught. Neither is implementation narrative, restatement, or padded documentation —
   the last two only under `SLOPGUARD_WIDER=1`.
 - A finding is remembered when it is named, not when it is acted on: ignoring a nudge silences it for the session.
-- Generated files are not skipped unless they carry a `//go:generate` marker.
+- Generated files are not skipped. A `//go:generate` marker is skipped as a comment, which is not the same thing and
+  does not exempt the file it sits in.
 
 [docs/limits.md](docs/limits.md) has the rest, including the shapes it gets wrong and the classes that were tried and
 dropped.

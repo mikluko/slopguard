@@ -52,6 +52,12 @@ type Finding struct {
 	// between a comment that reads like source and one that just stopped being
 	// source. Nothing in this package reads it.
 	Source string
+	// Raw is the same comment exactly as it appears in the file, markers and
+	// indentation included. A caller comparing Source against an edit can tell
+	// that the code stopped being live; only Raw tells it that this edit is
+	// where the comment came from, since a comment the edit merely carried
+	// through appears unchanged on both sides of it.
+	Raw string
 }
 
 // Judge parses src and returns what the rules object to in the text just
@@ -169,6 +175,7 @@ func weigh(candidates []comment.Comment, language *lang.Language, src []byte, of
 				Class:  v.class,
 				Key:    site(candidates[i].Text),
 				Source: candidates[i].Body,
+				Raw:    written(candidates[i], src),
 			})
 		}
 	}
@@ -176,6 +183,22 @@ func weigh(candidates []comment.Comment, language *lang.Language, src []byte, of
 		return cmp.Compare(b.Score, a.Score)
 	})
 	return out
+}
+
+// written returns a comment exactly as it stands in the file, from the first of
+// its nodes to the last. A run of single-line comments comes back with the line
+// breaks and indentation between them, which is what makes it findable verbatim
+// in the text an edit inserted.
+func written(c comment.Comment, src []byte) string {
+	if len(c.Nodes) == 0 {
+		return ""
+	}
+	start := c.Nodes[0].StartByte()
+	end := c.Nodes[len(c.Nodes)-1].EndByte()
+	if start >= end || end > uint(len(src)) {
+		return ""
+	}
+	return string(src[start:end])
 }
 
 // verdict is what one pass makes of a comment: the nudge, and how sure the pass
@@ -193,13 +216,18 @@ const widerEnv = "SLOPGUARD_WIDER"
 
 // Wider reports whether the classes that catch nothing measurable are wanted.
 //
-// Off by default, and the default is what the numbers say. On the mined corpus
-// the whole pipeline catches 21 comments people deleted and nudges 25 they kept;
-// `leftover` alone catches 20 and nudges 5. So the other four classes buy one
-// catch for twenty false positives, and lift goes from 7.6 to about 13 when they
-// go. On the Go standard library they are three quarters of everything the tool
-// says. And the semantic half of them costs a second per invocation and 90 MB of
-// embedded model: measured on one real file, 1.207s against 0.026s.
+// Off by default, and the default is what the numbers say. On the ninth mined
+// corpus the whole pipeline catches 21 comments people deleted and nudges 20
+// they kept; `leftover` alone catches 20 and nudges 1. So the other four classes
+// buy one catch for nineteen false alarms, and lift goes from 8.25 to 15.33 when
+// they go. On the Go standard library they are four fifths of everything the
+// tool says, 548 of 678. And the semantic half of them costs a second on the
+// first call and 90 MB of embedded model.
+//
+// Those figures were four generations stale here — 21 and 25, 20 and 5, a lift
+// pair matching no corpus on record — while the README and docs/metric.md
+// carried the current ones, so the package doc for the shipped default was the
+// odd copy out of three.
 //
 // This is a default rather than a deletion because the corpus provably cannot
 // see the defect those classes target, so the case against them is a cost
@@ -257,8 +285,9 @@ func inspectOnly(c comment.Comment, language *lang.Language, src []byte, only st
 // `echo` and `hollow` are behind [Wider], and default to off. Neither has ever
 // caught a comment anybody deleted, across nine versions of the mined corpus and
 // four definitions of its negative class, while `echo` supplies 172 findings on
-// the Go standard library and `hollow` four across 15,372 files of which all
-// four were read and all four were wrong.
+// the Go standard library and `hollow` four across a JDK sweep of which all four
+// were read and all four were wrong. The file count that used to stand here
+// disagreed with docs/limits.md's for the same sweep, so neither is quoted.
 //
 // The corpus cannot see what `echo` targets, and that is honestly argued: a
 // trivial comment bothers nobody, so nobody deletes it, and fifteen of the

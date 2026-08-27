@@ -202,9 +202,9 @@ func TestSwitchedReadsTheEditRatherThanTheComment(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := rule.Finding{Line: 2, Source: "return v * 3"}
+			f := rule.Finding{Line: 2, Source: "return v * 3", Raw: "// return v * 3"}
 			if c.name == "notation that was never code here" {
-				f.Source = "z = x << s"
+				f.Source, f.Raw = "z = x << s", "// z = x << s"
 			}
 			if got := switched(f, c.in); got != c.want {
 				t.Fatalf("switched = %v, want %v", got, c.want)
@@ -213,16 +213,19 @@ func TestSwitchedReadsTheEditRatherThanTheComment(t *testing.T) {
 	}
 }
 
-// A confirmed transition is not hedged. Saying "about half of these are wrong"
-// over a line the tool watched being commented out spends the one finding it is
-// certain of to protect the ones it is not.
+// A confirmed transition is not hedged. Calling a line the tool watched being
+// commented out a guess spends the one finding it is certain of to protect the
+// ones it is not.
 func TestReportDoesNotHedgeWhatItWatchedHappen(t *testing.T) {
 	in := edit("func double(v int) int {\n\treturn v * 3\n}", "func double(v int) int {\n\t// return v * 3\n}")
-	findings := []rule.Finding{{Line: 2, Reason: "commented-out code: delete it, or make it real", Source: "return v * 3"}}
+	findings := []rule.Finding{{
+		Line: 2, Reason: "commented-out code: delete it, or make it real",
+		Source: "return v * 3", Raw: "// return v * 3",
+	}}
 
 	repeat = false
 	out := report("double.go", findings, in)
-	if strings.Contains(out, "half") {
+	if strings.Contains(out, "heuristic") || strings.Contains(out, "wrong") {
 		t.Errorf("hedged a confirmed transition:\n%s", out)
 	}
 	for _, want := range []string{"commented out live code", "git has it", "double.go:2"} {
@@ -286,9 +289,30 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 			in:   edit("\tfoo()\n\tbar()\n", "\t// foo()\n\tfoo()\n\tbar()\n"),
 			want: false,
 		},
+		{
+			// The deleting edit keeps the text inside a longer live line, which
+			// a substring test on the stripped form accepts.
+			name: "the deleting edit refactored the call rather than commenting it",
+			in: multi(
+				[2]string{"\tfoo()\n\tdefer foo()\n", "\tdefer foo()\n"},
+				[2]string{"\tqux()\n", "\tqux()\n\t// foo()\n"},
+			),
+			want: false,
+		},
+		{
+			// One edit, and the comment is older than it: the edit rewrote
+			// `foo()` into `defer foo()` and carried the comment through
+			// untouched. Only the raw text tells this from a transition.
+			name: "the edit carried an older comment through unchanged",
+			in: edit(
+				"\ta()\n\t// foo()\n\tfoo()\n\tbar()\n",
+				"\tz()\n\t// foo()\n\tdefer foo()\n\tbar()\n",
+			),
+			want: false,
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := rule.Finding{Line: 1, Source: "foo()"}
+			f := rule.Finding{Line: 1, Source: "foo()", Raw: "// foo()"}
 			if got := switched(f, c.in); got != c.want {
 				t.Fatalf("switched = %v, want %v", got, c.want)
 			}
@@ -299,9 +323,13 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 // The text handed to the agent is the tool's whole interface to it, and nothing
 // asserted anything about it: the payload could be rewritten end to end with the
 // suite green. What it must carry follows from the measurement rather than from
-// taste. About half of these findings are wrong, so a nudge that does not say so
-// is asking an agent to act on a coin flip, and one that does not offer a free
-// way to decline makes deleting a correct comment the cheapest way out.
+// taste. Much of what the tool says is wrong, so a nudge that does not say so is
+// asking an agent to act on a guess, and one that does not offer a free way to
+// decline makes deleting a correct comment the cheapest way out.
+//
+// The calibration is asserted as a word rather than a rate on purpose: the
+// pooled figure is fitted to the sample the exemptions were chosen from, so the
+// nudge must not quote it, and a test demanding a number would put it back.
 func TestReportCarriesWhatMakesItSafeToActOn(t *testing.T) {
 	findings := []rule.Finding{{Line: 42, Reason: "commented-out code: delete it, or make it real"}}
 
@@ -320,7 +348,7 @@ func TestReportCarriesWhatMakesItSafeToActOn(t *testing.T) {
 			for _, want := range []string{
 				// The calibration, a way to decline that costs nothing, and a
 				// location the agent's own tools can open.
-				"half",
+				"wrong",
 				"leave it",
 				"store.go:42",
 			} {

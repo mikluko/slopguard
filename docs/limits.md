@@ -12,9 +12,10 @@ rediscovered by whoever hits it next.
   and no run was ever grouped. The padding rule declining to run was the harmless half. The damaging half was that
   `leftover` then judged each line of a ` ```rust ` doc example on its own and reported the body of a test `cargo test`
   compiles and runs as commented-out code, at score 1.000, which wins the three-finding budget outright. Measured on the
-  mined corpus that was 143 of `leftover`'s 298 false positives, a quarter of the tool's whole false-positive rate.
-  `written` now asks what row a comment last puts text on rather than where its node ends; removing those 143 cost no
-  catches and took the corpus false-positive rate from 0.047 to 0.039.
+  second corpus that was 143 of `leftover`'s 298 false positives, a quarter of the tool's whole false-positive rate, and
+  removing them cost no catches and took that corpus's false-positive rate from 0.047 to 0.039. Those are the figures of
+  the corpus the repair was measured on; on the ninth `leftover` has one false positive and an FPR of 0.0003.
+  `written` now asks what row a comment last puts text on rather than where its node ends.
 - Generated files are not skipped. A `//go:generate` marker is, but a table generated without one —
   `syscall/zsysnum_*.go` — is read like anything else.
 - The legality check that rules out equations misread as code is wired for Go alone. Every other language still decides
@@ -39,16 +40,18 @@ rediscovered by whoever hits it next.
 - A contract stated in the words of its own signature reads as padding when several of them stand together.
   `java.time.zone.ZoneOffsetTransitionRule` documents three enum constants in parallel — "The STANDARD type uses the
   standard offset" — over a method whose parameters are `standardOffset` and `wallOffset`, so every word is one the
-  declaration spells. Two findings in 15,605 JDK files, and the shape has no tell beyond being right.
+  declaration spells. Two findings across a JDK sweep, and the shape has no tell beyond being right.
 - A chart's `values.yaml` is exempt from the commented-out-code rule outright, and that is too broad in two directions.
   It loses real residue — `# repository: richih/modbus_exporter` sitting directly above the live `repository:` it was
   replaced by is the target class, not documentation — and it is keyed on the filename, so `ci/default-values.yaml` and
   `values.test.yaml` are not exempt at all. There are 188 such files across the 24 mined repositories. The shape the
   exemption is really after is a commented key with no live sibling of the same name at the same indent, which would
   keep the modbus finding and still drop the fifty documentation blocks. Not built.
-- A commented option under a key that already has values is reported, which on a stock `helm create` scaffold is two
-  findings. A commented block indented under a key whose value is an empty collection is documentation rather than
-  residue and is spared: `podSecurityContext: {}` over `# fsGroup: 2000` is how a chart shows what a setting takes.
+- A commented option under a key that already has values is reported. On a stock `helm create` scaffold that used to be
+  two findings and is now none, because the scaffold writes them into `values.yaml`, which is exempt outright three
+  bullets above; copy the same file to any other name and the two come back. A commented block indented under a key
+  whose value is an empty collection is documentation rather than residue and is spared wherever it sits:
+  `podSecurityContext: {}` over `# fsGroup: 2000` is how a chart shows what a setting takes.
 - The same replacement text occurring twice in a file is claimed twice. Only the bytes an edit changed are attributed to
   it, but where those bytes appear more than once there is nothing in the payload that tells the copies apart.
 

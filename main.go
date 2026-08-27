@@ -180,29 +180,38 @@ func switched(f rule.Finding, in payload) bool {
 		if strings.TrimSpace(e.was) == "" {
 			continue
 		}
-		if moved(f.Source, e.was, e.now) {
+		if moved(f, e.was, e.now) {
 			return true
 		}
 	}
 	return false
 }
 
-// moved reports whether every line of a comment's text was a line of was, is no
-// longer a line of now, and is still somewhere in now inside a longer line.
+// moved reports whether one edit both wrote this comment and stopped its lines
+// being code.
 //
-// Three conditions, and the third is what ties the edit that deleted the code to
-// the edit that wrote the comment. Without it, testing each edit separately is
-// still not per-edit: one edit deleting `foo()` in one function and another
-// writing `// foo()` in a second reports a transition, because the first
-// satisfies "was live, now gone" on its own. That is the tool's only unhedged
-// message, spent on a comment that was never live code where it sits.
+// Four conditions, and the pair on the raw text is what makes it one edit rather
+// than two. The comment as written must appear in what the edit inserted and not
+// in what it replaced: present on both sides it is a comment the edit carried
+// through untouched, and absent from the replacement it is not this edit's at
+// all. Two earlier versions tested only the stripped text and both let a
+// deleting edit vouch for a comment it never touched — first by pooling every
+// edit's before-text, then by asking merely that the stripped line occur
+// somewhere in the replacement, which `defer foo()` satisfies for `foo()`.
 //
-// Whole lines for the first two, because `return v * 3` occurs inside
-// `// return v * 3`, so a substring test reports a line that was already a
-// comment as one this write commented out — the opposite finding. A substring
-// for the third, because the comment marker is exactly what the stripped text
-// no longer carries, and which marker it is belongs to another package.
-func moved(source, was, now string) bool {
+// The stripped lines carry the other half: each was a whole line of the replaced
+// text and is no longer a whole line of the inserted text. Whole lines, because
+// `return v * 3` occurs inside `// return v * 3`, so a substring test reports a
+// line that was already a comment as one this write commented out — the opposite
+// finding.
+//
+// A block comment whose inner lines carry no marker of their own is not detected
+// and cannot be: its content lines are whole lines of the inserted text, so the
+// second condition rejects them. That is a miss rather than a false claim.
+func moved(f rule.Finding, was, now string) bool {
+	if f.Raw == "" || !strings.Contains(now, f.Raw) || strings.Contains(was, f.Raw) {
+		return false
+	}
 	lines := func(text string) map[string]bool {
 		out := map[string]bool{}
 		for _, line := range strings.Split(text, "\n") {
@@ -212,14 +221,14 @@ func moved(source, was, now string) bool {
 	}
 	before, after := lines(was), lines(now)
 	found := false
-	for _, line := range strings.Split(source, "\n") {
+	for _, line := range strings.Split(f.Source, "\n") {
 		line = strings.TrimSpace(line)
 		// A blank line and a stray delimiter are in every fragment and occur in
 		// every file, so neither is evidence that this one moved.
 		if len(line) < 3 {
 			continue
 		}
-		if !before[line] || after[line] || !strings.Contains(now, line) {
+		if !before[line] || after[line] {
 			return false
 		}
 		found = true
@@ -429,9 +438,15 @@ func report(name string, findings []rule.Finding, in payload) string {
 		b.WriteString("This write commented out live code in " + name + ". Delete it or restore it — git has it.\n\n")
 	case certain > 0:
 		b.WriteString("This write commented out live code in " + name + ", marked below. The rest is a heuristic " +
-			"that is wrong about half the time.\n\n")
+			"and much of what it says is wrong.\n\n")
 	default:
-		b.WriteString("slopguard is a heuristic and about half of its findings are wrong. It parsed these comments in " +
+		// No single rate here. What ships is right six to nine times in ten on
+		// application code and about one in four on compilers and spec
+		// implementations, and the pooled figure between them is fitted to the
+		// sample the exemptions were chosen from. An agent given a number acts
+		// on it; the honest thing to hand it is the direction and the shapes.
+		b.WriteString("slopguard is a heuristic. Many of its findings are wrong, and in code that implements a " +
+			"specification or generates other code, most are. It parsed these comments in " +
 			name + " as valid source:\n\n")
 	}
 	for _, f := range findings {

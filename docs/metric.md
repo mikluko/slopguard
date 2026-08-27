@@ -152,14 +152,18 @@ the exemptions and footed on 231 positives, beside a `leftover` row footed on
 
 One catch for nineteen false alarms. On the Go standard library the default gives
 130 findings over 4,065 files against 678 with everything on, and 1,034 before
-this cycle began. User time on one real file: 0.05s against 0.71s,
-because the semantic pass loads 90 MB of ONNX before it can say anything.
+this cycle began. On one real file the default takes hundredths of a second of
+user time and the wider build takes about a second, because the semantic pass
+loads 90 MB of ONNX before it can say anything. The exact pair is
+machine-dependent and varies several-fold with how many comments the file holds,
+so it is given as an order rather than as the two figures that used to stand
+here and disagreed with the pair in `internal/rule`'s own doc.
 
 **It does not shrink the binary, and an earlier version of this document implied
 it did.** The model is embedded at compile time and `internal/rule` imports
 `internal/model` for its reason strings, so the artifact is 116 MB either way.
 What the default buys is the load, which is most of a second on every write, and
-twenty of the twenty-five false positives. Dropping the 90 MB as well needs build
+nineteen of the twenty false alarms. Dropping the 90 MB as well needs build
 tags and a package split, which is a separate change.
 
 **This is a default rather than a deletion, and the reason matters.** The corpus
@@ -314,8 +318,9 @@ the tool, and the last of those was one repository's codemod, now capped out.
 
 **The marker answer, restated.** Markers are a tracked-debt convention Google's
 C++ and Java guides mandate, so the tool is deliberately not chasing them.
-Excluding them is not conservative, though: on the ninth corpus 26 deleted rows
-carry a marker, the tool catches none of them, and dropping them raises reported
+Excluding them is not conservative, though: on the ninth corpus 26 of the 231
+loaded deleted rows carry a marker, 25 of the 227 the tool actually scores, the
+tool catches none of them, and dropping them raises reported
 recall from 0.088 to 0.099 on the same 20 catches. So `-markers=false` *flatters*
 the tool rather than penalising it. Report both. (An earlier revision put the
 count at 89 with recall 2/89, from a corpus four generations back, while its own
@@ -388,10 +393,14 @@ comment opens the arm or sits directly above the label — which removed 12 of 1
 findings on the Go standard library and 21 of 189 across the clones, at no cost
 in recall. Twenty of those twenty-one were a single Vue file; the twenty-first
 was jq's `/*create_pt_key();*/`, which is residue, and the exemption is wrong
-about it. It is wrong about three more in the standard library for the same
-reason: a comment at the *tail* of an arm has a case label as its next node just
-as a label comment does, and the two are the same shape in the tree. Structure
-cannot separate them, so this exemption is about 88% right and knowingly so.
+about it. It is wrong about three more, and for two different reasons rather than
+one. A comment at the *tail* of an arm has a case label as its next node just as
+a label comment does, and the two are the same shape in the tree, so structure
+cannot separate them — that covers `staticinit/sched.go:372` and nothing else.
+The other three, jq's included, are comments on an arm's *first* line, which the
+exemption spares deliberately and which happen here to be residue. Together they
+make it about 88% right, knowingly, and an earlier revision of this paragraph
+offered the tree-shape argument for all four when it covers one.
 
 The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not
@@ -561,10 +570,12 @@ carve-out carry no threshold, so they fire identically at every offset and their
 combined false-positive rate is a floor. That floor was quoted here as 0.044,
 `leftover` 0.024 and `echo` 0.020, with the claim that turning the model off
 still lands above 0.02. On the ninth corpus the shipped default's floor is
-**0.0003** and the wider build's is **0.0029**, taken as the minimum over the
-sweep rather than read off the shipped offset, where it is 0.0058. Either way the
-old figure was an order of magnitude high and its bolded claim is refuted by the
-corpus this document otherwise reports.
+**0.0003**, and the wider build's is **0.0020** by the definition above — the
+thresholdless rules alone, `leftover` 1 nudge and `echo` 6 of 3,428. Two other
+numbers get quoted for it and are not it: 0.0029 is the sweep's minimum, which
+still includes three thresholded firings, and 0.0058 is the wider build at the
+shipped offset. All three refute the old figure by an order of magnitude; only
+the first is the floor as this section defines it.
 
 A rule with no threshold cannot be traded off, so the floor moves only by making
 one thresholdable or by cutting it. That is a design conclusion no aggregate

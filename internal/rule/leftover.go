@@ -127,17 +127,25 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 //	nothing precedes the comment   136          188         recovers that and importer.go:234
 //	parent is a label              130          168         moves nothing
 //
-// The two that move anything cost the same twenty Vue false positives and the
-// same four in the standard library, so the second strictly dominates the first:
-// one more true positive at no extra cost, and a cheaper test. Its output is also
-// byte-identical to deleting this branch outright, which is the honest way to
-// read it — the choice is not between two repairs but between keeping the branch
-// and dropping it, at two true positives against twenty-four false ones.
+// Read as sets rather than counts, there is only one alternative. The second
+// variant's output is byte-identical to deleting this branch outright, and the
+// first's exemptions are a strict subset of the second's: of the twenty-six
+// exemptions this branch buys, the first keeps exactly one, and that one is
+// itself residue the doc names below. It preserves no correct exemption. So it
+// is deletion minus a recovery, not a separation, and both variants sweep in the
+// same twenty Vue label comments and the same four in the standard library.
 //
-// The third moves nothing, so it measured the same rather than worse.
+// **The tree does not separate a tail comment from a label comment**, which is
+// what the third variant confirms by moving nothing at all. The opposite
+// polarity — exempt only where the previous sibling *is* a label — does separate
+// them, at 131 and 168, but breaks five of the spec table's own fixtures, so the
+// table rejects it independently.
 //
-// Four revisions of this paragraph have got that wrong, in four different ways,
-// each refuted by a measurement already in the file.
+// The choice is therefore between keeping this branch and dropping it, at two
+// true positives against twenty-four false ones. Five revisions of this paragraph
+// have got that wrong in five different ways, each refuted by a measurement
+// already in this file; the one that said the tree cannot separate them was
+// right and was corrected away.
 //
 // This branch silences a `//dump(...)` at the tail of an arm in `staticinit` and
 // the continuation of a commented-out `case goimporterMagic:` arm at

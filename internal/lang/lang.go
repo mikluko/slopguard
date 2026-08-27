@@ -202,7 +202,8 @@ var (
 	//
 	// The name is YAML's, so every predicate keyed on the language still finds
 	// it, and only the commented-out-code rule reads the flag. Hand-judged over
-	// 24 repositories, values.yaml supplied 51 findings and no true positive;
+	// the 23 mined repositories with content, values.yaml supplied 51 findings
+	// and no true positive;
 	// the two the rule gets right in YAML are both CI workflows.
 	// Derived from YAML rather than written out beside it, so a field added
 	// there cannot silently fail to reach here.

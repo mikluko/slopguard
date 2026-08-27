@@ -365,16 +365,29 @@ func TestReportQuotesNoRate(t *testing.T) {
 		"percent", "%", "most of the time", "of the time",
 	}
 	// A ratio spelled in words has a rate's shape and none of the tokens above.
+	// This is an enumeration of joins rather than a test of shape, and it says so
+	// because a previous version of this comment claimed otherwise: a reviewer
+	// got eleven phrasings past it, "nine times out of ten" among them. The list
+	// below is what those eleven taught it. A denominator it does not name still
+	// slips through, and the digit check is what catches those.
 	// The previous list dropped "one in" while the commit adding it claimed to
 	// have verified against "four in ten", which it passed — and "one in four on
-	// compilers" is the phrasing in this file's own doc and in the README, so it
+	// compilers" is the phrasing in `report`'s own doc and in AGENTS.md, so it
 	// is the likeliest thing to leak. Built as pairs rather than banned outright
 	// because the nudge legitimately says "those four are the measured false
 	// positives".
-	numbers := []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
+	numbers := []string{
+		"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+		"twenty", "fifty", "hundred", "once", "twice",
+	}
+	joins := []string{
+		"%s in %s", "%s in every %s", "%s out of %s", "%s out of every %s",
+		"%s times in %s", "%s times out of %s", "%s of %s", "%s of every %s",
+		"%s case in %s", "%s time in %s", "%s finding in %s",
+	}
 	for _, a := range numbers {
 		for _, b := range numbers {
-			for _, shape := range []string{"%s in %s", "%s in every %s", "%s out of %s", "%s times in %s"} {
+			for _, shape := range joins {
 				fractions = append(fractions, fmt.Sprintf(shape, a, b))
 			}
 		}
@@ -479,6 +492,17 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 			in: multi(
 				[2]string{"\tfoo()\n\tdefer foo()\n", "\tdefer foo()\n"},
 				[2]string{"\tqux()\n", "\tqux()\n\t// foo()\n"},
+			),
+			want: false,
+		},
+		{
+			// The same carried-through comment, reindented by the edit that
+			// carried it. `Raw` holds the indentation between a run's lines, so
+			// without flattening this reads as a comment the edit wrote.
+			name: "the edit reindented an older comment while deleting what it quotes",
+			in: edit(
+				"\t// foo()\n\t// bar()\n\tfoo()\n\tbar()\n",
+				"\tif cond {\n\t\t// foo()\n\t\t// bar()\n\t}\n",
 			),
 			want: false,
 		},

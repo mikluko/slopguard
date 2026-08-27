@@ -227,7 +227,21 @@ func switched(f rule.Finding, in payload) bool {
 // and cannot be: its content lines are whole lines of the inserted text, so the
 // second condition rejects them. That is a miss rather than a false claim.
 func moved(f rule.Finding, was, now string) bool {
-	if f.Raw == "" || !strings.Contains(now, f.Raw) || strings.Contains(was, f.Raw) {
+	// Compared with each line's own indentation removed. `Raw` carries the
+	// indentation between the lines of a run, so an edit that reindents a
+	// comment it did not write — wrapping a block in a scope, say — makes the
+	// run's text differ from what it replaced, and the carried-through test
+	// passes it as new. Deleting the live lines it quotes in the same edit is
+	// then enough for the unhedged claim.
+	flat := func(text string) string {
+		lines := strings.Split(text, "\n")
+		for i, line := range lines {
+			lines[i] = strings.TrimSpace(line)
+		}
+		return strings.Join(lines, "\n")
+	}
+	raw, was, now := flat(f.Raw), flat(was), flat(now)
+	if raw == "" || !strings.Contains(now, raw) || strings.Contains(was, raw) {
 		return false
 	}
 	lines := func(text string) map[string]bool {

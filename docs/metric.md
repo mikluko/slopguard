@@ -406,9 +406,11 @@ other branch spares an arm's *first* line deliberately, and takes jq's and
 
 Three revisions of this paragraph got that wrong in three different ways: the
 first offered a tree-shape argument for all four, the second said it covered one,
-and the third said the tree cannot separate a between-arms comment from a label —
-which the table in `arm`'s own doc refutes, since testing the previous sibling
-does separate them and recovers one of the two.
+and and the fourth said the previous-sibling test separates a between-arms comment
+from a label. Read as sets rather than counts it does not: its exemptions are a
+strict subset of deleting the branch, it keeps exactly one of the twenty-six the
+branch buys, and that one is residue. The third revision, which said the tree
+cannot separate them, was right and was corrected away.
 
 The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not

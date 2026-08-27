@@ -52,7 +52,10 @@ func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus
 		return nil, nil
 	}
 
-	history, err := corpus.Git(dir, "log", "--format=%H", "--", path)
+	// Merges left out, for the reason the deleted side already leaves them out:
+	// a merge carries its side's changes a second time and changed nothing
+	// itself, so counting it toward exposure meets the threshold with no work.
+	history, err := corpus.Git(dir, "log", "--no-merges", "--format=%H", "--", path)
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +112,14 @@ func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus
 // stride returns the step that takes at most want items evenly across n, so a
 // sample spreads over a repository's whole tree rather than over whichever
 // directory git happens to list first.
+//
+// Rounded up. `n/want` gives a step of one whenever n is between want and twice
+// want, which walks the whole list and overshoots the cap.
 func stride(n, want int) int {
 	if want <= 0 || n <= want {
 		return 1
 	}
-	return n / want
+	return (n + want - 1) / want
 }
 
 // clean reports whether a comment's prose is worth carrying into the corpus at

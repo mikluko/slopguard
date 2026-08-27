@@ -58,12 +58,23 @@ type Row struct {
 	// LifetimeDays is how long a deleted comment stood. A short life is the
 	// stronger signal: a comment deleted within weeks was judged, one deleted
 	// after years was more likely overtaken.
-	LifetimeDays float64 `json:"lifetime_days,omitempty"`
+	//
+	// Not omitempty. A comment written and removed inside one committer-second
+	// has a lifetime of zero, which is the strongest evidence in the corpus, and
+	// omitting the field encoded it as absent so every reader dropped it.
+	LifetimeDays float64 `json:"lifetime_days"`
+	// Dated says whether LifetimeDays was computed at all. It separates a
+	// same-day deletion from one whose birth could not be found.
+	Dated bool `json:"dated"`
 	// EditsSince counts the commits that touched the file after a survived
-	// comment was written. A comment nobody deleted through many edits is one
-	// many readings left alone; a comment in a file nothing touched is not
-	// evidence, and rows below the threshold are never emitted.
+	// comment was written. It is a cheap prefilter and nothing more: a file
+	// being edited says nothing about whether anyone read this comment.
 	EditsSince int `json:"edits_since,omitempty"`
+	// Exposure counts the commits that touched the comment's own line, which is
+	// the number that makes `survived` mean anything. A comment somebody edited
+	// around and left is evidence they wanted it; a comment sitting untouched in
+	// a busy file is not.
+	Exposure int `json:"exposure"`
 
 	// Doc, Trailing and Buried carry the structural position, because the rules
 	// treat the three differently and a corpus that pools them measures nothing.

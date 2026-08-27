@@ -97,17 +97,32 @@ func touched(dir, sha string) ([]string, error) {
 // excluded names the path segments whose contents were written elsewhere, so a
 // comment found under one is not evidence about the repository that carries it.
 var excluded = []string{
-	"vendor/", "node_modules/", "third_party/", "thirdparty/", "external/",
-	"testdata/", "fixtures/", "/generated/", ".pb.go", "_pb2.py", ".min.js",
-	"dist/", "build/",
+	"vendor", "node_modules", "third_party", "thirdparty", "external",
+	"testdata", "fixtures", "generated", "dist", "build", "packages",
+	"outputs", "site-packages",
 }
 
+// suffixes name generated files by their extension rather than by where they sit.
+var suffixes = []string{".pb.go", "_pb2.py", ".min.js", ".pb.cc", "_generated.go"}
+
 // skip reports whether path is one this harvest does not read.
+//
+// Matched a segment at a time. Matching a substring excluded tokio's whole
+// `tests-build/` tree on the strength of `build/`, and a leading slash on one
+// entry and not the others meant a top-level `generated/` was read while a
+// nested one was not.
 func skip(path string) bool {
 	lower := strings.ToLower(path)
-	for _, segment := range excluded {
-		if strings.Contains(lower, segment) {
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(lower, suffix) {
 			return true
+		}
+	}
+	for segment := range strings.SplitSeq(lower, "/") {
+		for _, name := range excluded {
+			if segment == name {
+				return true
+			}
 		}
 	}
 	return false
@@ -138,7 +153,7 @@ func deleted(dir string, repo Repo, c commit, store *corpus.Blobs) ([]corpus.Row
 		if err != nil {
 			return nil, err
 		}
-		if len(before) == 0 || len(after) == 0 || len(before) > maxFile {
+		if len(before) == 0 || len(after) == 0 || len(before) > maxFile || len(after) > maxFile {
 			continue
 		}
 		rows = append(rows, gone(dir, repo, c, path, language, before, after)...)
@@ -234,6 +249,7 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 		if born, ok := corpus.BlameLine(dir, c.sha+"^", path, one.Line); ok {
 			row.Added, row.AddedAt = born.SHA, born.When
 			row.LifetimeDays = c.when.Sub(born.When).Hours() / 24
+			row.Dated = true
 		}
 		rows = append(rows, row)
 	}

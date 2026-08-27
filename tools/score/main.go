@@ -26,6 +26,7 @@ import (
 	"github.com/mikluko/slopguard/internal/comment"
 	"github.com/mikluko/slopguard/internal/corpus"
 	"github.com/mikluko/slopguard/internal/lang"
+	"github.com/mikluko/slopguard/internal/model"
 	"github.com/mikluko/slopguard/internal/rule"
 )
 
@@ -75,7 +76,10 @@ func recent(rows []corpus.Row, days float64) []corpus.Row {
 	}
 	kept := make([]corpus.Row, 0, len(rows))
 	for _, row := range rows {
-		if row.Label == corpus.Deleted && (row.LifetimeDays <= 0 || row.LifetimeDays > days) {
+		// Dated rather than a positive lifetime: a comment written and removed
+		// inside one committer-second has a lifetime of zero, and testing the
+		// number discarded exactly the rows this filter exists to keep.
+		if row.Label == corpus.Deleted && (!row.Dated || row.LifetimeDays > days) {
 			continue
 		}
 		kept = append(kept, row)
@@ -114,6 +118,15 @@ func run(corpusPath, clones string, sweep bool, dump string, maxLife float64) er
 	rows, err := corpus.Load(corpusPath)
 	if err != nil {
 		return err
+	}
+	// Without the model the semantic classes fall back to a phrase list that
+	// ignores the bias entirely, so every offset scores the same and the sweep
+	// prints a flat line as though it were a curve. Say so at the top rather
+	// than letting a reader take the tables at face value.
+	absent := model.Absent()
+	if absent != "" {
+		fmt.Printf("> **The semantic pass did not run: %s.**\n"+
+			"> Only the structural rules are measured below, and the sweep is flat by construction.\n\n", absent)
 	}
 	rows = recent(rows, maxLife)
 	offsets := []float64{0}
@@ -277,11 +290,21 @@ func file(store *corpus.Blobs, rev, path string, rows []corpus.Row, offsets []fl
 	for i, offset := range offsets {
 		flagged := map[uint]rule.Finding{}
 		for _, finding := range rule.WeighAt(candidates, language, src, offset) {
+			// Keep the strongest finding on a line rather than the last, since
+			// a trailing comment can share a start line with the one above it.
+			if held, taken := flagged[finding.Line]; taken && held.Score >= finding.Score {
+				continue
+			}
 			flagged[finding.Line] = finding
 		}
-		for _, one := range candidates {
-			row := wanted[one.Line]
-			finding, fired := flagged[one.Line]
+		// One verdict per row, not per comment. Two comments can share a start
+		// line, and iterating the comments then credited that row's label twice
+		// and moved the denominator off the corpus.
+		for _, row := range rows {
+			if !found[row.Line] {
+				continue
+			}
+			finding, fired := flagged[row.Line]
 			out[i] = append(out[i], verdict{row: row, fired: fired, class: finding.Class})
 		}
 	}
@@ -386,17 +409,32 @@ func curve(judged [][]verdict, offsets []float64, deleted, survived int) {
 
 	// Partial AUC over the region the hook could actually be shipped in,
 	// normalised so that 1.0 is perfect over that region alone.
+	//
+	// The walk starts at the origin and interpolates to the right-hand edge. It
+	// used to skip the first trapezoid, which on a curve whose lowest point sits
+	// at FPR 0.044 discarded 88% of the width and reported a tool that beats
+	// chance as scoring below a coin flip.
+	const edge = 0.05
 	area, previous := 0.0, point{}
-	for i, p := range points {
-		if i > 0 && p.fpr <= 0.05 {
-			area += (p.fpr - previous.fpr) * (p.recall + previous.recall) / 2
-		}
-		if p.fpr > 0.05 {
+	for _, p := range points {
+		if p.fpr > edge {
+			if previous.fpr < edge {
+				across := (edge - previous.fpr) / (p.fpr - previous.fpr)
+				at := previous.recall + across*(p.recall-previous.recall)
+				area += (edge - previous.fpr) * (previous.recall + at) / 2
+			}
+			previous = point{fpr: edge}
 			break
 		}
+		area += (p.fpr - previous.fpr) * (p.recall + previous.recall) / 2
 		previous = p
 	}
-	fmt.Printf("\nPartial AUC over FPR in [0, 0.05], normalised: %.3f\n", area/0.05)
+	// A curve that never reaches the edge holds its last recall out to it.
+	if previous.fpr < edge {
+		area += (edge - previous.fpr) * previous.recall
+	}
+	fmt.Printf("\nPartial AUC over FPR in [0, %.2f], normalised: %.3f (a random rule scores %.3f)\n",
+		edge, area/edge, edge/2)
 }
 
 // at returns the index of the offset equal to want.

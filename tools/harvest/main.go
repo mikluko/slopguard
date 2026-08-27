@@ -73,7 +73,7 @@ func run(clones, out, only string, commits, files, depth, keep int) error {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", repo.Name, err)
 			continue
 		}
-		rows = balance(rows, keep)
+		rows = expose(dir, balance(distinct(rows), keep))
 		var kept int
 		for _, row := range rows {
 			if !clean(row.Text) {
@@ -90,6 +90,62 @@ func run(clones, out, only string, commits, files, depth, keep int) error {
 	}
 	fmt.Fprintf(os.Stderr, "\n%d rows written to %s, %d dropped as boilerplate\n", wrote, out, dropped)
 	return nil
+}
+
+// seen is how many commits have to have touched a survived comment's own line
+// before it counts as one somebody read and left.
+//
+// Two: the commit that wrote it, and at least one that came back to the line
+// and left the prose standing. One means nobody has been near it since.
+const seen = 2
+
+// expose measures how much attention each survived row's own line has had, and
+// drops the rows nobody has been back to.
+//
+// It runs after the cap rather than before because it costs a git process per
+// row. The cap is on the negatives, and the negatives are not the binding
+// constraint on this corpus: there are twenty-seven of them per positive, so
+// spending accuracy on the abundant side is the right trade.
+func expose(dir string, rows []corpus.Row) []corpus.Row {
+	kept := make([]corpus.Row, 0, len(rows))
+	for _, row := range rows {
+		if row.Label != corpus.Survived {
+			kept = append(kept, row)
+			continue
+		}
+		edits, err := corpus.LineEdits(dir, row.Path, row.Line)
+		if err != nil || edits < seen {
+			continue
+		}
+		row.Exposure = edits
+		kept = append(kept, row)
+	}
+	return kept
+}
+
+// repeats is how many times one wording may come out of a single repository.
+//
+// A comment written once and copied into every file is one person's decision,
+// not many, and it arrives with the weight of many. Measured on the first
+// corpus, 9.3% of all rows were a text repeated at least three times inside one
+// repository: `# use clap_builder as clap;` alone was 308 rows, 38.6% of clap's
+// survived class, and one date-fns pragma was 52 rows of the deleted class.
+const repeats = 2
+
+// distinct caps how often one wording may repeat within a repository, keeping
+// the earliest occurrences.
+func distinct(rows []corpus.Row) []corpus.Row {
+	seen := map[string]int{}
+	kept := make([]corpus.Row, 0, len(rows))
+	for _, row := range rows {
+		key := row.Label + "\x00" + corpus.Flat(row.Text)
+		if seen[key] >= repeats {
+			continue
+		}
+		seen[key]++
+		kept = append(kept, row)
+	}
+	return kept
 }
 
 // balance caps how many survived rows one repository contributes, taking them
@@ -117,10 +173,13 @@ func balance(rows []corpus.Row, keep int) []corpus.Row {
 	if len(survived) <= keep {
 		return rows
 	}
-	step := len(survived) / keep
+	// Indexed rather than stepped. `len/keep` is 1 for any repository yielding
+	// between one and two times the cap, which took the first `keep` rows in
+	// file order and stopped: bbolt's eight hundred ended at `tx.go` and seven
+	// parsable files after it contributed nothing.
 	out := deleted
-	for i := 0; i < len(survived) && len(out)-len(deleted) < keep; i += step {
-		out = append(out, survived[i])
+	for i := range keep {
+		out = append(out, survived[i*len(survived)/keep])
 	}
 	return out
 }

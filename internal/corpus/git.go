@@ -71,6 +71,12 @@ func OpenBlobs(dir string) (*Blobs, error) {
 // colon. An object the repository does not have returns nil and no error: a
 // path absent from a commit is an ordinary answer here, not a failure.
 func (b *Blobs) Read(rev string) ([]byte, error) {
+	// A newline would be read as two requests and leave the reader permanently
+	// one answer behind, which pairs every later file with the wrong revision
+	// and looks like nothing at all downstream.
+	if strings.ContainsAny(rev, "\n\r") {
+		return nil, fmt.Errorf("rev %q contains a newline", rev)
+	}
 	if _, err := io.WriteString(b.in, rev+"\n"); err != nil {
 		return nil, err
 	}
@@ -78,11 +84,18 @@ func (b *Blobs) Read(rev string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	fields := strings.Fields(strings.TrimSuffix(header, "\n"))
-	if len(fields) < 3 {
-		// `<input> missing`, and anything else git answers that is not a
-		// three-field object header.
-		return nil, nil
+	header = strings.TrimSuffix(header, "\n")
+	// The refusals are suffixes of the echoed request, so they are tested before
+	// the header is split: a path with a space in it splits into more fields
+	// than a header has and the size parse then fails on a fragment of the name.
+	for _, refusal := range []string{" missing", " ambiguous"} {
+		if strings.HasSuffix(header, refusal) {
+			return nil, nil
+		}
+	}
+	fields := strings.Fields(header)
+	if len(fields) != 3 {
+		return nil, fmt.Errorf("cat-file header %q", header)
 	}
 	size, err := strconv.Atoi(fields[2])
 	if err != nil {
@@ -95,6 +108,13 @@ func (b *Blobs) Read(rev string) ([]byte, error) {
 	// The batch format writes a newline after every object's bytes.
 	if _, err := b.out.Discard(1); err != nil {
 		return nil, err
+	}
+	// A rev naming a tree or a tag answers with a valid header and bytes that
+	// are not source, and handing those to a parser is worse than refusing
+	// them. The bytes are read first regardless: leaving them in the pipe is
+	// the desynchronisation this function exists to avoid.
+	if fields[1] != "blob" {
+		return nil, nil
 	}
 	return content, nil
 }
@@ -172,6 +192,33 @@ func BlameLine(dir, rev, path string, line uint) (Blamed, bool) {
 		return Blamed{}, false
 	}
 	return one, true
+}
+
+// LineEdits counts the commits that touched one line of path, following the
+// line back through the renames and shifts that moved it.
+//
+// It is what separates a comment somebody read and left from one that merely
+// sat in a file other people were editing elsewhere. Counting commits to the
+// file answers the second question while claiming to answer the first: a
+// comment recorded at seventy-two file edits can have exactly one commit that
+// ever touched its own line, and most do, because a survived comment sits at a
+// median line of 359 while a file's churn is somewhere else entirely.
+//
+// One git process per line, so it is affordable only over a sample. Merges are
+// left out for the reason they are left out everywhere else here.
+func LineEdits(dir, path string, line uint) (int, error) {
+	out, err := Git(dir, "log", "--no-merges", "--format=%H",
+		"-L", fmt.Sprintf("%d,%d:%s", line, line, path), "HEAD")
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, text := range Lines(out) {
+		if len(text) == 40 && IsHex(text) {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // IsHex reports whether s is all lowercase hexadecimal, which is how a header

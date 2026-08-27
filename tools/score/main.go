@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -46,10 +47,11 @@ func main() {
 		sweep      = flag.Bool("sweep", true, "trace the curve as well as the shipped operating point")
 		dump       = flag.String("dump", "", "print every row this class fired on, with its label; \"all\" prints them for every class")
 		maxLife    = flag.Float64("maxlife", 0, "keep only deletions this many days old or younger; zero keeps all of them")
+		markers    = flag.Bool("markers", true, "count deletions of TODO, FIXME, XXX and HACK comments")
 	)
 	flag.Parse()
 
-	if err := run(*corpusPath, *clones, *sweep, *dump, *maxLife); err != nil {
+	if err := run(*corpusPath, *clones, *sweep, *dump, *maxLife, *markers); err != nil {
 		fmt.Fprintln(os.Stderr, "score:", err)
 		os.Exit(1)
 	}
@@ -114,7 +116,14 @@ func (m misses) String() string {
 		m.repo, m.blob, m.language, m.unmatched)
 }
 
-func run(corpusPath, clones string, sweep bool, dump string, maxLife float64) error {
+// marked matches the debt conventions Google's C++ and Java guides mandate.
+// Their deletion is the debt being repaid rather than a verdict on the comment,
+// and they are 14.9% of young deletions against 0.90% of survivors, so counting
+// them as recall the tool failed to earn flatters a one-line regex into beating
+// the whole pipeline.
+var marked = regexp.MustCompile(`\b(TODO|FIXME|XXX|HACK)\b`)
+
+func run(corpusPath, clones string, sweep bool, dump string, maxLife float64, markers bool) error {
 	rows, err := corpus.Load(corpusPath)
 	if err != nil {
 		return err
@@ -129,6 +138,19 @@ func run(corpusPath, clones string, sweep bool, dump string, maxLife float64) er
 			"> Only the structural rules are measured below, and the sweep is flat by construction.\n\n", absent)
 	}
 	rows = recent(rows, maxLife)
+	if !markers {
+		kept := rows[:0]
+		dropped := 0
+		for _, row := range rows {
+			if row.Label == corpus.Deleted && marked.MatchString(row.Text) {
+				dropped++
+				continue
+			}
+			kept = append(kept, row)
+		}
+		rows = kept
+		fmt.Printf("%d marker deletions left out.\n\n", dropped)
+	}
 	offsets := []float64{0}
 	if sweep {
 		offsets = tilts

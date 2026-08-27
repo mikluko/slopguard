@@ -103,6 +103,8 @@ func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus
 		}
 		if one.Annotates != nil {
 			row.Annotates = corpus.Truncate(corpus.Flat(one.Annotates.Utf8Text(src)), 400)
+			row.CodeFrom = one.Annotates.StartPosition().Row + 1
+			row.CodeTo = one.Annotates.EndPosition().Row + 1
 		}
 		rows = append(rows, row)
 	}

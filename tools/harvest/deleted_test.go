@@ -172,6 +172,37 @@ func TestRecurringCodeIsNotMistakenForSurvival(t *testing.T) {
 	}
 }
 
+// The annotated code carries a comment of its own, so the needle read from the
+// raw parent cannot occur in either blanked haystack. Both counts came out zero,
+// `0 < 0` was false, and the row was admitted without the survival test ever
+// running: 70% of a shipped corpus's positive class, and 87% of its Rust.
+//
+// Here the inner comment's function is deleted outright, so a working test must
+// reject the row. A vacuous test accepts it.
+func TestAnnotatedCodeCarryingACommentIsStillTested(t *testing.T) {
+	dir := repoAt(t)
+	const inner = "func Total(items []int) int {\n\t// the empty case is deliberate\n\tsum := 0\n" +
+		"\tfor _, item := range items {\n\t\tsum += item\n\t}\n\treturn sum\n}\n"
+	commitFile(t, dir, "total.go", "package p\n\n// loop over the items and add them up\n"+inner)
+	second := commitFile(t, dir, "total.go", "package p\n\nfunc Other() string { return \"nothing here at all\" }\n")
+
+	if texts := harvested(t, dir, second); len(texts) != 0 {
+		t.Errorf("a comment whose code went was harvested anyway: %q", texts)
+	}
+}
+
+// The floor is on the needle, so a node shorter than it must not be admitted
+// whatever else holds.
+func TestShortAnnotatedCodeIsNotHarvested(t *testing.T) {
+	dir := repoAt(t)
+	commitFile(t, dir, "tiny.go", "package p\n\n// the flag is read once at startup\nvar on = true\n\nvar off = false\n")
+	second := commitFile(t, dir, "tiny.go", "package p\n\nvar on = true\n\nvar off = false\n")
+
+	if texts := harvested(t, dir, second); len(texts) != 0 {
+		t.Errorf("a comment over a node below the floor was harvested: %q", texts)
+	}
+}
+
 // One commit stripping every comment from a file is a rewrite, and none of its
 // comments was decided on individually.
 func TestBurstIsNotHarvested(t *testing.T) {

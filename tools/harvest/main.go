@@ -92,12 +92,15 @@ func run(clones, out, only string, commits, files, depth, keep int) error {
 	return nil
 }
 
-// seen is how many commits have to have touched a survived comment's own line
-// before it counts as one somebody read and left.
+// seen is how many commits have to have touched the code under a survived
+// comment, after the comment was written, before it counts as one somebody read
+// and left.
 //
-// Two: the commit that wrote it, and at least one that came back to the line
-// and left the prose standing. One means nobody has been near it since.
-const seen = 2
+// One, because the window already opens at the commit that wrote the comment.
+// It was two while the count ran over all of history on the comment's own line,
+// where the newest commit is the one that wrote the text standing there, so most
+// of what it counted happened before the comment existed.
+const seen = 1
 
 // expose measures how much attention each survived row's own line has had, and
 // drops the rows nobody has been back to.
@@ -115,7 +118,10 @@ func expose(dir string, rows []corpus.Row) []corpus.Row {
 		// that the negative class was filtered on an axis the positive one was
 		// not. A deleted comment's exposure is how many commits touched its line
 		// before somebody removed it, which is the same question.
-		edits, err := corpus.LineEdits(dir, row.Rev(), row.Path, row.Line)
+		if row.CodeFrom == 0 || row.Added == "" {
+			continue
+		}
+		edits, err := corpus.LineEdits(dir, row.Added, row.Rev(), row.Path, row.CodeFrom, row.CodeTo)
 		if err != nil {
 			continue
 		}

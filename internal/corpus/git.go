@@ -194,21 +194,36 @@ func BlameLine(dir, rev, path string, line uint) (Blamed, bool) {
 	return one, true
 }
 
-// LineEdits counts the commits that touched one line of path, following the
-// line back through the renames and shifts that moved it.
+// LineEdits counts the commits between since and rev that touched lines from
+// through to of path, following the range back through the shifts that moved it.
 //
-// It is what separates a comment somebody read and left from one that merely
-// sat in a file other people were editing elsewhere. Counting commits to the
-// file answers the second question while claiming to answer the first: a
-// comment recorded at seventy-two file edits can have exactly one commit that
-// ever touched its own line, and most do, because a survived comment sits at a
-// median line of 359 while a file's churn is somewhere else entirely.
+// It is what separates a comment somebody read and left from one that merely sat
+// in a file other people were editing elsewhere, and both halves of that matter.
+// Counting commits to the whole file answers the wrong question: a comment
+// recorded at seventy-two file edits can have one commit that ever touched its
+// own line, because a survived comment sits at a median line of 359 while a
+// file's churn is somewhere else.
 //
-// One git process per line, so it is affordable only over a sample. Merges are
+// Counting commits to the comment's own line answers a different wrong question.
+// `git log -L` lists commits touching a position newest-first, and the newest is
+// the one that wrote whatever stands there now, so a count over all of history
+// is mostly churn that happened *before* the comment existed. Measured, 98.4% of
+// survivors had nothing touch their line after their own text was written.
+//
+// So the range is the code the comment annotates rather than the comment, and
+// the window opens at the commit that wrote the comment. What comes back is the
+// number of times somebody edited the thing being described and left the
+// description standing.
+//
+// One git process per row, so it is affordable only over a sample. Merges are
 // left out for the reason they are left out everywhere else here.
-func LineEdits(dir, rev, path string, line uint) (int, error) {
+func LineEdits(dir, since, rev, path string, from, to uint) (int, error) {
+	span := rev
+	if since != "" {
+		span = since + ".." + rev
+	}
 	out, err := Git(dir, "log", "--no-merges", "--format=%H",
-		"-L", fmt.Sprintf("%d,%d:%s", line, line, path), rev)
+		"-L", fmt.Sprintf("%d,%d:%s", from, to, path), span)
 	if err != nil {
 		return 0, err
 	}

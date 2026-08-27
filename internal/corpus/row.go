@@ -70,11 +70,15 @@ type Row struct {
 	// comment was written. It is a cheap prefilter and nothing more: a file
 	// being edited says nothing about whether anyone read this comment.
 	EditsSince int `json:"edits_since,omitempty"`
-	// Exposure counts the commits that touched the comment's own line, which is
-	// the number that makes `survived` mean anything. A comment somebody edited
-	// around and left is evidence they wanted it; a comment sitting untouched in
-	// a busy file is not.
+	// Exposure counts the commits after Added that touched the code this comment
+	// annotates, which is the number that makes `survived` mean anything. A
+	// comment somebody edited around and left is evidence they wanted it; a
+	// comment sitting untouched in a busy file is not.
 	Exposure int `json:"exposure"`
+	// CodeFrom and CodeTo are the line range of the annotated code, which is
+	// what Exposure is counted over.
+	CodeFrom uint `json:"code_from,omitempty"`
+	CodeTo   uint `json:"code_to,omitempty"`
 
 	// Doc, Trailing and Buried carry the structural position, because the rules
 	// treat the three differently and a corpus that pools them measures nothing.

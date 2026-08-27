@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+
 	"github.com/mikluko/slopguard/internal/comment"
 	"github.com/mikluko/slopguard/internal/corpus"
 	"github.com/mikluko/slopguard/internal/lang"
@@ -96,9 +98,13 @@ func touched(dir, sha string) ([]string, error) {
 
 // excluded names the path segments whose contents were written elsewhere, so a
 // comment found under one is not evidence about the repository that carries it.
+// `packages` is deliberately absent. Adding it excluded vuejs/core's entire
+// source tree, 569 of its 705 files, and took TypeScript survivors from 799 to
+// one, in a change whose message said only that matching moved from substrings
+// to segments.
 var excluded = []string{
 	"vendor", "node_modules", "third_party", "thirdparty", "external",
-	"testdata", "fixtures", "generated", "dist", "build", "packages",
+	"testdata", "fixtures", "generated", "dist", "build",
 	"outputs", "site-packages",
 }
 
@@ -203,11 +209,14 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 			documented = append(documented, corpus.Flat(one.Annotates.Utf8Text(after)))
 		}
 	}
-	// The haystack is the child's code with every comment blanked. Code a commit
-	// commented out is still present as bytes, so testing against the whole file
-	// reports it as having survived the very commit that switched it off.
-	survived := bare(after, current)
-	previous := bare(before, old)
+	// The haystacks are each version's code with every comment blanked. Code a
+	// commit commented out is still present as bytes, so testing against the
+	// whole file reports it as having survived the very commit that switched it
+	// off. The needle is read out of the same blanked bytes, so that a node
+	// carrying a comment inside it is still comparable.
+	blanked := bare(before, old)
+	survived := corpus.Flat(string(bare(after, current)))
+	previous := corpus.Flat(string(blanked))
 
 	var dropped int
 	var rows []corpus.Row
@@ -220,10 +229,19 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 		if !corpus.Prose(text) || one.Annotates == nil {
 			continue
 		}
-		code := corpus.Flat(one.Annotates.Utf8Text(before))
+		code := spans(blanked, one.Annotates)
+		if len(code) < annotatedFloor {
+			continue
+		}
+		// A needle absent from its own parent means the test cannot run, and a
+		// row it never ran on carries no established label.
+		stood := strings.Count(previous, code)
+		if stood == 0 {
+			continue
+		}
 		// Occurrences rather than membership: a short node recurs, so asking
 		// whether the text is present answers yes on a different instance of it.
-		if len(code) < annotatedFloor || strings.Count(survived, code) < strings.Count(previous, code) {
+		if strings.Count(survived, code) < stood {
 			continue
 		}
 		if rewritten(documented, code) {
@@ -245,6 +263,8 @@ func gone(dir string, repo Repo, c commit, path string, language *lang.Language,
 			Buried:    one.Buried,
 			Lines:     len(one.Nodes),
 			Line:      one.Line,
+			CodeFrom:  one.Annotates.StartPosition().Row + 1,
+			CodeTo:    one.Annotates.EndPosition().Row + 1,
 		}
 		if born, ok := corpus.BlameLine(dir, c.sha+"^", path, one.Line); ok {
 			row.Added, row.AddedAt = born.SHA, born.When
@@ -294,9 +314,9 @@ func standing(one comment.Comment, src []byte, held map[string]int) bool {
 }
 
 // bare returns src with every comment blanked, so that what is left is the code
-// alone. Whitespace of the same width replaces the comment, which keeps the
-// flattening cheap and the result readable when a harvest is being debugged.
-func bare(src []byte, comments []comment.Comment) string {
+// alone. Whitespace of the same width replaces the comment, which keeps every
+// byte offset addressing the file it came from.
+func bare(src []byte, comments []comment.Comment) []byte {
 	out := append([]byte(nil), src...)
 	for _, one := range comments {
 		for _, node := range one.Nodes {
@@ -307,5 +327,24 @@ func bare(src []byte, comments []comment.Comment) string {
 			}
 		}
 	}
-	return corpus.Flat(string(out))
+	return out
+}
+
+// spans returns the flattened text of one node, read out of a source whose
+// comments have already been blanked.
+//
+// Reading it out of the raw source instead is what made the survival test
+// vacuous: an annotated node that carries a comment inside it produced a needle
+// that could not occur in either haystack, both counts came out zero, and
+// `0 < 0` admitted the row without the test ever being evaluated. Measured on
+// the shipped corpus that was 70.1% of the positive class, and 87% of its Rust.
+func spans(blanked []byte, node *tree_sitter.Node) string {
+	start, end := node.StartByte(), node.EndByte()
+	if end > uint(len(blanked)) {
+		end = uint(len(blanked))
+	}
+	if start >= end {
+		return ""
+	}
+	return corpus.Flat(string(blanked[start:end]))
 }

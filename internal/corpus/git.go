@@ -206,9 +206,9 @@ func BlameLine(dir, rev, path string, line uint) (Blamed, bool) {
 //
 // One git process per line, so it is affordable only over a sample. Merges are
 // left out for the reason they are left out everywhere else here.
-func LineEdits(dir, path string, line uint) (int, error) {
+func LineEdits(dir, rev, path string, line uint) (int, error) {
 	out, err := Git(dir, "log", "--no-merges", "--format=%H",
-		"-L", fmt.Sprintf("%d,%d:%s", line, line, path), "HEAD")
+		"-L", fmt.Sprintf("%d,%d:%s", line, line, path), rev)
 	if err != nil {
 		return 0, err
 	}

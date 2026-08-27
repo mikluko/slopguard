@@ -109,15 +109,20 @@ const seen = 2
 func expose(dir string, rows []corpus.Row) []corpus.Row {
 	kept := make([]corpus.Row, 0, len(rows))
 	for _, row := range rows {
-		if row.Label != corpus.Survived {
-			kept = append(kept, row)
-			continue
-		}
-		edits, err := corpus.LineEdits(dir, row.Path, row.Line)
-		if err != nil || edits < seen {
+		// Both labels, at the revision each was read from. Computing it for
+		// survivors alone made the field separate the two classes perfectly, so
+		// a one-line rule on it scored recall 1.0 at zero false positives: proof
+		// that the negative class was filtered on an axis the positive one was
+		// not. A deleted comment's exposure is how many commits touched its line
+		// before somebody removed it, which is the same question.
+		edits, err := corpus.LineEdits(dir, row.Rev(), row.Path, row.Line)
+		if err != nil {
 			continue
 		}
 		row.Exposure = edits
+		if row.Label == corpus.Survived && edits < seen {
+			continue
+		}
 		kept = append(kept, row)
 	}
 	return kept
@@ -148,16 +153,17 @@ func distinct(rows []corpus.Row) []corpus.Row {
 	return kept
 }
 
-// balance caps how many survived rows one repository contributes, taking them
-// evenly across what was found rather than off the front.
+// balance caps what one repository contributes to each label.
 //
-// Deleted rows are never capped. They are the scarce half everywhere, and one
-// repository cannot flood them: tokio yields 100 against grpc-go's 200-odd.
-// Survived rows are the opposite, and the ratio is a fact about the language
-// rather than about the code. Rust documents every public item with `///`, so
-// tokio produced 14,646 survived rows against grpc-go's 2,600 and would have
-// been half of a 29,000-row corpus on its own. A corpus that is half one
-// repository measures that repository.
+// Both sides, and that is a correction. Deleted rows went uncapped on the
+// grounds that they are scarce everywhere, which stopped being true once the
+// mining rules were repaired: tokio then supplied 28% of the whole positive
+// class, and the tool catches one of its 250. Leaving it out moved the tool's
+// measured lift from 1.25 to 1.58, which is a corpus deciding the answer.
+//
+// The survived side needs it for the older reason. Rust documents every public
+// item with `///`, so before any cap tokio produced 14,646 survived rows against
+// grpc-go's 2,600. That ratio is a fact about the language rather than the code.
 func balance(rows []corpus.Row, keep int) []corpus.Row {
 	if keep <= 0 {
 		return rows
@@ -170,8 +176,17 @@ func balance(rows []corpus.Row, keep int) []corpus.Row {
 		}
 		survived = append(survived, row)
 	}
+	// The positive cap is a quarter of the negative one, which keeps the ratio
+	// a repository contributes near the corpus's own.
+	if positives := keep / 4; len(deleted) > positives {
+		taken := make([]corpus.Row, 0, positives)
+		for i := range positives {
+			taken = append(taken, deleted[i*len(deleted)/positives])
+		}
+		deleted = taken
+	}
 	if len(survived) <= keep {
-		return rows
+		return append(deleted, survived...)
 	}
 	// Indexed rather than stepped. `len/keep` is 1 for any repository yielding
 	// between one and two times the cap, which took the first `keep` rows in

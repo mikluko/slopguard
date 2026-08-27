@@ -129,24 +129,54 @@ throughout.
 A number with no baseline says nothing, and the first version named four
 baselines and ran none of them. Measured since:
 
-Measured on the fifth corpus, markers excluded, 250 deleted and 3,302 survived:
+Measured on the seventh corpus, markers excluded, 249 deleted and 3,618
+survived:
 
 | | catches | nudges | recall | FPR |
 |---|---|---|---|---|
-| `leftover` | 20 | 11 | 0.080 | 0.003 |
-| `tautology` | 0 | 20 | 0 | 0.006 |
-| `echo` | 0 | 9 | 0 | 0.003 |
+| `leftover` | 20 | 5 | 0.080 | 0.001 |
+| `tautology` | 0 | 14 | 0 | 0.004 |
+| `echo` | 0 | 6 | 0 | 0.002 |
 | `compat` | 1 | 0 | 0.004 | 0 |
-| **the shipped build** | **21** | **40** | **0.084** | **0.012** |
+| `hollow` | 0 | 0 | 0 | 0 |
+| **the shipped build** | **21** | **25** | **0.084** | **0.007** |
 
-Restricted to the matched subset with `-matched`, which requires of a deletion
-what the survived label requires of a survivor: recall 0.073 on 82 positives at
-the same FPR, `leftover` 6 of 6. **The two agree in direction and magnitude**,
-which is the check that matters: the headline is not carried by the stratum where
-the negative class has no members.
+Lift over a rule firing at random at the same rate is **7.1**, hypergeometric
+z about 10.9. `leftover` alone is **12.4** at z about 15, and supplies 20 of the
+21 catches.
 
-Lift over a rule firing at random at the same rate is about 4.9 unrestricted and
-5.4 matched. `leftover` supplies 20 of the 21 catches.
+Each class is now also measured with the others switched off, and the two tables
+agree, so the precedence order is not distorting the partition on this corpus.
+That was an open worry for three rounds and it is closed by measurement rather
+than by argument.
+
+## The baselines, run at last
+
+| rule | recall | FPR | lift |
+|---|---|---|---|
+| marker: TODO, FIXME, XXX, HACK | 0.126 | 0.010 | **6.85** |
+| **the shipped build** | 0.077 | 0.007 | **6.40** |
+| `trailing` | 0.186 | 0.026 | 4.90 |
+| text opens with `@` | 0.007 | 0.003 | 2.28 |
+| `doc` | 0.165 | 0.101 | 1.56 |
+| `buried` | 0.607 | 0.434 | 1.36 |
+| more than five lines | 0.084 | 0.076 | 1.10 |
+| text of 120 bytes or more | 0.312 | 0.375 | 0.84 |
+
+All on the same footing, with markers counted on both sides.
+
+**The tool beats every one-bit baseline except the marker regex, which still
+edges it**, 6.85 against 6.40. That is stated rather than hidden: excluding
+markers from the positive class removes the comparator and moves the tool's own
+lift to 7.1, which flatters it. The answer to the marker rule is not a number, it
+is that Google's C++ and Java guides mandate the form, so a tracked-debt marker
+is not a misplaced explanation and the tool is deliberately not chasing it.
+
+Two baselines that beat the whole pipeline on earlier corpora are now near the
+floor: `text opens with @` fell from lift 7.2 to 2.28 when a per-commit cap
+stopped one repository's JSDoc codemod contributing 119 positives, and `lines >
+5` from 2.72 to 1.10. **A baseline that suddenly wins is how a corpus reports its
+own contamination**, which is why they are printed on every run.
 
 **Five conclusions have been recorded on five corpora and four are withdrawn.**
 That the tool beat chance at z = 6.2 was the first, whose positive class was 70%

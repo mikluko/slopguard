@@ -32,8 +32,8 @@ Every refactor holds this, and a refactor that moves it is a behaviour change we
 cd $(go env GOROOT)/src
 find . -name '*.go' -not -name '*_test.go' -not -path '*/testdata/*' -not -path '*/vendor/*' \
   -print0 | xargs -0 -n 300 slopguard > /tmp/sweep.txt
-wc -l /tmp/sweep.txt          # 1034 over 4,065 files
-cut -f2 /tmp/sweep.txt | sort | uniq -c   # 623 echo, 249 tautology, 142 leftover, 20 compat, 0 hollow
+wc -l /tmp/sweep.txt          # 690 over 4,065 files
+cut -f2 /tmp/sweep.txt | sort | uniq -c   # 355 tautology, 172 echo, 142 leftover, 21 compat, 0 hollow
 ```
 
 Diff the file, not the count: the same total over different lines is not the same behaviour.

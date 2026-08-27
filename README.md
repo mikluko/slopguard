@@ -35,7 +35,8 @@ internal/store/lifecycle_test.go:63	echo	0.950	restates what the code already sa
 
 A file in a language it does not read produces nothing, so passing the whole index is safe. The sweep writes nothing and
 remembers nothing; it is the same judgment the hook makes, without the hook. For scale, the Go standard library gives
-1034 findings over 4,065 files, most of them step comments inside long functions.
+690 findings over 4,065 files, most of them step comments inside long functions: 355 `tautology`, 172 `echo`, 142
+`leftover`, 21 `compat`, and no `hollow`.
 
 **Wire it.** Add the `Write|Edit|MultiEdit` matcher under [Configure](#configure) to `~/.claude/settings.json` and
 restart the session.

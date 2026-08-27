@@ -97,20 +97,20 @@ func survived(dir string, repo Repo, path string, store *corpus.Blobs) ([]corpus
 			continue
 		}
 		row := corpus.Row{
-			Repo:       repo.Name,
-			License:    repo.License,
-			Path:       path,
-			Language:   language.Name,
-			Label:      corpus.Survived,
-			Text:       one.Text,
-			Body:       one.Body,
-			Added:      born.SHA,
-			AddedAt:    born.When,
-			Doc:        one.Doc,
-			Trailing:   one.Trailing,
-			Buried:     one.Buried,
-			Lines:      len(one.Nodes),
-			Line:       one.Line,
+			Repo:     repo.Name,
+			License:  repo.License,
+			Path:     path,
+			Language: language.Name,
+			Label:    corpus.Survived,
+			Text:     one.Text,
+			Body:     one.Body,
+			Added:    born.SHA,
+			AddedAt:  born.When,
+			Doc:      one.Doc,
+			Trailing: one.Trailing,
+			Buried:   one.Buried,
+			Lines:    len(one.Nodes),
+			Line:     one.Line,
 		}
 		row.Annotates = corpus.Truncate(spans(blanked, one.Annotates), 400)
 		row.CodeFrom = one.Annotates.StartPosition().Row + 1

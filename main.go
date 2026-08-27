@@ -139,6 +139,17 @@ func review(in payload) []rule.Finding {
 	if len(findings) > budget {
 		findings = findings[:budget]
 	}
+	// A comment whose text occurs more than once in the file cannot be told from
+	// its twin by text, and [switched] compares text. Both copies then satisfy
+	// every condition against the one edit that commented out the other, and the
+	// pre-existing copy gets the tool's only unhedged sentence. The finding
+	// stands; only its claim to certainty goes, which is what an empty Raw
+	// means to [switched].
+	for i, f := range findings {
+		if f.Raw != "" && strings.Count(string(src), f.Raw) > 1 {
+			findings[i].Raw = ""
+		}
+	}
 	keys := make([]uint64, len(findings))
 	for i, f := range findings {
 		keys[i] = f.Key

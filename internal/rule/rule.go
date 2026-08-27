@@ -52,8 +52,11 @@ type Finding struct {
 	// between a comment that reads like source and one that just stopped being
 	// source. Nothing in this package reads it.
 	Source string
-	// Raw is the same comment exactly as it appears in the file, markers and
-	// indentation included. A caller comparing Source against an edit can tell
+	// Raw is the same comment exactly as it appears in the file, markers
+	// included, from the first marker to the last character. The indentation
+	// before the first marker is not part of it, which is what lets the text be
+	// found in an edit that begins mid-line; indentation between the lines of a
+	// run is. A caller comparing Source against an edit can tell
 	// that the code stopped being live; only Raw tells it that this edit is
 	// where the comment came from, since a comment the edit merely carried
 	// through appears unchanged on both sides of it.

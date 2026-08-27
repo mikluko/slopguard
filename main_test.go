@@ -235,6 +235,52 @@ func TestReportDoesNotHedgeWhatItWatchedHappen(t *testing.T) {
 	}
 }
 
+// A mixed report hedges the findings it is not sure of and marks the ones it is.
+//
+// Both halves were unpinned: replacing the branch with an unhedged sentence, and
+// neutering the marker that says which line is confirmed, each left the suite
+// green. The marker is the only thing distinguishing the two kinds of claim in
+// one message.
+func TestReportMarksTheConfirmedFindingAmongGuesses(t *testing.T) {
+	in := edit("\tfoo()\n\tbar()\n", "\t// foo()\n\tbar()\n")
+	findings := []rule.Finding{
+		{Line: 1, Reason: "commented-out code: delete it, or make it real", Source: "foo()", Raw: "// foo()"},
+		{Line: 9, Reason: "commented-out code: delete it, or make it real", Source: "qux()", Raw: "// qux()"},
+	}
+
+	repeat = false
+	out := report("m.go", findings, in)
+	if !strings.Contains(out, "* m.go:1") {
+		t.Errorf("the confirmed finding is not marked:\n%s", out)
+	}
+	if strings.Contains(out, "* m.go:9") {
+		t.Errorf("an unconfirmed finding is marked as confirmed:\n%s", out)
+	}
+	if !strings.Contains(out, "wrong") {
+		t.Errorf("the unconfirmed findings are not hedged:\n%s", out)
+	}
+}
+
+// The nudge states that it is often wrong and never how often. The pooled rate
+// is fitted to the sample the exemptions were chosen from, so quoting it hands
+// an agent a number the method section retracts.
+//
+// Asserting the presence of "wrong" does not pin this: the wording it replaced
+// contained that word too, and restoring it verbatim passed the suite.
+func TestReportQuotesNoRate(t *testing.T) {
+	findings := []rule.Finding{{Line: 42, Reason: "commented-out code: delete it, or make it real"}}
+	for _, repeated := range []bool{false, true} {
+		repeat = repeated
+		t.Cleanup(func() { repeat = false })
+		out := report("store.go", findings, payload{})
+		for _, rate := range []string{"half", "%", "one in", "two thirds", "a quarter"} {
+			if strings.Contains(out, rate) {
+				t.Errorf("the nudge quotes a rate (%q):\n%s", rate, out)
+			}
+		}
+	}
+}
+
 // edit builds the payload an Edit hands the hook.
 func edit(old, new string) payload {
 	in := payload{ToolName: "Edit"}

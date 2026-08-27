@@ -24,6 +24,24 @@ var cases = []struct {
 	gap  string
 }{
 	{
+		// Java's arrow form is a different node kind from its colon form, and
+		// nothing exercised it: the kind was added to `labels` on a reading of
+		// the grammar, and reverting it left the suite green and both sweeps
+		// byte-identical, because neither holds a Java switch.
+		name: "a comment above a java arrow arm names what the arm handles",
+		lang: java,
+		src: `class C {
+  void f(int k) {
+    switch (k) {
+      // report(k);
+      case 1 -> other(k);
+      default -> none();
+    }
+  }
+}
+`,
+	},
+	{
 		// A case arm is where a reader most needs an example of what is being
 		// matched, and the example is written in the language being matched.
 		name: "a comment opening a case arm names what the arm handles",

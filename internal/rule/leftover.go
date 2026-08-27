@@ -187,11 +187,14 @@ var labels = set(
 	"expression_case", "default_case", "type_case", "communication_case",
 	// JavaScript, TypeScript, TSX
 	"switch_case", "switch_default",
-	// bash, C, C++, PHP
+	// C, C++, PHP. bash spells an arm `case_item`; its own `case_statement` is
+	// the whole construct, and it emits no `default_statement` at all.
 	"case_statement", "default_statement",
 	// Java, whose colon form and arrow form are different kinds
 	"switch_label", "switch_rule", "switch_block_statement_group",
-	// PHP's match expression
+	// PHP's match expression. Emitted by the grammar and reachable only in
+	// principle: no fixture pins these two, because a comment inside a PHP
+	// `match` does not reach this rule for other reasons.
 	"match_conditional_expression", "match_default_expression",
 	// Rust
 	"match_arm",

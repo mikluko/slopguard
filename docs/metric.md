@@ -137,7 +137,7 @@ baselines and ran none of them. Measured since:
     build                    caught   nudged   recall   FPR      lift
     everything on                21       25    0.091   0.007     7.6
     leftover alone               20        5    0.087   0.001    13.3
-    leftover, three exemptions   20        1    0.088   0.000    15.3
+    leftover, three exemptions   20        1    0.088   0.000    15.9
 
 One catch for twenty false positives. On the Go standard library the default
 gives 142 findings over 4,065 files against 690 with everything on, and 1,034
@@ -197,18 +197,39 @@ than by argument.
 
 ## The baselines, run at last
 
+On the ninth corpus, 227 deleted and 3,428 survived, with the three exemptions in:
+
 | rule | recall | FPR | lift |
 |---|---|---|---|
-| marker: TODO, FIXME, XXX, HACK | 0.126 | 0.010 | **6.85** |
-| **the shipped build** | 0.077 | 0.007 | **6.40** |
-| `trailing` | 0.186 | 0.026 | 4.90 |
-| text opens with `@` | 0.007 | 0.003 | 2.28 |
-| `doc` | 0.165 | 0.101 | 1.56 |
-| `buried` | 0.607 | 0.434 | 1.36 |
-| more than five lines | 0.084 | 0.076 | 1.10 |
-| text of 120 bytes or more | 0.312 | 0.375 | 0.84 |
+| harvest field: `exposure` is zero | 0.654 | 0.000 | **16.66** |
+| **the shipped build** | 0.088 | 0.000 | **15.87** |
+| marker: TODO, FIXME, XXX, HACK | 0.113 | 0.010 | 6.99 |
+| `trailing` | 0.143 | 0.026 | 4.30 |
+| text opens with `@` | 0.009 | 0.003 | 2.78 |
+| harvest field: `annotates` under 60 bytes | 0.307 | 0.127 | 2.24 |
+| harvest field: `annotates` under 80 bytes | 0.489 | 0.226 | 2.02 |
+| `doc` | 0.182 | 0.101 | 1.72 |
+| harvest field: `annotates` under 100 bytes | 0.584 | 0.328 | 1.70 |
+| harvest field: `annotates` under 160 bytes | 0.758 | 0.503 | 1.46 |
+| `buried` | 0.610 | 0.434 | 1.37 |
+| more than five lines | 0.100 | 0.076 | 1.29 |
+| text of 120 bytes or more | 0.359 | 0.375 | 0.96 |
+| harvest field: `annotates` truncated at 400 | 0.048 | 0.236 | 0.21 |
 
-All on the same footing, with markers counted on both sides.
+All on the same footing, with markers counted on both sides. The `annotates`
+thresholds are swept rather than fixed, because the two fixed ones this table
+used to carry were both dead — under 40 bytes is the harvest's own floor and
+catches nothing, truncation at 400 scores below chance — so the table was
+checking a bug an earlier round had already fixed and missing the axis it lived
+on.
+
+**Two rows above the tool are fields the harvester wrote**, and both are read as
+reports on how the corpus was built rather than as rules anybody would ship.
+`exposure` is an artifact of a filter and is discussed below. `annotates` length
+separates the labels at lift 2.24 because the positive side additionally requires
+the annotated code to survive its commit verbatim, and long code is likelier to
+change, so long-annotated positives are filtered out: median 84 bytes against the
+negative class's 158.
 
 **Against the marker regex the comparison is not resolved, in either direction.**
 An earlier revision here said the regex edged the tool, 6.85 against 6.40, on a

@@ -421,8 +421,24 @@ func baselines(rows []corpus.Row, shipped []verdict) {
 		// reporting how the corpus was built, and each of them has done exactly
 		// that at some point in this map's history.
 		{"harvest field: exposure is zero", func(r corpus.Row) bool { return r.Exposure == 0 }},
-		{"harvest field: annotates under 40 bytes", func(r corpus.Row) bool { return len(r.Annotates) < 40 }},
 		{"harvest field: annotates truncated at 400", func(r corpus.Row) bool { return strings.HasSuffix(r.Annotates, "…") }},
+	}
+	// The length of the annotated code, swept rather than fixed. The two fixed
+	// thresholds this replaces were both dead — under 40 is the harvest's own
+	// floor and catches nothing, truncation at 400 scores below chance — so the
+	// table was checking the bug a previous round had already fixed and missing
+	// the axis it lived on. The live separator is around 60 bytes, where the
+	// deleted class sits at a median of 84 against the survived class's 158,
+	// because the deleted side additionally requires the annotated code to
+	// survive its commit verbatim and long code is likelier to change.
+	for _, bound := range []int{60, 80, 100, 160} {
+		tests = append(tests, struct {
+			name string
+			hit  func(corpus.Row) bool
+		}{
+			fmt.Sprintf("harvest field: annotates under %d bytes", bound),
+			func(r corpus.Row) bool { return len(r.Annotates) < bound },
+		})
 	}
 	var deleted, survived int
 	for _, row := range rows {

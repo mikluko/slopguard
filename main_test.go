@@ -450,6 +450,103 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 	}
 }
 
+// The body of a YAML block scalar is not code, and no kind name says so.
+//
+// tree-sitter-yaml calls a `|` block a `block_scalar` and gives it one child,
+// the `|` itself; the body is the tail the grammar took in and never parsed. A
+// rule reading kind names alone left every line of it as live code — 630
+// payloads over 45 ordinary files in the mined corpus, workflow `run:` blocks
+// and Helm values among them — which is the four-round defect surviving into
+// the mechanism that replaced the four rounds.
+//
+// The templated row is the other half. `Inert` parsed raw where `scan` parses
+// through [comment.blank], so 835 templated YAML files parsed for the finding
+// path and failed for this one, and a file that fails here loses the tier.
+func TestTheTierReadsAYamlBlockScalarAsWhatItIs(t *testing.T) {
+	for _, c := range []struct {
+		name, file, src, was, now string
+		want                      bool
+	}{
+		{
+			name: "a line inside a block scalar",
+			file: "a.yaml",
+			src:  "config: |\n  auth_enabled: true\n#   cluster_name: prod\n  server:\n    http_listen_port: 3100\n",
+			was:  "  cluster_name: prod\n",
+			now:  "#   cluster_name: prod\n",
+			want: false,
+		},
+		{
+			name: "a real key outside any scalar",
+			file: "b.yaml",
+			src:  "server:\n  # http_listen_port: 3100\n  grpc_listen_port: 9095\n",
+			was:  "  http_listen_port: 3100\n",
+			now:  "  # http_listen_port: 3100\n",
+			want: true,
+		},
+		{
+			name: "a templated file still reaches the tier",
+			file: "c.yaml",
+			src:  "{{- if .Values.enabled }}\nimage:\n  # tag: v1.2.3\n  pullPolicy: IfNotPresent\n{{- end }}\n",
+			was:  "  tag: v1.2.3\n",
+			now:  "  # tag: v1.2.3\n",
+			want: true,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(session.MemoryEnv, t.TempDir())
+			in := payload{ToolName: "Edit"}
+			in.ToolInput.FilePath = file(t, c.file, c.src)
+			in.ToolInput.OldString = c.was
+			in.ToolInput.NewString = c.now
+
+			findings := review(in)
+			if len(findings) == 0 {
+				t.Fatal("the fixture yielded no finding, so this asserts nothing")
+			}
+			out := report(c.file, findings, in)
+			if got := strings.Contains(out, "This write commented out live code"); got != c.want {
+				t.Fatalf("unhedged = %v, want %v\n%s", got, c.want, out)
+			}
+		})
+	}
+}
+
+// The file is rebuilt only where rebuilding it is exact.
+//
+// [quiet] undoes a replacement that occurs once and leaves the rest alone. Undo
+// one that occurs twice and it rewrites the wrong occurrence, which can turn a
+// file that parses into one that does not — and the parse failure then marks
+// every line inert, so the guard's absence shows up as the tier going silent on
+// a file it should read.
+func TestTheFileIsRebuiltOnlyWhereItIsExact(t *testing.T) {
+	const src = `package p
+
+func a() {
+	// q()
+	done()
+}
+
+func b() {
+	// q()
+	done()
+}
+`
+	in := payload{ToolName: "Edit"}
+	in.ToolInput.FilePath = file(t, "twice.go", src)
+	// Occurs twice, so nothing is undone. Undoing the first would open a raw
+	// string that nothing closes.
+	in.ToolInput.OldString = "\tconst s = `\n\tdone()\n"
+	in.ToolInput.NewString = "\t// q()\n\tdone()\n"
+
+	got := quiet([]byte(src), lang.Go, in)
+	if !got["// q()"] {
+		t.Error("the comment the file holds twice was not read as a comment")
+	}
+	if got["done()"] || got["func a() {"] {
+		t.Errorf("a line of code was read as inert, so the rebuild was not skipped: %v", got)
+	}
+}
+
 // Lines that open with a comment marker and are code, and lines that do not and
 // are comments — all of them answered by the parse.
 //
@@ -1230,6 +1327,11 @@ func TestReviewMemoryOff(t *testing.T) {
 // finding: a compiler sketching what it emits and a spec step written as an
 // assignment were never live code in this write.
 func TestSwitchedReadsTheEditRatherThanTheComment(t *testing.T) {
+	// [inert] is written by [review] and read through [switched], so a test that
+	// calls `switched` without `review` reads whatever the last one left. These
+	// rows passed on that, and would have gone on passing if an earlier test had
+	// left a line of theirs in it.
+	clear(inert)
 	const live = "func double(v int) int {\n\treturn v * 3\n}"
 	const off = "func double(v int) int {\n\t// return v * 3\n}"
 
@@ -1275,6 +1377,7 @@ func TestSwitchedReadsTheEditRatherThanTheComment(t *testing.T) {
 // commented out a guess spends the one finding it is certain of to protect the
 // ones it is not.
 func TestReportDoesNotHedgeWhatItWatchedHappen(t *testing.T) {
+	clear(inert)
 	in := edit("func double(v int) int {\n\treturn v * 3\n}", "func double(v int) int {\n\t// return v * 3\n}")
 	findings := []rule.Finding{{
 		Line: 2, Reason: "commented-out code: delete it, or make it real",

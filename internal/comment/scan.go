@@ -54,7 +54,13 @@ func Inert(src []byte, language *lang.Language) map[string]bool {
 	if err := parser.SetLanguage(tree_sitter.NewLanguage(language.Grammar())); err != nil {
 		return nil
 	}
-	tree := parser.Parse(src, nil)
+	// Through [blank], because [scan] parses through it and a text one of them
+	// can read and the other cannot is a text where the two disagree about the
+	// same file. Reading raw here cost the tier every templated YAML in the
+	// corpus — 835 files that the finding path parses and this one did not,
+	// and a file this cannot parse loses the tier outright. `blank` preserves
+	// every byte's width, so the spans it yields still index the original.
+	tree := parser.Parse(blank(src, language), nil)
 	if tree == nil {
 		return nil
 	}
@@ -76,15 +82,29 @@ func Inert(src []byte, language *lang.Language) map[string]bool {
 	quiet := make([]bool, len(src))
 	cursor := tree.RootNode().Walk()
 	defer cursor.Close()
+	mark := func(from, to uint) {
+		for i := from; i < to && i < uint(len(src)); i++ {
+			quiet[i] = true
+		}
+	}
 	for {
 		node := cursor.Node()
-		kind := node.Kind()
-		if language.Comments[kind] || (language.Docstrings && docstring(node)) || quoted(kind) {
-			for i := node.StartByte(); i < node.EndByte() && i < uint(len(src)); i++ {
-				quiet[i] = true
+		if language.Comments[node.Kind()] || opaque(node) {
+			mark(node.StartByte(), node.EndByte())
+		} else {
+			// What a node spans past its last child, when that reaches another
+			// line, is text the grammar took in and never parsed. A YAML block
+			// scalar is exactly this: `block_scalar` has one child, the `|`, and
+			// its whole body is the tail. Ordinary code has no such tail — what
+			// follows a construct's last child is punctuation on that same line.
+			if n := node.ChildCount(); n > 0 {
+				if last := node.Child(n - 1); node.EndPosition().Row > last.EndPosition().Row {
+					mark(last.EndByte(), node.EndByte())
+				}
 			}
-		} else if cursor.GotoFirstChild() {
-			continue
+			if cursor.GotoFirstChild() {
+				continue
+			}
 		}
 		for !cursor.GotoNextSibling() {
 			if !cursor.GotoParent() {
@@ -94,15 +114,28 @@ func Inert(src []byte, language *lang.Language) map[string]bool {
 	}
 }
 
-// quoted reports whether a node kind names a string.
+// opaque reports whether a node is content the grammar did not read as code.
 //
-// By the kind's name, because no grammar agrees on it — `raw_string_literal`,
-// `interpreted_string_literal`, `template_string`, `string_content`,
-// `heredoc_body` — and a set per language would be one more table to fall out of
-// date. Asking the tree what kind of node covers a byte is the part that
-// matters; which spelling of "string" it answers with is not.
-func quoted(kind string) bool {
-	return strings.Contains(kind, "string") || strings.Contains(kind, "heredoc")
+// Two tests, and the second is the one that generalises. A kind naming a string
+// covers most of it, but only most: no grammar agrees on the spelling, and
+// tree-sitter-yaml calls a `|` block a `block_scalar`, which names neither a
+// string nor a heredoc. Reading only the name left every YAML block scalar as
+// live code — 630 payloads over 45 ordinary files in the mined corpus, workflow
+// `run: |` blocks and Helm values among them — which is the same defect the
+// four rounds of delimiter rules were about, in the mechanism that replaced them.
+//
+// So a leaf spanning more than one line counts too, whatever it is called. Code
+// has structure: a construct the grammar parsed into a single token across
+// several lines is content it declined to read, which is what a raw string, a
+// heredoc body, a block scalar and Ruby's `__END__` section all are. A named
+// kind matching neither is not covered, and the caller loses nothing by it:
+// a line holding any code at all is code either way.
+func opaque(node *tree_sitter.Node) bool {
+	kind := node.Kind()
+	if strings.Contains(kind, "string") || strings.Contains(kind, "heredoc") {
+		return true
+	}
+	return node.ChildCount() == 0 && node.EndPosition().Row > node.StartPosition().Row
 }
 
 // still returns the trimmed lines of src whose every non-blank byte is quiet.

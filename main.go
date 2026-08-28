@@ -652,10 +652,16 @@ var inert map[string]bool
 // write, by undoing each replacement and asking the grammar.
 //
 // The reconstruction is exact where a replacement occurs once, which is what an
-// Edit requires of its `old_string` anyway. Where it does not occur, that edit is
-// skipped and the file keeps that much of its post-write shape: the answer is
-// then incomplete rather than wrong, since a line the walk never marks is read
-// as code, which is what the tier assumed before any of this existed.
+// Edit requires of its `old_string` anyway. Where it occurs any other number of
+// times that edit is skipped and the file keeps that much of its post-write
+// shape: the answer is then incomplete rather than wrong, since a line the walk
+// never marks is read as code, which is what the tier assumed before any of this
+// existed. Undoing a replacement that occurs twice rewrites the wrong one, and a
+// file that then stops parsing costs the tier outright.
+//
+// This is a second parse of the whole file, and it costs what the first one
+// costs: measured over four real files it adds 6.5 to 18 milliseconds and about
+// doubles what a write is judged in. The tier is what that buys.
 func quiet(src []byte, language *lang.Language, in payload) map[string]bool {
 	text := string(src)
 	for _, e := range edits(in) {

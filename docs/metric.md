@@ -420,8 +420,10 @@ so its previous sibling is another comment. The tail comment the argument is
 actually about has a case label before it, exactly as the twenty Vue label
 comments do.
 
-Several revisions had that right and were corrected away — twice explicitly, once
-by silent omission. The table in `arm`'s own doc states all five variants as
+Several revisions had that right and were corrected away, both by argument and by
+silent omission. How many of each is not stated: every version of that tally has
+been wrong, this one included, which is the paragraph's own failure in miniature.
+The table in `arm`'s own doc states all five variants as
 conditions for keeping the exemption, which removes the
 qualifier-versus-disqualifier ambiguity behind most of the wrong versions, though
 not this one.

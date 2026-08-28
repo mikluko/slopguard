@@ -151,8 +151,10 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 //
 // Row five also breaks five spec fixtures across Java, TypeScript and PHP, but
 // that is a second objection, not the reason. Several revisions of this
-// paragraph had the inseparability right and later ones called them wrong, twice
-// explicitly and once by dropping the sentence.
+// paragraph had the inseparability right and later ones called them wrong, both
+// by arguing against it and by dropping the sentence without argument. How many
+// of each is not stated: the tally has itself been wrong every time it was
+// given, which is the failure this paragraph keeps repeating in miniature.
 //
 // The two middle rows are not separations. Row three is byte-identical to
 // deleting this branch, and row two keeps exactly one of the twenty-six

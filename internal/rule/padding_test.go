@@ -161,6 +161,45 @@ func TestAttribution(t *testing.T) {
 	}
 }
 
+// Every scaffold word has to be a key a lookup can form.
+//
+// [hollows] looks each one up in the output of [content], which drops stopwords
+// and words under three letters and trims one trailing "s". An entry that
+// survives none of that is a rule which quietly stops firing, and seven were:
+// "process", "pass", "returns" and "afterwards" by spelling, "then", "each" and
+// "new" because content drops them before the set is reached. Two of the seven
+// were made dead by the round that meant to repair them. The suite was green
+// through every one.
+func TestEveryScaffoldWordIsAKeyALookupForms(t *testing.T) {
+	// The two entries that are stems rather than words. A lookup forms them from
+	// "process" and "pass", which is why they are spelled short.
+	stems := map[string]string{"proces": "process", "pas": "pass"}
+
+	for word := range scaffold {
+		if empty[word] {
+			t.Errorf("scaffold has %q, which content drops as a stopword before any lookup", word)
+			continue
+		}
+		if len(word) < 3 {
+			t.Errorf("scaffold has %q, which content drops as too short", word)
+			continue
+		}
+		source, ok := stems[word]
+		if !ok {
+			source = word
+		}
+		got := content(source)
+		if len(got) != 1 || got[0] != word {
+			t.Errorf("scaffold has %q, but a sentence saying %q asks for %v", word, source, got)
+		}
+	}
+	for stem, source := range stems {
+		if !scaffold[stem] {
+			t.Errorf("%q is spelled here as the stem of %q and is not in the set", stem, source)
+		}
+	}
+}
+
 func keysOf(set map[string]bool) string {
 	var out []string
 	for word := range set {

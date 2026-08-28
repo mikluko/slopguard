@@ -317,27 +317,37 @@ func eliminates(sentence string, spelled map[string]bool) bool {
 // scaffold holds the words that any documentation of any symbol can carry
 // without saying anything about that symbol. A sentence assembled entirely from
 // these and the signature's own words has no subject of its own.
+// Every entry has to be a key a lookup can form, and [hollows] forms its keys by
+// running [content] over the sentence first. That drops a stopword, drops a word
+// under three letters, and trims one trailing "s" — so "process" arrives as
+// "proces", "pass" as "pas", and "then" never arrives at all.
+//
+// Seven entries were dead. Two of them, "proces" and "pas", were made dead by a
+// round that read the reader as [eliminates], which stems nothing: it swapped
+// the working keys for the spellings and disabled the words it meant to repair.
+// "returns" and "afterwards" were dead the same way and older. "then", "each"
+// and "new" are stopwords, which no spelling fixes: a sentence's "then" is gone
+// before this set is consulted, so the sequence-marker paragraph below promises
+// one word more than it delivers.
+//
+// The suite was green through all of it. [TestEveryScaffoldWordIsAKeyALookupForms]
+// is what makes a dead entry loud, since a rule that quietly stops firing is
+// this file's characteristic defect.
 var scaffold = set(
-	"function", "method", "parameter", "argument", "receiver", "return", "returns",
+	"function", "method", "parameter", "argument", "receiver", "return",
 	"take", "accept", "value", "result", "implementation", "code", "caller",
 	"reader", "user", "about", "use", "usage", "call", "type", "object",
 	"instance", "field", "item", "data", "given", "receive", "create", "make",
-	"new", "store", "helper", "struct", "pointer", "design", "provide",
-	// Not stemmed. [eliminates] looks up the word as [prose.Normalize] leaves
-	// it, which lowercases and drops punctuation and nothing else, so the key a
-	// lookup forms is the word as written. A round read the trailing-"s" trim in
-	// [content] as applying here too and replaced "process" and "pass" with
-	// "proces" and "pas": those two matched nothing, and the two words they
-	// replaced stopped eliminating anything for four rounds.
-	"contain", "hold", "get", "set", "handle", "process", "iterate", "add",
+	"store", "helper", "struct", "pointer", "design", "provide",
+	"contain", "hold", "get", "set", "handle", "proces", "iterate", "add",
 	"turn", "wrap", "represent", "perform", "work", "way", "thing", "part",
 	"need", "want", "allow", "simply", "just", "utility", "wrapper", "loop",
-	"over", "each", "convert", "build", "run", "operation", "purpose",
-	"pass", "follow", "read", "write", "look", "see", "know", "understand",
+	"over", "convert", "build", "run", "operation", "purpose",
+	"pas", "follow", "read", "write", "look", "see", "know", "understand",
 	// Sequence markers. They order a narrative and name nothing in it, which is
 	// what makes a sentence carrying them and otherwise nothing but the body's
 	// own identifiers a walk through the code rather than a claim about it.
-	"first", "then", "next", "finally", "lastly", "initially", "afterwards",
+	"first", "next", "finally", "lastly", "initially", "afterward",
 	"subsequently", "second", "third", "step", "start", "begin", "end",
 )
 

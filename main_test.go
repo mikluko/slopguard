@@ -450,40 +450,61 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 	}
 }
 
-// A line opening with a marker is not always a comment, and reading it as one
-// costs the tier a true transition in four languages.
+// Lines that open with a comment marker and are code, and lines that do not and
+// are comments — all of them answered by the parse.
 //
-// The round that added [marked] tested it on Go alone and wrote in its doc that
-// no other marker was reachable. Each of these reaches it, and each is code.
-func TestMarkedSeparatesACommentFromCodeThatOpensLikeOne(t *testing.T) {
+// These sixteen were a table of prefix rules, revised in four consecutive rounds
+// and wrong after each. `#deleteTemp($path);` is a PHP comment, `#define N` a C
+// directive, `--i;` a decrement and `-- note` a comment, and no rule over the
+// characters separates them because the answer depends on the language. The
+// parse is asked in the file each belongs to.
+func TestALineOpeningWithAMarkerIsJudgedByItsLanguage(t *testing.T) {
 	for _, c := range []struct {
-		line string
-		want bool
+		name, file, src string
+		want            []string
 	}{
-		{"// deleteTemp(path)", true},
-		{"# delete_temp(path)", true},
-		{"#", true},
-		// PHP spells a comment with no space, and headings double the marker.
-		// Requiring a space read both as code and reopened the doubled-marker
-		// claim that `marked` exists to refuse.
-		{"#deleteTemp($path);", true},
-		{"## deleteTemp($path);", true},
-		{"-- delete from t", true},
-		{"/* the fast path */", true},
-		{"/* unterminated", true},
-		// Code that opens with one of those markers.
-		{"#[cfg(feature = \"x\")]", false},
-		{"#define N {1, 2}", false},
-		{"#include <stdio.h>", false},
-		{"--i;", false},
-		{"--$i;", false},
-		{"/* the fast path */ deleteTemp(path);", false},
-		{"*p = 0;", false},
-		{"foo()", false},
+		{
+			name: "php reads a hash with no space as a comment",
+			file: "a.php",
+			src:  "<?php\nfunction a() {\n    #deleteTemp($path);\n    ## another\n    done();\n}\n",
+			want: []string{"#deleteTemp($path);", "## another"},
+		},
+		{
+			name: "c reads the same shapes as directives and code",
+			file: "a.c",
+			src:  "#include <stdio.h>\n#define N 4\nvoid a(void) {\n\tint i = 2;\n\t--i;\n}\n",
+			want: nil,
+		},
+		{
+			name: "a leading block comment does not make its line inert",
+			file: "a.c",
+			src:  "void a(void) {\n\t/* the fast path */ deleteTemp(path);\n\tdone();\n}\n",
+			want: nil,
+		},
+		{
+			name: "rust reads an attribute as code and a doc comment as not",
+			file: "a.rs",
+			src:  "#[cfg(feature = \"x\")]\n/// the caller holds the lock\nfn a() { foo(); }\n",
+			want: []string{"/// the caller holds the lock"},
+		},
 	} {
-		t.Run(c.line, func(t *testing.T) {
-			if got := marked(c.line); got != c.want {
-				t.Fatalf("marked(%q) = %v, want %v", c.line, got, c.want)
+		t.Run(c.name, func(t *testing.T) {
+			got := comment.Inert([]byte(c.src), lang.Lookup(c.file))
+			for _, line := range c.want {
+				if !got[line] {
+					t.Errorf("%q held no code and was not marked", line)
+				}
+			}
+			for line := range got {
+				found := false
+				for _, want := range c.want {
+					if line == want {
+						found = true
+					}
+				}
+				if !found {
+					t.Errorf("%q was marked and is code", line)
+				}
 			}
 		})
 	}

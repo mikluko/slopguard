@@ -91,7 +91,11 @@ func Lookup(path string) *Language {
 	return nil
 }
 
-// qualified is byName's keys in a fixed order, since a map's is not one.
+// qualified is the names a path is matched against whole, in a fixed order since
+// a map's is not one. It is [byName]'s keys less `values.yaml` and `values.yml`:
+// those two are exempt from the commented-out-code rule by name, and matching
+// them here would extend that exemption to `prod.values.yaml`, which
+// docs/limits.md records as a limit rather than a feature.
 var qualified = []string{"Dockerfile", "Containerfile", "Makefile", "makefile", "GNUmakefile"}
 
 // formats are the extensions that carry a format this tool does not read. They

@@ -100,7 +100,7 @@ func WeighAt(candidates []comment.Comment, language *lang.Language, src []byte, 
 //
 // The rules run in a fixed precedence and a comment gets one verdict, so a table
 // built from a whole run reports each class's share of a partition: `tautology`
-// only ever sees what `leftover` and `echo` declined. Read as though it were the
+// only ever sees what `leftover`, `echo` and `hollow` declined, in that order. Read as though it were the
 // class on its own, that understates every rule below the first and makes the
 // order look like a ranking. An empty name runs all of them.
 func WeighOnly(candidates []comment.Comment, language *lang.Language, src []byte, offset float64, only string) []Finding {
@@ -158,10 +158,13 @@ func weigh(candidates []comment.Comment, language *lang.Language, src []byte, of
 		for j, read := range model.Judge(texts, bias) {
 			// Restatement is a relation, so the model's reading of one is
 			// taken only where the code supports it: a single line below, at
-			// least two content words, and at least one of them already
-			// spelled by that line. A section banner — "User data" over
-			// `ami_type` — shares nothing with what it heads and restates
-			// nothing, whatever it reads like on its own.
+			// least two content words, and — outside a function body — at
+			// least one of them already spelled by that line. A section
+			// banner — "User data" over `ami_type` — shares nothing with what
+			// it heads and restates nothing, whatever it reads like on its
+			// own. [restates] holds the exception and the reason: inside a body
+			// there are no banners, and demanding a shared word there loses
+			// "multiply it by two" over `return v * 2`.
 			if read.Class == "tautology" && !restates(candidates[pending[j]], src) {
 				continue
 			}

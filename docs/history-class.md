@@ -103,19 +103,22 @@ whatever topic the exemplars happen to share.
 That is directly observable. Fitting the history direction from two disjoint
 samples of real history comments gives two directions that barely agree:
 
-| class | cos(direction from mined, direction from held-out) |
-| --- | --- |
-| history | +0.317 |
-| narrative | +0.303 |
-| compat | +0.592 |
-| tautology | +0.689 |
+| class | halves fitted separately | how the halves were drawn |
+| --- | --- | --- |
+| history | +0.317 | mined against held-out |
+| narrative | +0.303 | mined against held-out |
+| compat | +0.592 | even against odd exemplars |
+| tautology | +0.689 | even against odd exemplars |
 
-The two shipped figures are what `go test ./internal/model -run TestStability` prints. This table
-carried +0.575 and +0.647 for several rounds, as did [limits.md](limits.md), which withdrew them:
-the test printed +0.592 and +0.689 in the commit that wrote the old pair, so it was never a
-measurement. Only one of the two copies was corrected, and the number is stated here again rather
-than pointed at, since a pointer is what let the pair diverge in the first place. `history` and
-`narrative` are dropped classes and cannot be re-measured.
+The two shipped classes are what `go test ./internal/model -run TestStability` prints, and it splits
+each class's pooled exemplars evenly and oddly rather than mined against held-out, so the comparison
+is looser than one column would suggest. `history` and `narrative` are dropped and cannot be
+re-measured either way, which is why the looser figure is the one available.
+
+This table carried +0.575 and +0.647 for several rounds, as did [limits.md](limits.md), which
+withdrew them: the test printed +0.592 and +0.689 in the commit that wrote the old pair, so it was
+never a measurement. Only one of the two copies was corrected. The numbers are stated here rather
+than pointed at, since a pointer is what let the pair diverge.
 
 Cross-fitted both ways, the honest ceiling for history is precision 1.000 at
 recall 1/10 (mined to held-out) and 2/10 (held-out to mined), and those cuts are

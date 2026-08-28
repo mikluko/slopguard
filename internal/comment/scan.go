@@ -41,12 +41,13 @@ func ScanAll(src []byte, language *lang.Language) (comments []Comment, release f
 // The question it answers is whether a line was code before a write touched it,
 // and the hook's caller answers that about text it reconstructs rather than a
 // file on disk. Reading it off the parse is the only way that holds across
-// fourteen grammars: four rounds of deciding it from delimiters — a marker at
+// sixteen grammars: four rounds of deciding it from delimiters — a marker at
 // the start of a line, a `/*` opening a block, a backtick after an `=` — each
 // closed one shape and reopened another, because a delimiter's meaning is a
 // question about the grammar and not about the characters.
 //
-// A file that does not parse yields what it can, for the reason given in [scan].
+// A text that does not parse yields every line, which is the opposite of what
+// [Scan] does with one and is said again at the branch.
 func Inert(src []byte, language *lang.Language) map[string]bool {
 	parser := tree_sitter.NewParser()
 	defer parser.Close()

@@ -294,63 +294,6 @@ func flat(text string) string {
 	return strings.Join(lines, "\n")
 }
 
-// marked reports whether a line is itself a comment.
-//
-// `*` is not a marker here, though [continues] treats it as one: inside a block
-// comment it continues the run, but a line of code may open with it — `*p = 0`
-// in C — and reading that as a comment would cost the tier a true transition.
-//
-// A bare prefix test is not enough, and reading one as sufficient cost the tier
-// four true transitions in as many languages: `--i;`, `#[cfg(feature = "x")]`,
-// `#define N {1, 2}` and `/* the fast path */ deleteTemp(path);` all open with a
-// marker and all are code. `--` has to be followed by a space, `#` must not open
-// a Rust attribute or a preprocessor directive, and a line opening a block has
-// to have no code after the block closes.
-//
-// This is the fallback and not the answer. [comment.Inert] reads the same
-// question off the grammar, and where the file before the write can be
-// reconstructed it settles every case this cannot: `#include 'header.php';` is a
-// PHP comment and a C directive spelled the same way, and no rule over the
-// characters tells them apart. What is left here is the case where the
-// reconstruction fails, where a marker doubled onto a line is still worth
-// refusing.
-func marked(line string) bool {
-	switch {
-	case strings.HasPrefix(line, "//"):
-		return true
-	case strings.HasPrefix(line, "--"):
-		// `--` opens a comment in SQL and Lua and a decrement everywhere else,
-		// and the space is what tells them apart: `-- note` against `--i;`.
-		rest := line[2:]
-		return rest == "" || strings.HasPrefix(rest, " ") || strings.HasPrefix(rest, "\t")
-	case strings.HasPrefix(line, "#"):
-		// Not by the space: PHP spells a comment `#deleteTemp($path);` and the
-		// world spells a heading `## this`, so requiring one read both as code
-		// and reopened the doubled-marker claim it was meant to close. What is
-		// not a comment is a Rust attribute and a C preprocessor directive,
-		// which are a closed set and can be named.
-		rest := line[1:]
-		if strings.HasPrefix(rest, "[") {
-			return false
-		}
-		for _, directive := range []string{
-			"define", "include", "if", "ifdef", "ifndef", "else", "elif",
-			"endif", "pragma", "undef", "error", "warning", "line",
-		} {
-			if strings.HasPrefix(rest, directive) {
-				return false
-			}
-		}
-		return true
-	case strings.HasPrefix(line, "/*"):
-		// A block that closes with code after it is a comment on that code, and
-		// the code is what the write commented out.
-		at := strings.Index(line, "*/")
-		return at < 0 || strings.TrimSpace(line[at+2:]) == ""
-	}
-	return false
-}
-
 // copies counts the occurrences of run in text, overlapping ones included.
 //
 // [strings.Count] does not: for `a\na\na` and the run `a\na` it answers one,
@@ -432,8 +375,9 @@ func holds(text, run string) bool {
 // asserted the miss of both halves for several rounds. Converting a `/* */`
 // block to `//` lines authors every line it reports, and its interior carries no
 // marker for [marked] to read, so the tool called the most ordinary comment
-// reformatting in the C family a commenting-out of live code. [enclosed] reads
-// the replaced text for what the lines sat inside.
+// reformatting in the C family a commenting-out of live code. [quiet] rebuilds
+// the file as this write found it and [comment.Inert] reads the grammar for
+// which of its lines held code.
 //
 // One of the quoted lines has to have been code, which is the other half of the
 // sentence and went unchecked while every round attacked the first. Doubling a
@@ -492,13 +436,12 @@ func moved(f rule.Finding, was, now string) bool {
 			return false
 		}
 		// The sentence says live code, so one of the lines has to have been
-		// code. A line whose own body opens with a marker was already a comment
-		// before this write doubled it, and `// // note that the caller holds
-		// the lock` satisfies every other condition here. A line carrying no
-		// marker of its own was still a comment if the file put it inside a
-		// block, a docstring or a raw string, which [inert] answers from the
-		// grammar rather than from the shape of the text.
-		if !marked(line) && !inert[line] {
+		// code. [inert] is the file as this write found it, read for which of
+		// its lines the grammar covers with a comment or a string: a marker
+		// doubled onto a line, the interior of a block, a docstring and a raw
+		// string are all the same answer to it, where each was a separate rule
+		// over the characters before, and each of those rules was wrong.
+		if !inert[line] {
 			live = true
 		}
 	}

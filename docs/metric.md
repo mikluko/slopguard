@@ -77,10 +77,17 @@ comments it nags about.
 
 **One caveat that the first version got wrong.** Recall and FPR are invariant to
 the ratio *between* labels. They are not invariant to the composition *within* a
-label, and the survived pool's composition is set by `-keep`. Removing the four
-repositories sitting at the 800-row cap moves FPR from 0.047 to 0.035 without
-touching the tool. So any FPR figure must be reported against a stated pool, and
-preferably stratified by repository and language.
+label, and the survived pool's composition is set by `-keep`. On the corpus of
+the day, removing the four repositories sitting at the 800-row cap moved FPR
+from 0.047 to 0.035 without touching the tool. So any FPR figure must be
+reported against a stated pool, and preferably stratified by repository and
+language.
+
+Neither figure is this corpus's, and the ninth reaches no cap at all: its
+largest survived contributor is `etcd-io/bbolt` at 388 rows against a `-keep` of
+800, and the shipped build's FPR here is 0.0003. The caveat holds and its
+illustration is history, which is the distinction the paragraph below on the
+same subject spent four rounds failing to draw.
 
 ## The noise does not simply run one way
 
@@ -222,7 +229,8 @@ z about 10.9. `leftover` alone is **12.4** at z about 15, and supplies 20 of the
 Each class is now also measured with the others switched off, and this section
 used to claim the two tables agree, so the precedence order was not distorting
 the partition. They do not agree, on either corpus. `echo` catches nothing in the
-run and one alone; `tautology` takes 13 nudges in the run and 14 alone; the
+run and one alone; on the ninth corpus `tautology` takes 13 nudges in the run
+and 14 alone, where the seventh-corpus table above gives it 14 in the run; the
 isolated rows sum to 22 catches against the run's 21. That is exactly the
 distortion the isolated table exists to expose, and it was declared absent while
 the numbers to refute it were printed beside the claim.
@@ -445,7 +453,7 @@ The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not
 distinguishable from the syntax. What separates the compiler sketches is that
 they fail to *type* check, and a type checker is two orders of magnitude outside
-a hook's budget and exists for one of the fourteen languages.
+a hook's budget and exists for one of the sixteen grammars.
 
 **Precision is bimodal, and the pooled number is nobody's experience.**
 Application code, library code and tests run high; compilers, code generators,
@@ -490,7 +498,7 @@ discarded.
 The window is the other half. Truncating each survived row's history to a length
 drawn from the deleted class's own lifetime distribution puts 48.7% of survived
 rows at 0, against the deleted class's 65.4%, and takes the oracle's lift from
-16.7 to about 1.3. So most of the distributional gap is window asymmetry and none
+16.10 to about 1.3. So most of the distributional gap is window asymmetry and none
 of the zero is: the zero is arithmetic.
 
 Neither is fixed here. The field ships on every row and defines the negative
@@ -518,9 +526,11 @@ been re-run on it.
 requires the annotated code to survive the commit verbatim, and the survived side
 has no equivalent test, so long-annotated positives are selectively filtered out:
 median 84 bytes against 158. A one-field rule, `annotates` under 60 bytes, scores
-lift 2.16. `baselines` used to test two thresholds on that field which were both
-dead — under 40 catches nothing, truncation at 400 scores 0.22 — and to miss the
-live one; it now sweeps 60, 80, 100 and 160, which is the table above. What is
+lift 2.16. `baselines` used to test a threshold on that field that was dead —
+under 40 is the harvest's own floor and catches nothing — and to miss the live
+one; it now sweeps 60, 80, 100 and 160 as well. Truncation at 400 stays and is
+in the table above at lift 0.22, kept because a baseline scoring below chance is
+worth printing: it is how the corpus reports that the field is filtered. What is
 still open is the cause: apply the survival test to both sides or to neither.
 
 ## Comparing two corpora is not a measurement

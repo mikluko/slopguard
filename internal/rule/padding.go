@@ -323,11 +323,13 @@ var scaffold = set(
 	"reader", "user", "about", "use", "usage", "call", "type", "object",
 	"instance", "field", "item", "data", "given", "receive", "create", "make",
 	"new", "store", "helper", "struct", "pointer", "design", "provide",
-	// Stemmed the way content() stems, which trims a trailing "s". An entry
-	// ending in one is a key no lookup ever forms: "process" and "pass" were
-	// both unreachable, since the word arrives as "proces" and "pas".
-	"contain", "hold", "get", "set", "handle", "proces", "iterate", "add",
-	"pas",
+	// Not stemmed. [eliminates] looks up the word as [prose.Normalize] leaves
+	// it, which lowercases and drops punctuation and nothing else, so the key a
+	// lookup forms is the word as written. A round read the trailing-"s" trim in
+	// [content] as applying here too and replaced "process" and "pass" with
+	// "proces" and "pas": those two matched nothing, and the two words they
+	// replaced stopped eliminating anything for four rounds.
+	"contain", "hold", "get", "set", "handle", "process", "iterate", "add",
 	"turn", "wrap", "represent", "perform", "work", "way", "thing", "part",
 	"need", "want", "allow", "simply", "just", "utility", "wrapper", "loop",
 	"over", "each", "convert", "build", "run", "operation", "purpose",

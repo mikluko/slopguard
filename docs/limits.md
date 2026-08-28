@@ -34,7 +34,7 @@ rediscovered by whoever hits it next.
   library's findings and nearly all of `cmd/compile/internal/walk`: `// hv1 := 0`, `// hp = &a[0]`. The sketch names the
   variables the pass manipulates, so it grounds every name and reads as legal Go. It fails to *type* check —
   `no new variables on left side of :=` — and that is the only thing measured that separates it. A type checker is two
-  orders of magnitude outside a hook's budget and exists for one of the fourteen languages, so this shape stands.
+  orders of magnitude outside a hook's budget and exists for one of the sixteen grammars, so this shape stands.
 - A comment run that opens with a licence line pardons every line stacked under it, because a run reads as one comment
   and any of its lines can carry the marker.
 - A contract stated in the words of its own signature reads as padding when several of them stand together.

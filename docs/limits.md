@@ -27,8 +27,11 @@ rediscovered by whoever hits it next.
   standard offset" — over a method whose parameters are `standardOffset` and `wallOffset`, so every word is one the
   declaration spells. Two findings in 15,605 JDK files, and the shape has no tell beyond being right.
 - A commented option under a key that already has values is reported, which on a stock `helm create` scaffold is two
-  findings. A commented block indented under a key whose value is an empty collection is documentation rather than
-  residue and is spared: `podSecurityContext: {}` over `# fsGroup: 2000` is how a chart shows what a setting takes.
+  findings. A commented block opening on the line under a key left unset — an empty collection, an empty string, or no
+  value at all — is documentation rather than residue and is spared: `podSecurityContext: {}` over `# fsGroup: 2000` is
+  how a chart shows what a setting takes, and an Ansible role writes the same menu flush left under
+  `redis_disabled_commands: []`. Residue in that one position is spared with it, there being no tell between them; a
+  blank line before the block, or a dedent past the key, reports it.
 - The same replacement text occurring twice in a file is claimed twice. Only the bytes an edit changed are attributed to
   it, but where those bytes appear more than once there is nothing in the payload that tells the copies apart.
 

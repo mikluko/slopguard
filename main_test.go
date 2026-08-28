@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -224,6 +225,127 @@ func a() {
 	}
 	if !strings.Contains(report("once.go", findings, in), "This write commented out live code") {
 		t.Error("the nudge hedges a transition it watched happen")
+	}
+}
+
+// The log has to answer how often the unhedged sentence fires.
+//
+// It is the tool's only claim made without hedging, and for sixteen rounds
+// nothing wrote down whether it happened — so every argument about whether the
+// tier is worth its risk was an argument about a number nobody had. `record`
+// itself had no test, so the log's shape was free to change unnoticed too.
+func TestTheLogSaysWhetherTheFindingWasConfirmed(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		// The file as the write leaves it, since the hook reads it from disk.
+		src      string
+		was, now string
+		want     bool
+	}{
+		{
+			name: "the write commented the line out",
+			src:  "package p\n\nfunc a() {\n\t// deleteTemp(path)\n\tdone()\n}\n",
+			was:  "\tdeleteTemp(path)\n\tdone()\n",
+			now:  "\t// deleteTemp(path)\n\tdone()\n",
+			want: true,
+		},
+		{
+			// An older comment reindented into a new scope by the write that
+			// deleted the lines it quotes. The write does touch the comment, so
+			// the finding is attributed to it; it did not author it, so the log
+			// must not say the tool watched this happen.
+			name: "the write only reindented a comment it did not author",
+			src:  "package p\n\nfunc a() {\n\tif cond {\n\t\t// deleteTemp(path)\n\t\t// closeHandle(h)\n\t}\n}\n",
+			was:  "\t// deleteTemp(path)\n\t// closeHandle(h)\n\tdeleteTemp(path)\n\tcloseHandle(h)\n",
+			now:  "\tif cond {\n\t\t// deleteTemp(path)\n\t\t// closeHandle(h)\n\t}\n",
+			want: false,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(session.MemoryEnv, t.TempDir())
+			log := filepath.Join(t.TempDir(), "findings.jsonl")
+			t.Setenv(logEnv, log)
+
+			in := payload{ToolName: "Edit"}
+			in.ToolInput.FilePath = file(t, "once.go", c.src)
+			in.ToolInput.OldString = c.was
+			in.ToolInput.NewString = c.now
+
+			findings := review(in)
+			if len(findings) != 1 {
+				t.Fatalf("want one finding, got %d", len(findings))
+			}
+			record(in.ToolInput.FilePath, findings, in)
+
+			raw, err := os.ReadFile(log)
+			if err != nil {
+				t.Fatalf("the log was not written: %v", err)
+			}
+			var row struct {
+				Line      int    `json:"line"`
+				Class     string `json:"class"`
+				Confirmed bool   `json:"confirmed"`
+			}
+			if err := json.Unmarshal(raw, &row); err != nil {
+				t.Fatalf("the log row does not decode: %v\n%s", err, raw)
+			}
+			if row.Line == 0 || row.Class == "" {
+				t.Errorf("the log row lost a field it used to carry: %s", raw)
+			}
+			if row.Confirmed != c.want {
+				t.Errorf("confirmed = %v, want %v:\n%s", row.Confirmed, c.want, raw)
+			}
+		})
+	}
+}
+
+// The certain tier is a property of the payload, not of the tool that sent it.
+//
+// Two documents and a doc comment said a MultiEdit never earns the unhedged
+// sentence, and the code has never worked that way: [attributable] counts
+// replacements. A MultiEdit carrying one is a single-replacement write and gets
+// it. Nothing reached the one-replacement array, so the false claim survived
+// three rounds of review of the file it was written in.
+func TestTheCertainTierCountsReplacementsAndNotToolNames(t *testing.T) {
+	const once = `package p
+
+func a() {
+	// deleteTemp(path)
+	done()
+}
+`
+	pairs := [][2]string{
+		{"\tdeleteTemp(path)\n\tdone()\n", "\t// deleteTemp(path)\n\tdone()\n"},
+		{"\tunrelated()\n", "\tstillUnrelated()\n"},
+	}
+
+	for _, c := range []struct {
+		name string
+		take int
+		want bool
+	}{
+		{"a MultiEdit carrying one replacement", 1, true},
+		{"a MultiEdit carrying two", 2, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(session.MemoryEnv, t.TempDir())
+			in := payload{ToolName: "MultiEdit"}
+			in.ToolInput.FilePath = file(t, "once.go", once)
+			for _, e := range pairs[:c.take] {
+				in.ToolInput.Edits = append(in.ToolInput.Edits, struct {
+					OldString string `json:"old_string"`
+					NewString string `json:"new_string"`
+				}{e[0], e[1]})
+			}
+			findings := review(in)
+			if len(findings) != 1 {
+				t.Fatalf("want one finding, got %d", len(findings))
+			}
+			got := strings.Contains(report("once.go", findings, in), "This write commented out live code")
+			if got != c.want {
+				t.Fatalf("unhedged = %v, want %v", got, c.want)
+			}
+		})
 	}
 }
 
@@ -575,11 +697,14 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 			// A run commented out at one indentation and reported at another,
 			// which is what an edit inserting into a nested scope produces. This
 			// is the only row with a multi-line Raw that wants a yes, and
-			// without it `flat(now)` could be dropped with the suite green —
-			// which would silence the confirmed claim on every run of more than
-			// one line, and silently, since the invariant sweeps take no payload.
+			// without it either side of the flattening could be dropped with the
+			// suite green — which would silence the confirmed claim on every run
+			// of more than one line, and silently, since the invariant sweeps
+			// take no payload. Its `Raw` carries indentation *between* its lines
+			// because that is what a real run carries; written flush, it pinned
+			// `flat(now)` alone and `flat(f.Raw)` stayed revertible.
 			name: "a run commented out across two lines is confirmed",
-			raw:  "// foo()\n// bar()",
+			raw:  "// foo()\n\t// bar()",
 			text: "foo()\nbar()",
 			in: edit(
 				"\tfoo()\n\tbar()\n",
@@ -635,6 +760,22 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 			in: edit(
 				"\ta()\n\t// foo()\n\tfoo()\n\tbar()\n",
 				"\tz()\n\t// foo()\n\tdefer foo()\n\tbar()\n",
+			),
+			want: false,
+		},
+		{
+			// Two comments that were already comments, made adjacent for the
+			// first time by one edit deleting the live code between them. The
+			// run is genuinely new — it stood nowhere before — so a whole-run
+			// carry-through test passes it, and each line the finding quotes was
+			// a whole line of the replacement and is not one of the insertion.
+			// Every condition met, and the write authored none of the comment.
+			name: "one edit deleted the code between two comments that already existed",
+			raw:  "// foo()\n\t// bar()",
+			text: "foo()\nbar()",
+			in: edit(
+				"\t// foo()\n\tfoo()\n\t// bar()\n\tbar()\n",
+				"\t// foo()\n\t// bar()\n",
 			),
 			want: false,
 		},

@@ -91,7 +91,7 @@ func main() {
 		return
 	}
 	findings := review(in)
-	record(in.ToolInput.FilePath, findings)
+	record(in.ToolInput.FilePath, findings, in)
 	if len(findings) == 0 {
 		return
 	}
@@ -214,8 +214,9 @@ func switched(f rule.Finding, in payload) bool {
 type change struct{ was, now string }
 
 // edits returns every replacement in a payload, the single-Edit form and the
-// MultiEdit array alike, so the two callers that walk them cannot disagree about
-// what the write did.
+// MultiEdit array alike, so no caller can disagree with another about what the
+// write did. [written] kept a duplicate of this list for three rounds, which is
+// the one that decides which comments are attributed to the write at all.
 func edits(in payload) []change {
 	out := []change{{in.ToolInput.OldString, in.ToolInput.NewString}}
 	for _, e := range in.ToolInput.Edits {
@@ -227,29 +228,39 @@ func edits(in payload) []change {
 // attributable reports whether this write is simple enough for a finding to be
 // tied to it by text.
 //
-// One replacement can be: [moved] asks what that replacement did, the twin guard
-// asks whether the file holds another copy, and between them fifteen rounds of
-// review have found no way for a comment the write did not author to reach the
-// unhedged sentence. Several replacements cannot. A MultiEdit can write a copy
-// of a comment and delete it again, leaving a payload whose first edit confirms
-// a pre-existing comment somewhere else and a file that holds no trace of the
-// copy; and the survival test that would catch it cannot tell that copy from the
-// pre-existing comment it is identical to. That is the same wall the twin guard
-// meets, one step further back.
+// One replacement can be: [moved] asks what that replacement did and the twin
+// guard asks whether the file holds another copy. Neither is a proof, and the
+// pair has been holed twice by review — once by an edit reindenting a comment it
+// did not write, once by an edit deleting the live code between two comments and
+// so joining them into a run that stood nowhere before. Both were shapes where
+// every condition read true of a comment the write had not authored, both are
+// now regression rows, and a third is the working assumption rather than a
+// surprise. What the tier rests on is that the failures found have all been
+// single-replacement ones, so restricting it costs the guarantee nothing.
 //
-// So the certain tier is the single-replacement write. A MultiEdit still gets
-// every finding, hedged — which is what the tool says about a comment it cannot
-// prove anything about, and is the honest answer here.
+// Several replacements cannot be tied by text at all. A MultiEdit can write a
+// copy of a comment and delete it again, leaving a payload whose first edit
+// confirms a pre-existing comment somewhere else and a file that holds no trace
+// of the copy; and the survival test that would catch it cannot tell that copy
+// from the pre-existing comment it is identical to. That is the same wall the
+// twin guard meets, one step further back.
+//
+// So the certain tier is the single-replacement write, which is a property of
+// the payload and not of the tool that sent it: a MultiEdit carrying one
+// replacement is one, and gets the unhedged sentence. A write carrying several
+// gets every finding hedged, which is what the tool says about a comment it
+// cannot prove anything about.
+//
 // Counted over the replacements that say something, since a MultiEdit leaves the
 // single-Edit pair empty and an Edit leaves the array empty.
 func attributable(in payload) bool {
-	real := 0
+	changed := 0
 	for _, e := range edits(in) {
 		if strings.TrimSpace(e.was) != "" || strings.TrimSpace(e.now) != "" {
-			real++
+			changed++
 		}
 	}
-	return real == 1
+	return changed == 1
 }
 
 // flat trims each line, leaving the line breaks. Trailing whitespace and a
@@ -273,17 +284,20 @@ func flat(text string) string {
 // moved reports whether one edit both wrote this comment and stopped its lines
 // being code.
 //
-// Four conditions, and the pair on the raw text is what makes it one edit rather
-// than two. The comment must appear in what the edit inserted and not in what it
-// replaced: present on both sides it is a comment the edit carried through
-// untouched, and absent from the replacement it is not this edit's at all. Both
-// sides are compared through [flat], so "the comment" means its text with each
-// line's own indentation removed — which also means a comment is refused where
-// an identical one at another indentation stood in the replaced text, a miss in
-// the safe direction. Two earlier versions tested only the stripped text and both let a
-// deleting edit vouch for a comment it never touched — first by pooling every
-// edit's before-text, then by asking merely that the stripped line occur
-// somewhere in the replacement, which `defer foo()` satisfies for `foo()`.
+// The tests on the raw text are what make it one edit rather than two. The
+// comment must appear in what the edit inserted and not in what it replaced:
+// present on both sides it is a comment the edit carried through untouched, and
+// absent from the replacement it is not this edit's at all. The absence is asked
+// of every line as well as of the whole run, because deleting the live code
+// between two comments joins them into a run that stood nowhere before, so the
+// run is new while none of its lines is. Both sides are compared through [flat],
+// so "the comment" means its text with each line's own indentation removed —
+// which also means a comment is refused where an identical one at another
+// indentation stood in the replaced text, a miss in the safe direction. Two
+// earlier versions tested only the stripped text and both let a deleting edit
+// vouch for a comment it never touched — first by pooling every edit's
+// before-text, then by asking merely that the stripped line occur somewhere in
+// the replacement, which `defer foo()` satisfies for `foo()`.
 //
 // The stripped lines carry the other half: each was a whole line of the replaced
 // text and is no longer a whole line of the inserted text. Whole lines, because
@@ -313,6 +327,15 @@ func moved(f rule.Finding, was, now string) bool {
 		return out
 	}
 	before, after := lines(was), lines(now)
+	// The run being absent from the replaced text is not enough: deleting the live
+	// code between two comments joins them into a run that never stood anywhere,
+	// so the whole-run test above passes while every line of it is older than the
+	// edit. A comment line the replacement already held is not this edit's.
+	for _, line := range strings.Split(raw, "\n") {
+		if before[strings.TrimSpace(line)] {
+			return false
+		}
+	}
 	found := false
 	for _, line := range strings.Split(f.Source, "\n") {
 		line = strings.TrimSpace(line)
@@ -351,7 +374,13 @@ var errNotWorthReading = errors.New("not a regular file, or too large to judge")
 // record appends what was found to the log, when one is asked for. A week of
 // real use is the only honest measure of how often this tool is wrong, and
 // nothing else in the process writes it down.
-func record(path string, findings []rule.Finding) {
+//
+// Each row carries whether the finding reached the unhedged sentence. That tier
+// is the one claim the tool makes without hedging and the one whose cost nobody
+// can price: without the field there is no way to ask how often it fires, so
+// every argument about whether it is worth its risk is an argument about a
+// number nobody has.
+func record(path string, findings []rule.Finding, in payload) {
 	name := os.Getenv(logEnv)
 	if name == "" || len(findings) == 0 {
 		return
@@ -368,6 +397,10 @@ func record(path string, findings []rule.Finding) {
 			"line":  f.Line,
 			"class": f.Class,
 			"score": f.Score,
+			// Named for what the nudge claims, not for the predicate: the
+			// question the log has to answer is how often the tool said it
+			// watched the write happen.
+			"confirmed": switched(f, in),
 		})
 	}
 }
@@ -445,18 +478,13 @@ func written(src []byte, in payload) []comment.Span {
 	if in.ToolName == "Write" {
 		return []comment.Span{{Start: 0, End: uint(len(src))}}
 	}
-	type edit struct{ old, new string }
-	edits := []edit{{in.ToolInput.OldString, in.ToolInput.NewString}}
-	for _, e := range in.ToolInput.Edits {
-		edits = append(edits, edit{e.OldString, e.NewString})
-	}
 	var out []comment.Span
-	for _, e := range edits {
-		if e.new == "" || len(out) >= spanBudget {
+	for _, e := range edits(in) {
+		if e.now == "" || len(out) >= spanBudget {
 			continue
 		}
-		prefix, suffix := shared(e.old, e.new)
-		for _, s := range locate(src, e.new) {
+		prefix, suffix := shared(e.was, e.now)
+		for _, s := range locate(src, e.now) {
 			if narrowed, ok := narrow(s, prefix, suffix); ok {
 				out = append(out, narrowed)
 			}

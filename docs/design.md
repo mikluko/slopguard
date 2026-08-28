@@ -30,9 +30,10 @@ disqualification.
 The directions are fitted at build time into `internal/model/assets/head.bin`, three kilobytes, so an invocation embeds
 only the sentences in front of it. Re-embedding the corpus on every hook call was most of what a run used to cost: a
 write with nothing for the model to read now returns in single-digit to low-teens milliseconds, and one that reaches the
-model pays 115 to 145 ms, most of it opening the ONNX session. Both ends of those ranges were measured on one machine,
-warm, and the spread is what the measurement is worth. Most of the floor is process start: the binary is 111 MB, since
-the model is embedded in it.
+model pays enough more to notice, most of it opening the ONNX session. The second figure is machine-dependent and varies
+several-fold with how many comments the file holds, so [metric.md](metric.md) gives it as an order rather than as a pair;
+the pair that used to stand here disagreed with the one in `internal/rule`'s doc, which is what withdrew both. Most of
+the floor is process start: the binary is 111 MB, since the model is embedded in it.
 
 # Calibration
 

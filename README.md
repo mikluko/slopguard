@@ -187,7 +187,7 @@ Use an absolute path if sessions start without the Homebrew prefix on `PATH`. Re
 | `SLOPGUARD_ONNXRUNTIME_LIBRARY` | where to dlopen ONNX Runtime from, when it is in none of the usual places            |
 | `SLOPGUARD_NO_MODEL`            | turns the semantic pass off, leaving the structural rules; a no-op unless `WIDER`    |
 | `SLOPGUARD_STATE`               | where the per-session memory of what has already been said lives; empty turns it off |
-| `SLOPGUARD_LOG`                 | a file every finding is appended to, one JSON object per line                        |
+| `SLOPGUARD_LOG`                 | a file every finding is appended to, one JSON object per line, `confirmed` marking the unhedged ones |
 
 The last two write to disk. `SLOPGUARD_STATE` defaults to `slopguard` under the user cache directory, and files there
 that have gone a day without a write are removed — only files this program wrote, whose names are a single base-36
@@ -221,10 +221,11 @@ A finding names the line and the rule, at most three per write, strongest first:
 }
 ```
 
-One thing it says without hedging: where a single `Edit` turned live code into the comment being reported, the tool
-watched that happen and says so. A `MultiEdit` never gets that sentence, because several replacements cannot be tied to
-one comment by text alone — one of them can write a copy and another delete it, leaving a payload that vouches for a
-comment nobody wrote in that write.
+One thing it says without hedging: where a write carrying a single replacement turned live code into the comment being
+reported, the tool watched that happen and says so. It is the replacement that is counted, not the tool that sent it, so
+a one-replacement `MultiEdit` gets the sentence too. A write carrying several never does, because several replacements
+cannot be tied to one comment by text alone — one of them can write a copy and another delete it, leaving a payload that
+vouches for a comment nobody wrote in that write.
 
 The nudge says it is often wrong, and where. It does not quote a rate: the pooled figure is fitted to the sample the
 exemptions were chosen from, and an agent handed a number acts on it. It names the four shapes it gets wrong so the agent

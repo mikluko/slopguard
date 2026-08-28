@@ -161,7 +161,10 @@ One catch for nineteen false alarms. On the Go standard library the default give
 130 findings over 4,065 files against 678 with everything on, and 1,034 before
 this cycle began. On one real file the default takes hundredths of a second of
 user time and the wider build takes about a second, because the semantic pass
-loads 90 MB of ONNX before it can say anything. The exact pair is
+embeds every comment run the file holds. Loading the 90 MB of ONNX is the
+smaller part of that and does not scale: about a tenth of a second, which is
+most of the cost on a file with one comment and an eighth of it on a file with
+three hundred. The exact pair is
 machine-dependent and varies several-fold with how many comments the file holds,
 so it is given as an order rather than as the two figures that used to stand
 here and disagreed with the pair in `internal/rule`'s own doc.

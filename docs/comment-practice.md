@@ -8,6 +8,8 @@ Not reached, and therefore not claimed: the Oracle Javadoc page returns 403 and 
 
 Claims about slopguard's own behaviour are measured, not inferred. slopguard was built at `3f3f5c0` with ONNX Runtime present and run over the Go standard library (4,065 files, reproducing the repo's own figure of 1,034 findings exactly) and over probe files quoting the literature verbatim. Where a statement is an inference rather than a measurement or a quotation, the sentence says so.
 
+**Every figure below is that build's and is not restated when the tool changes.** The file set is still 4,065, but the tool now reports 130 there rather than 1,034, and 678 with every class on; `leftover` is 130 rather than 142. Exemptions added since account for the fall, and the argument this document makes about where the redundancy defect lives does not turn on the size of any of these. Source lines cited by number are `3f3f5c0`'s and several have moved.
+
 ---
 
 ## 1. Which of slopguard's classes has support in published practice
@@ -46,7 +48,7 @@ The one paper that measured how well an automated judge does at this class is no
 - Pascarella measures "Commented code" at **2.4% of OSS comment lines** and **5.9% in industrial code** ([MSR 2017](https://sback.it/publications/msr2017a.pdf), [EMSE 2019](https://repository.tudelft.nl/file/File_7b5835db-7701-48d9-9f6e-c63fb72db0c9)). Jabrayilzade measures it at 1.6% of inline comments.
 - Martin lists "Commented-Out Code" among his bad-comment categories.
 
-**Verdict: supported. Small but real, and slopguard's 142 stdlib findings sit in the right order of magnitude against Pascarella's 2.4%.**
+**Verdict: supported. Small but real, and slopguard's 142 stdlib findings at `3f3f5c0`, 130 now, sit in the right order of magnitude against Pascarella's 2.4%.**
 
 ### `compat`: the weakest class, and the one its most direct source argues against
 
@@ -181,7 +183,7 @@ Here the measurement is kinder to the tool than the argument predicted. A file c
 
 | Probe | Result |
 |---|---|
-| Go standard library, 4,065 files | 1,034 findings: `echo` 623, `tautology` 249, `leftover` 142, `compat` 20, `hollow` 0. Reproduces `docs/design.md` exactly. |
+| Go standard library, 4,065 files | 1,034 findings: `echo` 623, `tautology` 249, `leftover` 142, `compat` 20, `hollow` 0. Reproduced `docs/design.md` exactly at `3f3f5c0`; that document now carries 678, and the split has moved with it. |
 | 7 comments Ousterhout prescribes (verbatim) | 0 findings |
 | 7 comments Ousterhout condemns (verbatim) | 2 findings, both `echo`; the 3 doc-comment cases and the vague-initialiser case missed |
 | PEP 257-shaped docstrings of the README's own 3 `tautology` examples | 0 findings |

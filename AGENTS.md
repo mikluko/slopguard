@@ -61,12 +61,15 @@ Every test file is one of three shapes, and the name says which:
 | Shape | Rule |
 |-------|------|
 | `x_test.go` | the contract of `x.go`. It asserts, and it fails. |
-| `aa_…` | fixtures the other files read. Asserts nothing. |
-| `zz_…` | asserts nothing, or asserts only wall-clock. |
+| `aa_…` | the labelled data other files read. Asserts nothing about code, at most a floor over that data. |
+| `zz_…` | a procedure over a corpus rather than the contract of one file. What it asserts must hold on any machine. |
 
-The `zz_` rule is a property of the file rather than a plea per file: a run that can only log, or can only fail on a
-loaded machine, is a procedure and not a contract. Threshold sweeps, corpus harvests and cost bounds go there. Do not add
-an orphan — a `_test.go` with no source beside it and no prefix is the thing this convention exists to prevent.
+The prefixes say what a file is for and, because they sort, when it runs. They do not promise it never fails:
+`internal/model/aa_heldout_test.go` asserts a floor on held-out labels, and `internal/rule/zz_recall_test.go` asserts
+that renaming an identifier cannot change a verdict. Both are contracts, and both belong where they are, because what
+they range over is a corpus and not a function. What may not go in a `zz_` file is an assertion that fails on a loaded
+machine: a wall-clock bound is a procedure, not a contract. Do not add an orphan — a `_test.go` with no source beside it
+and no prefix is the thing this convention exists to prevent.
 
 `internal/model/corpus.go` and `internal/model/mined.go` are data and keep no pair;
 `internal/model/exemplars_test.go` and the fingerprint check hold them.

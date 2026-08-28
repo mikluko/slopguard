@@ -189,9 +189,10 @@ func review(in payload) []rule.Finding {
 // the whole file with no before, so this cannot speak for it and says no rather
 // than guessing.
 //
-// Every line has to be found. A run that is half old code and half prose is
-// somebody writing a note next to what they disabled, and the part this can
-// vouch for is not the part being reported. The run is looked for from the
+// Every line long enough to be evidence has to be found — a blank line and a
+// bare delimiter stand in every file and are skipped. A run that is half old
+// code and half prose is somebody writing a note next to what they disabled, and
+// the part this can vouch for is not the part being reported. The run is looked for from the
 // start of a line: matched anywhere, a trailing comment on a line the write
 // kept supplies the run's first line, and the claim then covered a second line
 // that was already a comment. Lines that are byte-identical cannot be told
@@ -234,14 +235,15 @@ func edits(in payload) []change {
 // tied to it by text.
 //
 // One replacement can be: [moved] asks what that replacement did and the twin
-// guard asks whether the file holds another copy. Neither is a proof, and the
-// pair has been holed twice by review — once by an edit reindenting a comment it
-// did not write, once by an edit deleting the live code between two comments and
-// so joining them into a run that stood nowhere before. Both were shapes where
-// every condition read true of a comment the write had not authored, both are
-// now regression rows, and a third is the working assumption rather than a
-// surprise. What the tier rests on is that the failures found have all been
-// single-replacement ones, so restricting it costs the guarantee nothing.
+// guard asks whether the file holds another copy. Neither is a proof, and review
+// keeps holing the pair — an edit reindenting a comment it did not write, an
+// edit deleting the live code between two comments and so joining them into a
+// run that stood nowhere before, a trailing comment supplying a run's first
+// line. Each was a shape where every condition read true of a comment the write
+// had not authored; each is now a regression row; the next one is the working
+// assumption rather than a surprise, which is why this doc no longer counts
+// them. What the tier rests on is that every failure found has been a
+// single-replacement one, so restricting it costs the guarantee nothing.
 //
 // Several replacements cannot be tied by text at all. A MultiEdit can write a
 // copy of a comment and delete it again, leaving a payload whose first edit

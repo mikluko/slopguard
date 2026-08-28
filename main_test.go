@@ -454,9 +454,13 @@ func a() {
 // An edit is credited with the bytes it changed, not with the whole text it
 // replaced. [written] is what decides which comments are attributed to a write
 // at all, and the trimming that does it had no test reaching its purpose: the
-// shared prefix and suffix could each be dropped, and the rejection removed,
-// with the suite green. What survived was one test whose replacement is equal
-// on both sides, so its comments sit outside the changed bytes either way.
+// shared prefix and the shared suffix could each be dropped with the suite
+// green. What survived was one test whose replacement is equal on both sides,
+// so its comments sit outside the changed bytes either way.
+//
+// [narrow]'s rejection is still not covered, and no test can cover it: the span
+// it refuses is empty, and an empty span names no comment, so refusing it and
+// returning it are indistinguishable from here.
 //
 // Every row here is a write that leaves the comment exactly where it was and
 // touches only the code around it. The write authored none of them.
@@ -487,8 +491,8 @@ func a() {
 			now:  "func a() {\n\tstart()\n\t// deleteTemp(path)\n",
 		},
 		{
-			// A pure deletion, whose replacement is entirely shared prefix. With
-			// no rejection the span is the whole occurrence, comment included.
+			// A pure deletion, whose replacement is entirely shared prefix, so
+			// the trimmed span is empty and the comment above it is nobody's.
 			name: "the write deleted the line under a comment it carried through",
 			was:  "\t// deleteTemp(path)\n\tsetup()\n",
 			now:  "\t// deleteTemp(path)\n",

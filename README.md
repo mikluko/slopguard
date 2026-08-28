@@ -237,8 +237,8 @@ only party who can tell a true finding from a false one.
 
 A write is judged in single-digit to low-teens milliseconds. Under `SLOPGUARD_WIDER=1` one that reaches the model pays
 enough more to notice — the exact figures are machine-dependent and vary several-fold with how many comments the file
-holds, so `docs/metric.md` gives them as an order rather than a pair. Most of the first call is opening the ONNX
-session.
+holds, so `docs/metric.md` gives them as an order rather than a pair. Opening the ONNX session is about a tenth of a
+second of that and does not scale with the file; embedding each comment run is the part that does.
 
 ## Limits
 

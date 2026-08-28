@@ -1,6 +1,7 @@
 package rule
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -34,5 +35,32 @@ func TestLongCommentIsBounded(t *testing.T) {
 		t.Fatalf("%d bytes of one comment took %s: the tokenizer is seeing all of it", len(src), took)
 	} else {
 		t.Logf("%d bytes of one comment in %s", len(src), took)
+	}
+}
+
+// The identifier set the namespace veto reads is a walk over the whole file,
+// and a file is read for as many comments as the scanner examines. Walking per
+// comment makes the cost the product of the two, which is what this bounds: a
+// large file, and every comment in it shaped like the assignment the veto
+// gates.
+func TestNamespaceIsWalkedPerFile(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("package p\n\n")
+	for i := range 20000 {
+		fmt.Fprintf(&b, "var declared%d int\n", i)
+	}
+	b.WriteString("\nfunc f() {\n")
+	for i := range 200 {
+		fmt.Fprintf(&b, "\t// cited%d = elsewhere%d + 1\n\tprintln(%d)\n", i, i, i)
+	}
+	b.WriteString("}\n")
+	src := []byte(b.String())
+
+	start := time.Now()
+	scan(src, lang.Go, whole(src))
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("%d bytes with a comment on every other line took %s: the file is being walked per comment", len(src), took)
+	} else {
+		t.Logf("%d bytes with a comment on every other line in %s", len(src), took)
 	}
 }

@@ -1,6 +1,8 @@
 package rule
 
 import (
+	"strings"
+
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/mikluko/slopguard/internal/comment"
@@ -15,6 +17,58 @@ import (
 // seconds where 1.75 MB was 14.7.
 const parsedBytes = 16 << 10
 
+// A namespace answers whether a name is one the file itself spells, for the
+// rule that separates a comment naming the code's own symbols from one naming a
+// paper's.
+//
+// The walk is deferred to the first question and held after it. The answer is
+// the same for every comment in a file and the tree is the whole file, so
+// asking per comment is one walk per comment over all of it.
+type namespace struct {
+	root    *tree_sitter.Node
+	src     []byte
+	spelled map[string]bool
+}
+
+// knows reports whether the file spells name in its code. A namespace with no
+// tree knows every name, so a veto built on it fires on nothing rather than on
+// everything.
+func (n *namespace) knows(name string) bool {
+	if n.root == nil {
+		return true
+	}
+	if n.spelled == nil {
+		n.spelled = spells(n.root, n.src)
+	}
+	return n.spelled[name]
+}
+
+// spells returns every identifier a tree names, as written. A comment is a leaf
+// token in every grammar here, so nothing said about the code reaches this: the
+// set is what the code names.
+//
+// The walk is a cursor rather than an index, because tree-sitter answers
+// Child(i) by counting from the first child and a file's top level can hold
+// tens of thousands of nodes.
+func spells(root *tree_sitter.Node, src []byte) map[string]bool {
+	out := map[string]bool{}
+	cursor := root.Walk()
+	defer cursor.Close()
+	for {
+		node := cursor.Node()
+		if strings.HasSuffix(node.Kind(), "identifier") {
+			out[node.Utf8Text(src)] = true
+		} else if cursor.GotoFirstChild() {
+			continue
+		}
+		for !cursor.GotoNextSibling() {
+			if !cursor.GotoParent() {
+				return out
+			}
+		}
+	}
+}
+
 // leftover reports whether a comment is commented-out code: text that parses
 // cleanly as source and is shaped like source. Languages where any word
 // sequence parses, shell and Ruby among them, are exempt. A language whose
@@ -26,7 +80,7 @@ const parsedBytes = 16 << 10
 // that line; a comment after a live statement is a note about it, and the
 // notation those notes use is the notation this rule reads as source —
 // `x2 := Sqrt(x1) // x2 = sqrt(1 - x*x)` says what the variable now holds.
-func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
+func leftover(c comment.Comment, language *lang.Language, src []byte, spelled *namespace) bool {
 	if c.Doc || c.Trailing {
 		return false
 	}
@@ -91,7 +145,7 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 		// The wrapped text, not the fragment: every offset the nodes carry is
 		// into what was parsed, so reading a node's text out of the fragment
 		// alone returns whatever sits len(prefix) bytes further along.
-		return !checked || compiles(inside, []byte(prefix+body+suffix))
+		return !checked || compiles(inside, []byte(prefix+body+suffix), spelled)
 	}
 	return false
 }

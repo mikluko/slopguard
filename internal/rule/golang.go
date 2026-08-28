@@ -32,7 +32,7 @@ var (
 		"yaml":       yamlConfig,
 		"dockerfile": dockerCode,
 	}
-	legal = map[string]func(statements []*tree_sitter.Node, body []byte) bool{
+	legal = map[string]func(statements []*tree_sitter.Node, body []byte, spelled *namespace) bool{
 		"go": goLegal,
 	}
 )
@@ -41,7 +41,7 @@ var (
 // One that could not is enough to rule the whole fragment out: a run of lines
 // is commented out together, so a single equation among them says the run is
 // notation rather than code.
-func goLegal(statements []*tree_sitter.Node, body []byte) bool {
+func goLegal(statements []*tree_sitter.Node, body []byte, spelled *namespace) bool {
 	for _, node := range statements {
 		switch node.Kind() {
 		case "expression_statement":
@@ -50,6 +50,9 @@ func goLegal(statements []*tree_sitter.Node, body []byte) bool {
 			}
 		case "assignment_statement":
 			if !goAssignable(node.ChildByFieldName("left")) {
+				return false
+			}
+			if goCited(node, body, spelled) {
 				return false
 			}
 		case "package_clause":
@@ -73,7 +76,7 @@ func goLegal(statements []*tree_sitter.Node, body []byte) bool {
 		// An illegal statement nested inside a legal one rules the run out just
 		// the same: `// if x {` over `//     y == z` is an equation somebody
 		// wrote down, whatever encloses it.
-		if !goLegal(children(node), body) {
+		if !goLegal(children(node), body, spelled) {
 			return false
 		}
 	}
@@ -139,6 +142,43 @@ var dropped = set(
 // "cannot assign to f(x) (neither addressable nor a map index expression)".
 func goAssignable(left *tree_sitter.Node) bool {
 	return goTarget(left)
+}
+
+// goCited reports whether an assignment names something from outside the file:
+// a name the file never spells is the cited reference's and not the code's.
+//
+// An equation with a bare identifier on the left is legal Go and structurally a
+// real assignment, so what separates `EM = 0x00 || 0x02 || PS || 0x00 || M` from
+// a line somebody switched off is whose namespace the names belong to. The
+// shape is the whole gate, and it is a narrow one on purpose: dead code often
+// names symbols deleted alongside it, which is the case the rule most wants to
+// catch, so the veto is kept off every fragment that is not this one.
+func goCited(node *tree_sitter.Node, body []byte, spelled *namespace) bool {
+	if !goBare(node.ChildByFieldName("left")) {
+		return false
+	}
+	for name := range spells(node, body) {
+		if !spelled.knows(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// goBare reports whether the left side of an assignment is one plain
+// identifier. A selector or an index names something the file already has, so
+// `m.directory = newDir` is outside this rule whatever `newDir` resolves to.
+func goBare(left *tree_sitter.Node) bool {
+	if left == nil {
+		return false
+	}
+	if left.Kind() == "expression_list" {
+		if left.NamedChildCount() != 1 {
+			return false
+		}
+		left = left.NamedChild(0)
+	}
+	return left != nil && left.Kind() == "identifier"
 }
 
 // goTarget reports whether one expression can be assigned to. The left side of

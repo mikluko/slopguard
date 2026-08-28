@@ -63,6 +63,57 @@ func TestScopes(t *testing.T) {
 	}
 }
 
+// A name a file only writes about is not a name the file has. The set is what
+// the code spells, which is what makes it evidence about whose namespace a
+// comment's names come from.
+func TestSpellsReadsCodeOnly(t *testing.T) {
+	src := []byte("package p\n\n// nlz is named here and nowhere else.\nfunc f(counter int) int { return counter }\n")
+	comments, release := comment.Scan(src, golang, whole(src))
+	defer release()
+	if len(comments) == 0 {
+		t.Fatal("no comment to take a tree from")
+	}
+	spelled := spells(comments[0].Root, src)
+	for _, name := range []string{"p", "f", "counter"} {
+		if !spelled[name] {
+			t.Errorf("%q is declared by the file and was not spelled", name)
+		}
+	}
+	if spelled["nlz"] {
+		t.Error("a name that appears only in a comment was read as one the file has")
+	}
+}
+
+// The walk is over the whole file and every comment in it gets the same answer,
+// so it happens once. Reaching into the held set is what makes that observable:
+// a second walk would overwrite what is put there.
+func TestNamespaceWalksOnce(t *testing.T) {
+	src := []byte("package p\n\n// f doubles counter.\nfunc f(counter int) int { return counter * 2 }\n")
+	comments, release := comment.Scan(src, golang, whole(src))
+	defer release()
+	if len(comments) == 0 {
+		t.Fatal("no comment to take a tree from")
+	}
+	spelled := &namespace{root: comments[0].Root, src: src}
+	if spelled.spelled != nil {
+		t.Error("the file was walked before anything asked")
+	}
+	spelled.knows("counter")
+	spelled.spelled["invented"] = true
+	if !spelled.knows("invented") {
+		t.Error("the file was walked a second time")
+	}
+}
+
+// A namespace with no tree knows every name, so the veto built on it fires on
+// nothing. The other default would veto every assignment in the file.
+func TestNamespaceWithoutATreeVetoesNothing(t *testing.T) {
+	spelled := &namespace{}
+	if !spelled.knows("anything") {
+		t.Error("a namespace with no tree turned a name away")
+	}
+}
+
 // The bound is what keeps a pathological comment from holding the hook: parsing
 // prose as source runs the grammar's error recovery over every byte, and a
 // comment is not bounded by anything the way a file is.

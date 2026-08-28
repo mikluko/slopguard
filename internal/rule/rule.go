@@ -65,6 +65,12 @@ func Judge(src []byte, language *lang.Language, added []comment.Span) []Finding 
 func Weigh(candidates []comment.Comment, language *lang.Language, src []byte) []Finding {
 	verdicts := make([]verdict, len(candidates))
 	var pending []int
+	// One namespace for the file, not one per comment: it is a walk over the
+	// whole tree, and every comment in the file would get the same answer.
+	spelled := &namespace{src: src}
+	if len(candidates) > 0 {
+		spelled.root = candidates[0].Root
+	}
 	for i, c := range candidates {
 		// A licence notice is exempt from every rule, which means leaving it out
 		// of both passes. Returning the zero verdict from [inspect] would not do
@@ -77,7 +83,7 @@ func Weigh(candidates []comment.Comment, language *lang.Language, src []byte) []
 		if prose.Notice(c.Body) && !c.Buried {
 			continue
 		}
-		if verdicts[i] = inspect(c, language, src); verdicts[i].reason == "" {
+		if verdicts[i] = inspect(c, language, src, spelled); verdicts[i].reason == "" {
 			pending = append(pending, i)
 		}
 	}
@@ -137,8 +143,8 @@ type verdict struct {
 // inspect returns why the shape of a comment rules it out, or the zero verdict
 // to leave that judgment to the semantic pass. The first rule that fires wins:
 // one line of nudge per comment.
-func inspect(c comment.Comment, language *lang.Language, src []byte) verdict {
-	if leftover(c, language, src) {
+func inspect(c comment.Comment, language *lang.Language, src []byte, spelled *namespace) verdict {
+	if leftover(c, language, src, spelled) {
 		return verdict{"commented-out code: delete it, or make it real", 1, "leftover"}
 	}
 	if echoes(c, src) {

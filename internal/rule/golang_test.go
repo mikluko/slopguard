@@ -14,50 +14,115 @@ import (
 // that gap, taken from the Go standard library: notation the grammar parses
 // cleanly and the compiler would refuse, and code somebody really did switch
 // off.
+//
+// An equation with a bare identifier on the left is on neither side of it: the
+// compiler accepts it, so legality decides nothing and the namespace decides
+// instead. Those rows carry `spells`, since what the file names is the whole
+// question.
 var goLeftovers = []struct {
 	name string
 	body string
-	want bool
+	// spells is what the file declares besides the comment, for a row whose
+	// verdict turns on whether the comment's names are the code's own.
+	spells string
+	want   bool
+	// gap names what has to change before the row passes, for a case the tool
+	// does not answer today. The table keeps it anyway: deleting it would
+	// remove the only record that the behaviour was ever wanted.
+	gap string
 }{
-	{"bessel identity", "// j0(x) = 1/sqrt(pi) * (P(0,x)*cc - Q(0,x)*ss) / sqrt(x)", false},
-	{"complex invariant", "// complex(e, f) = n/m", false},
-	{"bare comparison", "// f == g", false},
-	{"rewrite rule match", "// match: (Add16 (Const16 [c]) (Const16 [d]))", false},
-	{"rewrite rule cond", "// cond: c+d == c+d", false},
-	{"rewrite rule result", "// result: (MOVVconst [int64(val)])", false},
-	{"constant provenance", "// (664-0.03306235651)*2**20", false},
-	{"labelled note", "// Have: s += expr", false},
-	{"table semantics", "// arg0 == arg1", false},
+	{name: "bessel identity", body: "// j0(x) = 1/sqrt(pi) * (P(0,x)*cc - Q(0,x)*ss) / sqrt(x)"},
+	{name: "complex invariant", body: "// complex(e, f) = n/m"},
+	{name: "bare comparison", body: "// f == g"},
+	{name: "rewrite rule match", body: "// match: (Add16 (Const16 [c]) (Const16 [d]))"},
+	{name: "rewrite rule cond", body: "// cond: c+d == c+d"},
+	{name: "rewrite rule result", body: "// result: (MOVVconst [int64(val)])"},
+	{name: "constant provenance", body: "// (664-0.03306235651)*2**20"},
+	{name: "labelled note", body: "// Have: s += expr"},
+	{name: "table semantics", body: "// arg0 == arg1"},
+
+	// The namespace rows. A name the file never spells is the cited
+	// reference's and not the code's, and one of them is enough: `password` is
+	// the pbkdf2 file's own, `PRF` and `U_n` are RFC 8018's.
+	{
+		name: "rsa encoding block",
+		body: "// EM = 0x00 || 0x02 || PS || 0x00 || M",
+	},
+	{
+		name:   "pbkdf2 recurrence",
+		body:   "// U_n = PRF(password, U_(n-1))",
+		spells: "var password []byte",
+	},
+	{
+		name:   "pseudocode from a paper",
+		body:   "// s = nlz(v); v <<= s",
+		spells: "var s, v uint",
+	},
+	// The other direction, and the reason the veto is not the whole rule: an
+	// assignment naming what the file names is code somebody switched off.
+	{
+		name:   "delay mask",
+		body:   "//DELAY = LOAD|BRANCH|FCMP",
+		spells: "const (\n\tDELAY = 1\n\tLOAD  = 2\n\tBRANCH = 4\n\tFCMP  = 8\n)",
+		want:   true,
+	},
+	// A selector already names something the file has, so the veto does not
+	// reach it whatever the right side resolves to.
+	{
+		name: "field assignment",
+		body: "// m.directory = newDir",
+		want: true,
+	},
+
+	// Notation whose names are all the file's own. The namespace says nothing
+	// about these, because the paper and the code chose the same letters.
+	{
+		name:   "field arithmetic",
+		body:   "// r = x^(2^127-1) * x",
+		spells: "func h(r, x *int) { _, _ = r, x }",
+		gap:    "r and x are the file's own parameters, so resolution succeeds and the veto does not fire",
+	},
+	{
+		name:   "rotation",
+		body:   "// y0 = x0*kcos + x1*ksin\n// y1 = -x0*ksin + x1*kcos",
+		spells: "func h(x0, x1, kcos, ksin int) (y0, y1 int) { return 0, 0 }",
+		gap:    "every name is declared by the signature the comment sits under, so resolution succeeds",
+	},
 
 	// An equation broken across lines leaves a paren open, so [balance] closes
 	// it and the closer lands on the statement's own end byte. Descending into
 	// a node that fills the fragment exactly hands back its parts, which match
 	// no rule and pass by default.
-	{"unbalanced identity", "// j0(x) = 1/sqrt(pi) * (P(0,x)*cos(X) - Q(0,x)*sin(X)", false},
-	{"unbalanced invariant", "// complex(e, f) = n/(m", false},
+	{name: "unbalanced identity", body: "// j0(x) = 1/sqrt(pi) * (P(0,x)*cos(X) - Q(0,x)*sin(X)"},
+	{name: "unbalanced invariant", body: "// complex(e, f) = n/(m"},
 	// A bare label reaches goLegal only if the statement_list holding the run
 	// is unwrapped first.
-	{"bare label", "// Cases:", false},
-	{"output label", "// Output:", false},
+	{name: "bare label", body: "// Cases:"},
+	{name: "output label", body: "// Output:"},
 	// Illegal one level down is illegal.
-	{"nested comparison", "// if x {\n//\ty == z\n// }", false},
+	{name: "nested comparison", body: "// if x {\n//\ty == z\n// }"},
 	// A conversion is not a call, and a built-in that exists for its value
 	// cannot stand alone.
-	{"conversion", "// int64(x)", false},
-	{"builtin length", "// len(b)", false},
-	{"builtin new", "// new(T)", false},
-	{"conversion to any", "// any(x)", false},
-	{"unsafe size", "// unsafe.Sizeof(x)", false},
+	{name: "conversion", body: "// int64(x)"},
+	{name: "builtin length", body: "// len(b)"},
+	{name: "builtin new", body: "// new(T)"},
+	{name: "conversion to any", body: "// any(x)"},
+	{name: "unsafe size", body: "// unsafe.Sizeof(x)"},
 
-	{"disabled if", "// if initmap != nil {", true},
-	{"disabled assignment", "// cr  = buildReg(\"CR\")", true},
-	{"disabled call", "// fmt.Println(\"x\")", true},
-	{"disabled multiline", "// if n.Op == lexical.Range {\n//\treturn false\n// }", true},
-	{"disabled declaration", "// var count int", true},
-	{"disabled loop", "// for i := range xs {\n//\tuse(i)\n// }", true},
+	{name: "disabled if", body: "// if initmap != nil {", want: true},
+	{
+		name:   "disabled assignment",
+		body:   "// cr  = buildReg(\"CR\")",
+		spells: "var cr int\n\nfunc buildReg(name string) int { return len(name) }",
+		want:   true,
+	},
+	{name: "disabled call", body: "// fmt.Println(\"x\")", want: true},
+	{name: "disabled multiline", body: "// if n.Op == lexical.Range {\n//\treturn false\n// }", want: true},
+	{name: "disabled declaration", body: "// var count int", want: true},
+	{name: "disabled loop", body: "// for i := range xs {\n//\tuse(i)\n// }", want: true},
 	// Go puts a label on any statement, so the veto is narrowed to the one a
 	// note takes: a label on a loop is running code.
-	{"labelled loop", "// Loop:\n//\tfor i := range xs {\n//\t\tuse(i)\n//\t}", true},
+	{name: "labelled loop", body: "// Loop:\n//\tfor i := range xs {\n//\t\tuse(i)\n//\t}", want: true},
 }
 
 // A whole function, a method or an import is commented out at file scope, and
@@ -89,8 +154,15 @@ func TestGoLeftoverAtFileScope(t *testing.T) {
 func TestGoLeftover(t *testing.T) {
 	for _, c := range goLeftovers {
 		t.Run(c.name, func(t *testing.T) {
-			found := only(t, inBody(c.body), golang)
-			if got := found.Class == "leftover"; got != c.want {
+			found := only(t, inBody(c.body, c.spells), golang)
+			got := found.Class == "leftover"
+			if c.gap != "" {
+				if got == c.want {
+					t.Fatalf("this case is marked as a gap and now passes: drop the mark. %s", c.gap)
+				}
+				t.Skip(c.gap)
+			}
+			if got != c.want {
 				t.Errorf("leftover = %v, want %v\n  %s\n  read as: %s %s",
 					got, c.want, c.body, found.Class, found.Reason)
 			}
@@ -99,13 +171,16 @@ func TestGoLeftover(t *testing.T) {
 }
 
 // inBody puts a comment inside a function, which is where code gets commented
-// out and where a comment above a declaration would instead be its doc.
-func inBody(body string) string {
+// out and where a comment above a declaration would instead be its doc. spells
+// is declared at file scope, for a row whose verdict turns on what names the
+// file has of its own.
+func inBody(body, spells string) string {
 	var indented []string
 	for _, line := range strings.Split(body, "\n") {
 		indented = append(indented, "\t"+line)
 	}
-	return "package p\n\nfunc f() {\n" + strings.Join(indented, "\n") + "\n\tprintln(1)\n}\n"
+	return "package p\n\n" + spells + "\n\nfunc f() {\n" +
+		strings.Join(indented, "\n") + "\n\tprintln(1)\n}\n"
 }
 
 // only scans a whole file and returns the first finding, or the zero finding

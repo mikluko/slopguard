@@ -260,6 +260,197 @@ func TestARustDocCommentStillEndsOnTheRowBelow(t *testing.T) {
 	}
 }
 
+// Guards that hold the tier up and that nothing reached.
+//
+// Each was free: revert it and the whole suite stayed green, while a real
+// payload changed its answer. Two cost a true transition and one grants a false
+// one, so they fail in both directions.
+func TestTheGuardsUnderTheCertainTier(t *testing.T) {
+	t.Run("a pure insertion counts as a replacement", func(t *testing.T) {
+		// [attributable] counts replacements that say something, and an
+		// insertion says something with an empty before. Counting only the
+		// before makes a two-replacement MultiEdit look like one and hands it
+		// the unhedged sentence — the shape the tier exists to refuse.
+		t.Setenv(session.MemoryEnv, t.TempDir())
+		in := payload{ToolName: "MultiEdit"}
+		in.ToolInput.FilePath = file(t, "a.go", "package p\n\nfunc a() {\n\tstart()\n\t// deleteTemp(path)\n\tdone()\n}\n")
+		for _, e := range [][2]string{
+			{"", "\tstart()\n"},
+			{"\tdeleteTemp(path)\n\tdone()\n", "\t// deleteTemp(path)\n\tdone()\n"},
+		} {
+			in.ToolInput.Edits = append(in.ToolInput.Edits, struct {
+				OldString string `json:"old_string"`
+				NewString string `json:"new_string"`
+			}{e[0], e[1]})
+		}
+		if attributable(in) {
+			t.Error("a write carrying an insertion and a replacement passes as one replacement")
+		}
+		findings := review(in)
+		if len(findings) == 0 {
+			t.Fatal("the fixture yielded no finding, so this asserts nothing")
+		}
+		if strings.Contains(report("a.go", findings, in), "This write commented out live code") {
+			t.Error("a two-replacement write reached the unhedged sentence")
+		}
+	})
+
+	// [holds] steps one byte past a match that began mid-line, because the next
+	// occurrence can start inside the one just rejected: a run of repeated
+	// lines overlaps itself. Striding the run's whole length skips that, and a
+	// true transition would lose the tier. Only the function reaches this — end
+	// to end, the twin guard refuses the repeated run before `holds` is asked.
+	for _, c := range []struct {
+		name, text, run string
+		want            bool
+	}{
+		{
+			name: "the run begins the text",
+			text: "// a\n// b\n",
+			run:  "// a\n// b",
+			want: true,
+		},
+		{
+			name: "the run begins a later line",
+			text: "x()\n// a\n// b\n",
+			run:  "// a\n// b",
+			want: true,
+		},
+		{
+			name: "the only occurrence begins mid-line",
+			text: "qux() // a\n// b\n",
+			run:  "// a\n// b",
+			want: false,
+		},
+		{
+			name: "a mid-line occurrence overlaps one that begins a line",
+			text: "qux() // a\n// a\n// a\n",
+			run:  "// a\n// a",
+			want: true,
+		},
+	} {
+		t.Run("holds: "+c.name, func(t *testing.T) {
+			if got := holds(c.text, c.run); got != c.want {
+				t.Fatalf("holds(%q, %q) = %v, want %v", c.text, c.run, got, c.want)
+			}
+		})
+	}
+
+	t.Run("every quoted line is too short to be evidence", func(t *testing.T) {
+		// A block comment replaced by two marked delimiters quotes `/*` and
+		// `*/` and nothing else. Both are under three characters, so the loop
+		// skips them and vouches for nothing; returning true regardless would
+		// make a run of pure punctuation a confirmed transition.
+		f := rule.Finding{Line: 1, Source: "/*\n*/", Raw: "// /*\n// */"}
+		if switched(f, edit("\t/*\n\t*/\n", "\t// /*\n\t// */\n")) {
+			t.Error("a run quoting only delimiters is claimed as a transition")
+		}
+	})
+}
+
+// A run written beside its own likeness has a twin, and the guard has to see it.
+//
+// The write puts the same comment at two indentations; `comment.adjacent` needs
+// equal columns, so the run reported is the second written line together with a
+// pre-existing third, and [flat] removes exactly the indentation that told them
+// apart. The twin guard is the backstop, and it counted with [strings.Count],
+// which skips overlapping matches: three identical adjacent lines hold two
+// copies of any two-line run and it answered one. So the guard reported no twin
+// in the one case where the run's lines are interchangeable.
+func TestTheTwinGuardCountsOverlappingCopies(t *testing.T) {
+	t.Setenv(session.MemoryEnv, t.TempDir())
+	const src = `package p
+
+func a() {
+		// deleteTemp(path)
+	// deleteTemp(path)
+	// deleteTemp(path)
+}
+`
+	in := payload{ToolName: "Edit"}
+	in.ToolInput.FilePath = file(t, "a.go", src)
+	in.ToolInput.OldString = "\tdeleteTemp(path)\n"
+	in.ToolInput.NewString = "\t\t// deleteTemp(path)\n\t// deleteTemp(path)\n"
+
+	findings := review(in)
+	if len(findings) == 0 {
+		t.Fatal("the fixture yielded no finding, so this asserts nothing")
+	}
+	for _, f := range findings {
+		if !strings.Contains(f.Raw, "\n") {
+			continue
+		}
+		// The run reaches the third line, which the write never wrote.
+		if switched(f, in) {
+			t.Errorf("line %d claims a run whose last line predates the write: %q", f.Line, f.Raw)
+		}
+	}
+	if strings.Contains(report("a.go", findings, in), "This write commented out live code") {
+		t.Error("the nudge claims a transition covering a line the write did not author")
+	}
+}
+
+// The sentence says the write commented out live code, and it has to have been
+// code.
+//
+// Doubling a marker satisfies every other condition: the write authored the
+// line, the line was in the replaced text and is not in the inserted text, and
+// tree-sitter emits `comment` as a named node so `// // note` parses as legal
+// Go like anything else. Nothing was commented out but a comment. On an
+// enumeration of Go payloads this was the most common false claim the tool
+// made, and it was the second clause of the tier's sentence rather than the
+// authorship clause every earlier round had been about.
+func TestTheCertainTierNeedsALineThatWasCode(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		src      string
+		was, now string
+		want     bool
+	}{
+		{
+			name: "the write doubled the marker on a comment",
+			src:  "package p\n\nfunc a() {\n\tfoo()\n\t// // deleteTemp(path)\n}\n",
+			was:  "\tfoo()\n\t// deleteTemp(path)\n",
+			now:  "\tfoo()\n\t// // deleteTemp(path)\n",
+			want: false,
+		},
+		{
+			name: "the write doubled the marker on prose",
+			src:  "package p\n\nfunc a() {\n\tfoo()\n\t// // the caller holds the lock\n}\n",
+			was:  "\tfoo()\n\t// the caller holds the lock\n",
+			now:  "\tfoo()\n\t// // the caller holds the lock\n",
+			want: false,
+		},
+		{
+			// The run mixes a line that was code with one that was a comment,
+			// which is what commenting out a block containing a note looks
+			// like. One live line is enough, and the sentence is true of it.
+			name: "the run holds a line that was code and one that was not",
+			src:  "package p\n\nfunc a() {\n\t// deleteTemp(path)\n\t// // the caller holds the lock\n}\n",
+			was:  "\tdeleteTemp(path)\n\t// the caller holds the lock\n",
+			now:  "\t// deleteTemp(path)\n\t// // the caller holds the lock\n",
+			want: true,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(session.MemoryEnv, t.TempDir())
+			in := payload{ToolName: "Edit"}
+			in.ToolInput.FilePath = file(t, "a.go", c.src)
+			in.ToolInput.OldString = c.was
+			in.ToolInput.NewString = c.now
+
+			findings := review(in)
+			if len(findings) == 0 {
+				t.Fatal("the fixture yielded no finding, so this asserts nothing")
+			}
+			got := strings.Contains(report("a.go", findings, in), "This write commented out live code")
+			if got != c.want {
+				t.Fatalf("unhedged = %v, want %v\n%s", got, c.want, report("a.go", findings, in))
+			}
+		})
+	}
+}
+
 // The log has to answer how often the unhedged sentence fires.
 //
 // It is the tool's only claim made without hedging, and for sixteen rounds

@@ -159,11 +159,16 @@ func review(in payload) []rule.Finding {
 	// not twins here and were indistinguishable there, and one edit commenting
 	// out a run could vouch for another edit merely reindenting its likeness.
 	// Whatever identity `switched` uses, this has to use.
+	//
+	// Counted with overlap. [strings.Count] counts non-overlapping occurrences,
+	// so three identical adjacent comment lines hold two copies of any two-line
+	// run and it reports one: the guard saw no twin exactly where the run's own
+	// lines are interchangeable, which is the case it exists for.
 	for i, f := range findings {
 		if f.Raw == "" {
 			continue
 		}
-		if strings.Count(flat(string(src)), flat(f.Raw)) > 1 || !attributable(in) {
+		if copies(flat(string(src)), flat(f.Raw)) > 1 || !attributable(in) {
 			findings[i].Raw = ""
 		}
 	}
@@ -288,6 +293,40 @@ func flat(text string) string {
 	return strings.Join(lines, "\n")
 }
 
+// marked reports whether a line is itself a comment.
+//
+// `*` is not a marker here, though [continues] treats it as one: inside a block
+// comment it continues the run, but a line of code may open with it — `*p = 0`
+// in C — and reading that as a comment would cost the tier a true transition.
+// `--` is kept despite `--i`, because the languages that spell a comment that
+// way are the ones whose lines are likelier to begin with it.
+func marked(line string) bool {
+	for _, marker := range []string{"//", "#", "--", "/*"} {
+		if strings.HasPrefix(line, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// copies counts the occurrences of run in text, overlapping ones included.
+//
+// [strings.Count] does not: for `a\na\na` and the run `a\na` it answers one,
+// having consumed the middle line with the first match. A comment run's lines
+// are exactly the case where the copies overlap, so the twin guard was blind to
+// the twin whenever a run was written next to its own likeness.
+func copies(text, run string) int {
+	n := 0
+	for i := 0; ; {
+		at := strings.Index(text[i:], run)
+		if at < 0 {
+			return n
+		}
+		n++
+		i += at + 1
+	}
+}
+
 // holds reports whether text contains run beginning at the start of a line.
 //
 // A plain substring test lets a trailing comment supply the run's first line: in
@@ -336,6 +375,13 @@ func holds(text, run string) bool {
 // A block comment whose inner lines carry no marker of their own is not detected
 // and cannot be: its content lines are whole lines of the inserted text, so the
 // second condition rejects them. That is a miss rather than a false claim.
+//
+// One of the quoted lines has to have been code, which is the other half of the
+// sentence and went unchecked for nineteen rounds. Doubling a marker —
+// `// note` becoming `// // note` — meets every condition above, and the tool
+// said the write had commented out live code when it had commented out a
+// comment. Nothing in the parse separates them: tree-sitter emits `comment` as
+// a named node, so a doubly-marked line reads as legal Go.
 func moved(f rule.Finding, was, now string) bool {
 	// Compared with each line's own indentation removed. `Raw` carries the
 	// indentation between the lines of a run, so an edit that reindents a
@@ -374,7 +420,7 @@ func moved(f rule.Finding, was, now string) bool {
 			return false
 		}
 	}
-	found := false
+	live := false
 	for _, line := range strings.Split(f.Source, "\n") {
 		line = strings.TrimSpace(line)
 		// A blank line and a stray delimiter are in every fragment and occur in
@@ -385,9 +431,15 @@ func moved(f rule.Finding, was, now string) bool {
 		if !before[line] || after[line] {
 			return false
 		}
-		found = true
+		// The sentence says live code, so one of the lines has to have been
+		// code. A line whose own body opens with a marker was already a comment
+		// before this write doubled it, and `// // note that the caller holds
+		// the lock` satisfies every other condition here.
+		if !marked(line) {
+			live = true
+		}
 	}
-	return found
+	return live
 }
 
 // readable returns the contents of a file worth judging: a regular file, small

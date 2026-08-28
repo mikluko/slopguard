@@ -82,39 +82,56 @@ func nested(node *tree_sitter.Node) bool {
 // documented reports whether a commented-out block is showing what could go in
 // a key rather than leaving behind what used to.
 //
-// The tell is the key above it. A chart documents an optional setting by giving
-// it an empty collection and commenting the shape underneath:
+// The tell is the key it opens under. A chart declares an optional setting by
+// leaving it unset and commenting the shape underneath, indented under the key
+// as `helm create` scaffolds it or flush left as an Ansible role's defaults
+// spell it:
 //
 //	podSecurityContext: {}
 //	  # fsGroup: 2000
 //
-// which is what `helm create` scaffolds, and where both of this rule's
-// instructions are wrong: deleting the block deletes the documentation, and
-// making it real changes what the chart deploys. A block with no such key above
-// it introduces settings that appear nowhere else in the file, and that is a
-// leftover wherever the file happens to be named.
+//	redis_disabled_commands: []
+//	# - FLUSHDB
+//
+// Both of this rule's instructions are wrong on that block: deleting it deletes
+// the documentation, and making it real changes what deploys. So the carve-out
+// is held to the shape the idiom has — the comment opens on the line under the
+// key and does not dedent past it — because a block that is merely somewhere
+// below an unset key introduces settings that appear nowhere else in the file,
+// and that is a leftover wherever the file happens to be named.
 func documented(c comment.Comment, src []byte) bool {
 	above := opened(c.Root, c.Nodes[0], src)
-	if above == nil {
+	if above == nil || !unset(above, src) {
 		return false
 	}
-	value := above.ChildByFieldName("value")
+	at := c.Nodes[0].StartPosition()
+	return at.Row == above.EndPosition().Row+1 && at.Column >= above.StartPosition().Column
+}
+
+// unset reports whether a mapping pair names a setting without giving it one: a
+// key with no value, an empty collection, or an empty string are the four ways
+// a chart or a role writes that.
+func unset(pair *tree_sitter.Node, src []byte) bool {
+	value := pair.ChildByFieldName("value")
 	if value == nil {
-		return false
+		return true
 	}
-	// The grammar wraps a flow collection in a flow_node, so the shape being
-	// looked for is one level down from the value.
+	// The grammar wraps a flow collection and a quoted scalar alike in a
+	// flow_node, so the shape being looked for is one level down from the value.
 	if value.Kind() == "flow_node" && value.NamedChildCount() == 1 {
 		value = value.NamedChild(0)
 	}
-	if !hollow[value.Kind()] || value.NamedChildCount() > 0 {
-		return false
+	if hollow[value.Kind()] {
+		return value.NamedChildCount() == 0
 	}
-	return c.Nodes[0].StartPosition().Column > above.StartPosition().Column
+	return quoted[value.Kind()] && strings.Trim(value.Utf8Text(src), `"'`) == ""
 }
 
 // hollow are the collections a key is given when it is documented but unset.
 var hollow = map[string]bool{"flow_mapping": true, "flow_sequence": true}
+
+// quoted are the scalars whose emptiness is written rather than implied.
+var quoted = map[string]bool{"double_quote_scalar": true, "single_quote_scalar": true}
 
 // opened returns the mapping pair a comment sits under, found by walking back
 // over whitespace the way the scanner walks forward to find what a comment

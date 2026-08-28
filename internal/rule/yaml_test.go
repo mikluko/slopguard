@@ -60,6 +60,58 @@ replicaCount: 1
 `,
 	},
 	{
+		// An Ansible role spells the same idiom flush left, which is where a
+		// sweep of geerlingguy's roles produced a false positive.
+		name: "a menu flush left under an empty list documents it",
+		src: `redis_disabled_commands: []
+#  - FLUSHDB
+#  - FLUSHALL
+#  - KEYS
+
+redis_maxmemory: 0
+`,
+	},
+	{
+		name: "a commented shape under an empty list documents it",
+		src: `tls: []
+  # - secretName: chart-example-tls
+  #   hosts:
+  #     - chart-example.local
+
+replicaCount: 1
+`,
+	},
+	{
+		name: "a commented shape under a key with no value documents it",
+		src: `podSecurityContext:
+  # fsGroup: 2000
+  # runAsNonRoot: true
+
+replicaCount: 1
+`,
+	},
+	{
+		name: "a commented shape under an empty string documents it",
+		src: `nodeSelector: ""
+  # kubernetes.io/os: linux
+  # kubernetes.io/arch: amd64
+
+replicaCount: 1
+`,
+	},
+	{
+		name: "a block dedented past the empty key above it is residue",
+		src: `image:
+  pullSecrets: []
+# resources:
+#   limits:
+#     cpu: 100m
+
+replicaCount: 1
+`,
+		want: "commented-out",
+	},
+	{
 		name: "the same shape under a key that is not empty is residue",
 		src: `podSecurityContext:
   runAsNonRoot: true

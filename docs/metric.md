@@ -32,9 +32,11 @@ deleted so that anyone holding the old numbers knows they were retracted.
 **Partial AUC 0.011.** An off-by-one. The trapezoid loop guarded accumulation
 with `i > 0` while `previous` was already initialised to the origin, so the
 trapezoid from (0, 0) to the lowest-FPR point was discarded. That region is 88%
-of the width. Corrected the figure is about 0.056 against 0.025 for a random
-classifier. As published it asserted worse-than-chance performance, which the
-direct test refutes at z = 6.2.
+of the width. Correcting it gave about 0.056 against 0.025 for a random
+classifier, on the corpus of the day; the scorer prints 0.088 on the ninth. As
+published it asserted worse-than-chance performance, and the z = 6.2 that
+refuted it is itself the first of the withdrawn conclusions below, so what
+stands here is the arithmetic bug and not either verdict it was used to reach.
 
 **"Closing to ninety days raises recall with the false-positive rate unmoved."**
 Circular: the window filters deleted rows only, so the false-positive rate is
@@ -421,8 +423,9 @@ actually about has a case label before it, exactly as the twenty Vue label
 comments do.
 
 Several revisions had that right and were corrected away, both by argument and by
-silent omission. How many of each is not stated: every version of that tally has
-been wrong, this one included, which is the paragraph's own failure in miniature.
+silent omission. How many of each is not stated: every count this passage has
+given of its own history has been refuted, the last of them by the review that
+removed it, so it now names the two failures without tallying them.
 The table in `arm`'s own doc states all five variants as
 conditions for keeping the exemption, which removes the
 qualifier-versus-disqualifier ambiguity behind most of the wrong versions, though

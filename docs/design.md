@@ -33,7 +33,8 @@ write with nothing for the model to read now returns in single-digit to low-teen
 model pays enough more to notice, most of it opening the ONNX session. The second figure is machine-dependent and varies
 several-fold with how many comments the file holds, so [metric.md](metric.md) gives it as an order rather than as a pair;
 the pair that used to stand here disagreed with the one in `internal/rule`'s doc, which is what withdrew both. Most of
-the floor is process start: the binary is 111 MB, since the model is embedded in it.
+the floor is process start: the binary is 116 MB, since the model is embedded in it. That is the figure `stat` gives
+divided by a million, which is how [metric.md](metric.md) states it too; `ls -lh` says 111, counting in mebibytes.
 
 # Calibration
 

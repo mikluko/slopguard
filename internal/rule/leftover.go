@@ -153,8 +153,9 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // that is a second objection, not the reason. Several revisions of this
 // paragraph had the inseparability right and later ones called them wrong, both
 // by arguing against it and by dropping the sentence without argument. How many
-// of each is not stated: the tally has itself been wrong every time it was
-// given, which is the failure this paragraph keeps repeating in miniature.
+// of each is not stated, and neither is how many revisions there have been:
+// every count this paragraph has given of its own history has been refuted,
+// including the one written to replace a refuted count.
 //
 // The two middle rows are not separations. Row three is byte-identical to
 // deleting this branch, and row two keeps exactly one of the twenty-six
@@ -168,8 +169,8 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // positives against twenty-four false ones. This paragraph has been wrong more
 // often than any other here, each time in its own way and each time refuted by a
 // measurement already in the file, and more than once the wrong version was a
-// correction of a right one. The counts it used to carry were themselves wrong
-// twice, so it no longer keeps one.
+// correction of a right one. It used to carry counts of that history and they
+// were wrong too, so it no longer keeps one.
 //
 // This branch silences a `//dump(...)` at the tail of an arm in `staticinit` and
 // the continuation of a commented-out `case goimporterMagic:` arm at

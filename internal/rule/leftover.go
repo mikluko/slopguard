@@ -161,10 +161,10 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // it fired zero times across both corpora and confirms nothing either way.
 //
 // So the live choice is between keeping this branch and dropping it, at two true
-// positives against twenty-four false ones. Seven revisions of this paragraph
-// have been wrong in seven different ways, every one refuted by a measurement
-// already in this file, and two of the seven were corrections of a version that
-// had been right.
+// positives against twenty-four false ones. Of eight revisions of this
+// paragraph, five have been wrong and each in its own way, every one refuted by
+// a measurement already in this file, and two of the five were corrections of a
+// version that had been right.
 //
 // This branch silences a `//dump(...)` at the tail of an arm in `staticinit` and
 // the continuation of a commented-out `case goimporterMagic:` arm at

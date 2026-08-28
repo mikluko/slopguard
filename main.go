@@ -160,7 +160,10 @@ func review(in payload) []rule.Finding {
 	// out a run could vouch for another edit merely reindenting its likeness.
 	// Whatever identity `switched` uses, this has to use.
 	for i, f := range findings {
-		if f.Raw != "" && strings.Count(flat(string(src)), flat(f.Raw)) > 1 {
+		if f.Raw == "" {
+			continue
+		}
+		if strings.Count(flat(string(src)), flat(f.Raw)) > 1 || !attributable(in) {
 			findings[i].Raw = ""
 		}
 	}
@@ -196,12 +199,7 @@ func review(in payload) []rule.Finding {
 // touched. Pooling several edits' before-text is the same error across a file:
 // a line edit one deleted would vouch for a comment edit two wrote elsewhere.
 func switched(f rule.Finding, in payload) bool {
-	type change struct{ was, now string }
-	edits := []change{{in.ToolInput.OldString, in.ToolInput.NewString}}
-	for _, e := range in.ToolInput.Edits {
-		edits = append(edits, change{e.OldString, e.NewString})
-	}
-	for _, e := range edits {
+	for _, e := range edits(in) {
 		if strings.TrimSpace(e.was) == "" {
 			continue
 		}
@@ -210,6 +208,48 @@ func switched(f rule.Finding, in payload) bool {
 		}
 	}
 	return false
+}
+
+// A change is one replacement a write made: the text before it, and after.
+type change struct{ was, now string }
+
+// edits returns every replacement in a payload, the single-Edit form and the
+// MultiEdit array alike, so the two callers that walk them cannot disagree about
+// what the write did.
+func edits(in payload) []change {
+	out := []change{{in.ToolInput.OldString, in.ToolInput.NewString}}
+	for _, e := range in.ToolInput.Edits {
+		out = append(out, change{e.OldString, e.NewString})
+	}
+	return out
+}
+
+// attributable reports whether this write is simple enough for a finding to be
+// tied to it by text.
+//
+// One replacement can be: [moved] asks what that replacement did, the twin guard
+// asks whether the file holds another copy, and between them fifteen rounds of
+// review have found no way for a comment the write did not author to reach the
+// unhedged sentence. Several replacements cannot. A MultiEdit can write a copy
+// of a comment and delete it again, leaving a payload whose first edit confirms
+// a pre-existing comment somewhere else and a file that holds no trace of the
+// copy; and the survival test that would catch it cannot tell that copy from the
+// pre-existing comment it is identical to. That is the same wall the twin guard
+// meets, one step further back.
+//
+// So the certain tier is the single-replacement write. A MultiEdit still gets
+// every finding, hedged — which is what the tool says about a comment it cannot
+// prove anything about, and is the honest answer here.
+// Counted over the replacements that say something, since a MultiEdit leaves the
+// single-Edit pair empty and an Edit leaves the array empty.
+func attributable(in payload) bool {
+	real := 0
+	for _, e := range edits(in) {
+		if strings.TrimSpace(e.was) != "" || strings.TrimSpace(e.now) != "" {
+			real++
+		}
+	}
+	return real == 1
 }
 
 // flat strips each line's own indentation, leaving the line breaks.

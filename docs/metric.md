@@ -404,7 +404,7 @@ anything whose next node is a case label is spared wherever it sits: that takes
 other branch spares an arm's *first* line deliberately, and takes jq's and
 `reflectlite/value.go:296`. About 88% right, knowingly.
 
-Four revisions of this paragraph got that wrong in four different ways: the
+Five revisions of this paragraph got that wrong in five different ways: the
 first offered a tree-shape argument for all four, the second said it covered one,
 and the fourth, fifth and seventh argued in turn about whether a previous-sibling
 test separates a between-arms comment from a label. **It does not, in either

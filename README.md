@@ -221,6 +221,11 @@ A finding names the line and the rule, at most three per write, strongest first:
 }
 ```
 
+One thing it says without hedging: where a single `Edit` turned live code into the comment being reported, the tool
+watched that happen and says so. A `MultiEdit` never gets that sentence, because several replacements cannot be tied to
+one comment by text alone — one of them can write a copy and another delete it, leaving a payload that vouches for a
+comment nobody wrote in that write.
+
 The nudge says it is often wrong, and where. It does not quote a rate: the pooled figure is fitted to the sample the
 exemptions were chosen from, and an agent handed a number acts on it. It names the four shapes it gets wrong so the agent
 can dismiss one at a glance, and makes leaving a comment alone cost nothing — an agent charged for defending correct code

@@ -101,6 +101,95 @@ func b() {
 	}
 }
 
+// Twins are twins whatever their indentation, and an edit that no longer stands
+// in the file cannot vouch for anything.
+//
+// Two holes, both found by reading the code rather than by running it. The twin
+// guard counted the raw text literally for one commit while `moved` compared it
+// flattened, so a pair differing only in indentation was invisible to the guard
+// and identical to `moved`. And neither test noticed a MultiEdit that writes a
+// copy of a comment and then deletes it: gone from the file, so no twin; still
+// in the payload, so `moved` confirms against it.
+func TestReviewWillNotClaimOnEvidenceTheFileNoLongerHolds(t *testing.T) {
+	const src = `package p
+
+func a() {
+	if cond {
+		// deleteTemp(path)
+		// closeHandle(h)
+	}
+}
+
+func b() {
+	// deleteTemp(path)
+	// closeHandle(h)
+}
+`
+	// The same file with b()'s copy gone, which is what edit three below leaves
+	// behind: one flattened occurrence, so the twin guard is silent and only the
+	// survival test stands between the write and the claim.
+	const undone = `package p
+
+func a() {
+	if cond {
+		// deleteTemp(path)
+		// closeHandle(h)
+	}
+}
+
+func b() {
+	done()
+}
+`
+	for _, c := range []struct {
+		name  string
+		src   string
+		edits [][2]string
+	}{
+		{
+			// The same run at two indentations. Literal counting sees no twin.
+			name: "a twin at another indentation is still a twin",
+			src:  src,
+			edits: [][2]string{
+				{"\tdeleteTemp(path)\n\tcloseHandle(h)\n", "\t// deleteTemp(path)\n\t// closeHandle(h)\n"},
+			},
+		},
+		{
+			// Edit one writes a copy, edit three deletes it. The copy vouches
+			// for a()'s pre-existing comment and is gone before the hook reads
+			// the file.
+			name: "the edit that would vouch was undone by a later one",
+			src:  undone,
+			edits: [][2]string{
+				{"\tdeleteTemp(path)\n\tcloseHandle(h)\n", "\t// deleteTemp(path)\n\t// closeHandle(h)\n"},
+				{"\t// deleteTemp(path)\n\t// closeHandle(h)\n", "\tif cond {\n\t\t// deleteTemp(path)\n\t\t// closeHandle(h)\n\t}\n"},
+				{"\t// deleteTemp(path)\n\t// closeHandle(h)\n", "\tdone()\n"},
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(session.MemoryEnv, t.TempDir())
+			in := payload{ToolName: "MultiEdit"}
+			in.ToolInput.FilePath = file(t, "twins.go", c.src)
+			for _, e := range c.edits {
+				in.ToolInput.Edits = append(in.ToolInput.Edits, struct {
+					OldString string `json:"old_string"`
+					NewString string `json:"new_string"`
+				}{e[0], e[1]})
+			}
+			findings := review(in)
+			if len(findings) == 0 {
+				t.Fatal("the fixture yielded no finding, so this asserts nothing")
+			}
+			for _, f := range findings {
+				if switched(f, in) {
+					t.Errorf("line %d is claimed as this write's on evidence the file does not hold", f.Line)
+				}
+			}
+		})
+	}
+}
+
 // A comment with no twin keeps its claim, which is the other half of the test
 // above and the half that was missing.
 //

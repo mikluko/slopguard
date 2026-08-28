@@ -17,9 +17,12 @@ rediscovered by whoever hits it next.
 
 ## Shapes it gets wrong
 
-- An equation whose left side is a plain identifier is legal Go and is still read as code: `// EM = 0x00 || 0x02 || PS`,
-  `// U_n = PRF(password, U_(n-1))`. Separating those from a switched-off assignment needs the identifiers resolved
-  against the file, since these resolve to nothing in it.
+- An equation whose left side is a plain identifier is separated from a switched-off assignment by the namespace, which
+  leaves the notation whose letters the code also chose. `// r = x^(2^127-1) * x` in
+  `crypto/internal/fips140/nistec/p224_sqrt.go` and `// y1 = -x0*ksin + x1*kcos` in `image/jpeg/dct.go` name only the
+  parameters of the function they sit in, so the resolution succeeds and nothing vetoes them. They are the same shape as
+  `//DELAY = LOAD|BRANCH|FCMP` in `cmd/internal/obj/mips/obj0.go`, over names that resolve the same way, and that one is
+  real code — so no fact about the file tells the two apart. `internal/rule/golang_test.go` keeps both as gap rows.
 - A comment run that opens with a licence line pardons every line stacked under it, because a run reads as one comment
   and any of its lines can carry the marker.
 - A contract stated in the words of its own signature reads as padding when several of them stand together.

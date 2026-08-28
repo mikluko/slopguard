@@ -25,6 +25,20 @@ the two parse by different rules — `fmt.Println("x")` is a conversion at file 
 cut out of a larger block leaves braces open, so they are closed before parsing; needing to is evidence rather than a
 disqualification.
 
+A fourth shape is legal and still not code, so legality cannot reach it: an equation whose left side is a bare
+identifier. `// EM = 0x00 || 0x02 || PS || 0x00 || M` is a valid assignment and `//m.directory = newDir` is a real one.
+What separates them is whose names they are. The file's own identifiers are collected in one walk, and an assignment
+naming something the file never spells is the cited reference's rather than the code's. One unresolved name is enough,
+and it need not be the one on the left: `// s = nlz(v); v <<= s` in `runtime/softfloat64.go` is pseudocode from Hacker's
+Delight whose only foreign name, `nlz`, sits on the right.
+
+The set is walked once per file and held. Walking per comment would make the cost the product of the file's size and the
+number of comments the scanner examines, which on 20,000 declarations and 200 comments is 6.3 seconds against 1.7.
+
+The veto reaches the assignment shape and nothing else, because dead code often names symbols deleted alongside it and
+that is the case the rule most wants to catch. What it does not reach is notation whose letters the code also chose: see
+`docs/limits.md`.
+
 ## Cost
 
 The directions are fitted at build time into `internal/model/assets/head.bin`, three kilobytes, so an invocation embeds

@@ -25,6 +25,12 @@ const parsedBytes = 16 << 10
 // prose parses as a plain value, YAML, needs a structure to appear and needs
 // more than one line, because `# note: read this` is a mapping too.
 //
+// Makefile reaches this rule and never fires: it is not `Strict` and has no
+// lexical prefilter of its own, so the check below returns before any parse.
+// That is the right answer for a grammar where a bare word is a target, and it
+// is an exemption by omission rather than by decision, which is why nothing
+// named it until a review counted the languages.
+//
 // A comment sharing its line with code is exempt whatever it parses as. Code is
 // disabled by commenting the line it is on, which leaves the comment alone on
 // that line; a comment after a live statement is a note about it, and the

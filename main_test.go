@@ -348,6 +348,124 @@ func TestTheGuardsUnderTheCertainTier(t *testing.T) {
 	})
 }
 
+// Reformatting a comment is not commenting out code.
+//
+// Converting a `/* */` block to `//` lines is the most ordinary comment edit in
+// every C-family language, and it met every condition the tier tests: the write
+// authored the lines, they were whole lines of what it replaced and are not
+// whole lines of what it inserted, and [marked] reads one line at a time so a
+// block's interior — which carries no marker of its own — read as live code.
+//
+// `moved`'s doc named this shape and drew the opposite conclusion, calling it a
+// miss. That is true of the inserted side; the replaced side is the false claim.
+func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		file     string
+		src      string
+		was, now string
+		want     bool
+	}{
+		{
+			name: "a block comment became line comments",
+			src:  "package p\n\nfunc a() {\n\t// deleteTemp(path)\n\t// closeHandle(h)\n\tfoo()\n}\n",
+			was:  "\t/*\n\tdeleteTemp(path)\n\tcloseHandle(h)\n\t*/\n",
+			now:  "\t// deleteTemp(path)\n\t// closeHandle(h)\n",
+			want: false,
+		},
+		{
+			// The `*` continuation form, which is how most block comments in
+			// the C family are actually written.
+			name: "a starred block comment became line comments",
+			file: "a.c",
+			src:  "void a(void) {\n\t// deleteTemp(path);\n\t// closeHandle(h);\n\tfoo();\n}\n",
+			was:  "\t/*\n\t * deleteTemp(path);\n\t * closeHandle(h);\n\t */\n",
+			now:  "\t// deleteTemp(path);\n\t// closeHandle(h);\n",
+			want: false,
+		},
+		{
+			// The same two lines, this time genuinely live before the write.
+			// Nothing about the shape of the replacement distinguishes it, so
+			// only what enclosed them can.
+			name: "the same lines were code before the write",
+			src:  "package p\n\nfunc a() {\n\t// deleteTemp(path)\n\t// closeHandle(h)\n\tfoo()\n}\n",
+			was:  "\tdeleteTemp(path)\n\tcloseHandle(h)\n",
+			now:  "\t// deleteTemp(path)\n\t// closeHandle(h)\n",
+			want: true,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(session.MemoryEnv, t.TempDir())
+			name := c.file
+			if name == "" {
+				name = "a.go"
+			}
+			in := payload{ToolName: "Edit"}
+			in.ToolInput.FilePath = file(t, name, c.src)
+			in.ToolInput.OldString = c.was
+			in.ToolInput.NewString = c.now
+
+			findings := review(in)
+			if len(findings) == 0 {
+				t.Fatal("the fixture yielded no finding, so this asserts nothing")
+			}
+			out := report(name, findings, in)
+			if got := strings.Contains(out, "This write commented out live code"); got != c.want {
+				t.Fatalf("unhedged = %v, want %v\n%s", got, c.want, out)
+			}
+		})
+	}
+}
+
+// A line opening with a marker is not always a comment, and reading it as one
+// costs the tier a true transition in four languages.
+//
+// The round that added [marked] tested it on Go alone and wrote in its doc that
+// no other marker was reachable. Each of these reaches it, and each is code.
+func TestMarkedSeparatesACommentFromCodeThatOpensLikeOne(t *testing.T) {
+	for _, c := range []struct {
+		line string
+		want bool
+	}{
+		{"// deleteTemp(path)", true},
+		{"# delete_temp(path)", true},
+		{"#", true},
+		{"-- delete from t", true},
+		{"/* the fast path */", true},
+		{"/* unterminated", true},
+		// Code that opens with one of those markers.
+		{"#[cfg(feature = \"x\")]", false},
+		{"#define N {1, 2}", false},
+		{"#include <stdio.h>", false},
+		{"--i;", false},
+		{"--$i;", false},
+		{"/* the fast path */ deleteTemp(path);", false},
+		{"*p = 0;", false},
+		{"foo()", false},
+	} {
+		t.Run(c.line, func(t *testing.T) {
+			if got := marked(c.line); got != c.want {
+				t.Fatalf("marked(%q) = %v, want %v", c.line, got, c.want)
+			}
+		})
+	}
+}
+
+// An empty run has no copies, and counting it the other way walks off the end.
+//
+// The twin guard skips a finding with no `Raw` before it asks, so this was
+// reachable only by removing that skip — and the panic it caused would have been
+// swallowed by the recover in main, dropping the whole nudge rather than one
+// finding. A precondition nothing states is one the next caller breaks.
+func TestCopiesOfAnEmptyRun(t *testing.T) {
+	if got := copies("abc", ""); got != 0 {
+		t.Fatalf("copies(%q, %q) = %d, want 0", "abc", "", got)
+	}
+	if got := copies("a\na\na", "a\na"); got != 2 {
+		t.Fatalf("overlapping copies = %d, want 2", got)
+	}
+}
+
 // A run written beside its own likeness has a twin, and the guard has to see it.
 //
 // The write puts the same comment at two indentations; `comment.adjacent` needs

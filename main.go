@@ -210,10 +210,10 @@ func review(in payload) []rule.Finding {
 // touched. Pooling several edits' before-text is the same error across a file:
 // a line edit one deleted would vouch for a comment edit two wrote elsewhere.
 func switched(f rule.Finding, in payload) bool {
+	// A replacement with an empty before is an insertion, and [moved] refuses it
+	// on its own: nothing was a whole line of what it replaced. Skipping it here
+	// as well read as a second guard and was none.
 	for _, e := range edits(in) {
-		if strings.TrimSpace(e.was) == "" {
-			continue
-		}
 		if moved(f, e.was, e.now) {
 			return true
 		}
@@ -299,21 +299,70 @@ func flat(text string) string {
 // comment it continues the run, but a line of code may open with it — `*p = 0`
 // in C — and reading that as a comment would cost the tier a true transition.
 //
-// Only `//` is reached by any payload that gets this far. A doubled `//` in Go
-// produces a finding because `// deleteTemp(path)` is legal Go on its own;
-// Python's `# deleteTemp(path)` is not evidence of code, so `leftover` never
-// fires on the doubled form and `#` is never asked about. `--` names no
-// grammar the tool wires at all, and no `/*` shape found reaches here either.
-// The three are kept as the guard against a language that later makes them
-// reachable, and are noted as untested rather than given a test that would
-// assert nothing.
+// A bare prefix test is not enough, and reading one as sufficient cost the tier
+// four true transitions in as many languages: `--i;`, `#[cfg(feature = "x")]`,
+// `#define N {1, 2}` and `/* the fast path */ deleteTemp(path);` all open with a
+// marker and all are code. `#` and `--` have to be followed by a space to be
+// read as opening a comment, and a line opening a block has to have no code
+// after the block closes.
+//
+// A round claimed here that only `//` was ever reached. Every one of the four
+// is, through PHP's `#`, C's `--i`, Rust's attributes and a leading block
+// comment in any C-family language.
 func marked(line string) bool {
-	for _, marker := range []string{"//", "#", "--", "/*"} {
-		if strings.HasPrefix(line, marker) {
-			return true
-		}
+	switch {
+	case strings.HasPrefix(line, "//"):
+		return true
+	case strings.HasPrefix(line, "#"), strings.HasPrefix(line, "--"):
+		// `#` and `--` also open a Rust attribute, a C directive and a
+		// decrement, none of which is a comment.
+		rest := strings.TrimPrefix(strings.TrimPrefix(line, "--"), "#")
+		return rest == "" || strings.HasPrefix(rest, " ") || strings.HasPrefix(rest, "\t")
+	case strings.HasPrefix(line, "/*"):
+		// A block that closes with code after it is a comment on that code, and
+		// the code is what the write commented out.
+		at := strings.Index(line, "*/")
+		return at < 0 || strings.TrimSpace(line[at+2:]) == ""
 	}
 	return false
+}
+
+// enclosed returns the lines of text that sit inside a block comment or a
+// multi-line string, where a line carries no marker of its own.
+//
+// [marked] reads one line at a time, so the interior of a `/* */` block, a
+// Python docstring or a Go raw string reads to it as live code. Converting such
+// a block to line comments — the most ordinary comment reformatting there is —
+// then satisfied every condition of the certain tier, and the tool said the
+// write had commented out live code when it had reformatted a comment. Only the
+// replaced side needs this: on the inserted side the same shape is a miss.
+//
+// The delimiters are not the language's, because a [rule.Finding] does not
+// carry one. Text that opens a block and does not close it on the same line
+// encloses what follows, which over-refuses where the same line also occurs
+// outside a block, and that is the safe direction.
+func enclosed(text string) map[string]bool {
+	out := map[string]bool{}
+	closer := ""
+	for _, line := range strings.Split(text, "\n") {
+		if closer != "" {
+			if strings.Contains(line, closer) {
+				closer = ""
+				continue
+			}
+			out[strings.TrimSpace(line)] = true
+			continue
+		}
+		for _, pair := range [][2]string{{"/*", "*/"}, {`"""`, `"""`}, {"'''", "'''"}, {"`", "`"}} {
+			at := strings.Index(line, pair[0])
+			if at < 0 || strings.Contains(line[at+len(pair[0]):], pair[1]) {
+				continue
+			}
+			closer = pair[1]
+			break
+		}
+	}
+	return out
 }
 
 // copies counts the occurrences of run in text, overlapping ones included.
@@ -322,9 +371,17 @@ func marked(line string) bool {
 // having consumed the middle line with the first match. A comment run's lines
 // are exactly the case where the copies overlap, so the twin guard was blind to
 // the twin whenever a run was written next to its own likeness.
+//
+// An empty run has no occurrences here. Counted the other way it has one at
+// every offset, and the walk then indexes past the end: the caller skipping an
+// empty `Raw` was all that stood between that and a panic swallowed by the
+// recover in [main], which drops the whole nudge rather than one finding.
 func copies(text, run string) int {
+	if run == "" {
+		return 0
+	}
 	n := 0
-	for i := 0; ; {
+	for i := 0; i <= len(text); {
 		at := strings.Index(text[i:], run)
 		if at < 0 {
 			return n
@@ -332,6 +389,7 @@ func copies(text, run string) int {
 		n++
 		i += at + 1
 	}
+	return n
 }
 
 // holds reports whether text contains run beginning at the start of a line.
@@ -380,8 +438,15 @@ func holds(text, run string) bool {
 // finding.
 //
 // A block comment whose inner lines carry no marker of their own is not detected
-// and cannot be: its content lines are whole lines of the inserted text, so the
-// second condition rejects them. That is a miss rather than a false claim.
+// where the write inserts one: its content lines are whole lines of the inserted
+// text, so the second condition rejects them. That is a miss.
+//
+// Where the write *replaces* one, the same shape was a false claim, and this doc
+// asserted the miss of both halves for several rounds. Converting a `/* */`
+// block to `//` lines authors every line it reports, and its interior carries no
+// marker for [marked] to read, so the tool called the most ordinary comment
+// reformatting in the C family a commenting-out of live code. [enclosed] reads
+// the replaced text for what the lines sat inside.
 //
 // One of the quoted lines has to have been code, which is the other half of the
 // sentence and went unchecked while every round attacked the first. Doubling a
@@ -428,7 +493,7 @@ func moved(f rule.Finding, was, now string) bool {
 			return false
 		}
 	}
-	live := false
+	live, inside := false, enclosed(was)
 	for _, line := range strings.Split(f.Source, "\n") {
 		line = strings.TrimSpace(line)
 		// A blank line and a stray delimiter are in every fragment and occur in
@@ -442,8 +507,9 @@ func moved(f rule.Finding, was, now string) bool {
 		// The sentence says live code, so one of the lines has to have been
 		// code. A line whose own body opens with a marker was already a comment
 		// before this write doubled it, and `// // note that the caller holds
-		// the lock` satisfies every other condition here.
-		if !marked(line) {
+		// the lock` satisfies every other condition here. A line carrying no
+		// marker was still a comment if the replaced text put it inside a block.
+		if !marked(line) && !inside[line] {
 			live = true
 		}
 	}

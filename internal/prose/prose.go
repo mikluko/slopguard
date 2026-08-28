@@ -75,7 +75,10 @@ func Indented(line string) string {
 			break
 		}
 	}
-	return strings.TrimSuffix(strings.TrimRight(line, " \t"), "*/")
+	// The carriage return goes with the trailing whitespace, or a file written on
+	// the other convention keeps its `*/` and a block comment's last line reads
+	// as code that the write commented out.
+	return strings.TrimSuffix(strings.TrimRight(line, " \t\r"), "*/")
 }
 
 // Dedent removes the indentation shared by every line of text.

@@ -313,11 +313,30 @@ func marked(line string) bool {
 	switch {
 	case strings.HasPrefix(line, "//"):
 		return true
-	case strings.HasPrefix(line, "#"), strings.HasPrefix(line, "--"):
-		// `#` and `--` also open a Rust attribute, a C directive and a
-		// decrement, none of which is a comment.
-		rest := strings.TrimPrefix(strings.TrimPrefix(line, "--"), "#")
+	case strings.HasPrefix(line, "--"):
+		// `--` opens a comment in SQL and Lua and a decrement everywhere else,
+		// and the space is what tells them apart: `-- note` against `--i;`.
+		rest := line[2:]
 		return rest == "" || strings.HasPrefix(rest, " ") || strings.HasPrefix(rest, "\t")
+	case strings.HasPrefix(line, "#"):
+		// Not by the space: PHP spells a comment `#deleteTemp($path);` and the
+		// world spells a heading `## this`, so requiring one read both as code
+		// and reopened the doubled-marker claim it was meant to close. What is
+		// not a comment is a Rust attribute and a C preprocessor directive,
+		// which are a closed set and can be named.
+		rest := line[1:]
+		if strings.HasPrefix(rest, "[") {
+			return false
+		}
+		for _, directive := range []string{
+			"define", "include", "if", "ifdef", "ifndef", "else", "elif",
+			"endif", "pragma", "undef", "error", "warning", "line",
+		} {
+			if strings.HasPrefix(rest, directive) {
+				return false
+			}
+		}
+		return true
 	case strings.HasPrefix(line, "/*"):
 		// A block that closes with code after it is a comment on that code, and
 		// the code is what the write commented out.
@@ -337,26 +356,57 @@ func marked(line string) bool {
 // write had commented out live code when it had reformatted a comment. Only the
 // replaced side needs this: on the inserted side the same shape is a miss.
 //
-// The delimiters are not the language's, because a [rule.Finding] does not
-// carry one. Text that opens a block and does not close it on the same line
-// encloses what follows, which over-refuses where the same line also occurs
-// outside a block, and that is the safe direction.
+// The delimiters are not the language's, because a [rule.Finding] does not carry
+// one, and a delimiter counts only where the line opens with it. Reading one
+// anywhere on the line made a stray backtick in a Go comment, and a `"/*"`
+// string literal in C, enclose everything under them: an over-refusal that costs
+// true transitions rather than the free caution it was written as.
+//
+// The error runs both ways and neither direction is free. A closer with no
+// opener before it means the block began above the replaced text, which is why
+// the lines up to it are taken as enclosed; nothing else about what precedes the
+// replacement is visible here, so a block opened further up and closed further
+// down is invisible and reads as code.
 func enclosed(text string) map[string]bool {
+	pairs := [][2]string{{"/*", "*/"}, {`"""`, `"""`}, {"'''", "'''"}, {"`", "`"}}
+	lines := strings.Split(text, "\n")
 	out := map[string]bool{}
+
+	// A block the replaced text closes but never opened started above it.
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "/*") {
+			break
+		}
+		if !strings.Contains(line, "*/") {
+			continue
+		}
+		for _, above := range lines[:i+1] {
+			out[strings.TrimSpace(above)] = true
+		}
+		break
+	}
+
 	closer := ""
-	for _, line := range strings.Split(text, "\n") {
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
 		if closer != "" {
 			if strings.Contains(line, closer) {
 				closer = ""
+				// The line carrying the closer may carry content before it, and
+				// that content was inside the block too.
+				out[trimmed] = true
 				continue
 			}
-			out[strings.TrimSpace(line)] = true
+			out[trimmed] = true
 			continue
 		}
-		for _, pair := range [][2]string{{"/*", "*/"}, {`"""`, `"""`}, {"'''", "'''"}, {"`", "`"}} {
-			at := strings.Index(line, pair[0])
-			if at < 0 || strings.Contains(line[at+len(pair[0]):], pair[1]) {
+		for _, pair := range pairs {
+			if !strings.HasPrefix(trimmed, pair[0]) {
 				continue
+			}
+			if strings.Contains(trimmed[len(pair[0]):], pair[1]) {
+				break
 			}
 			closer = pair[1]
 			break
@@ -373,9 +423,10 @@ func enclosed(text string) map[string]bool {
 // the twin whenever a run was written next to its own likeness.
 //
 // An empty run has no occurrences here. Counted the other way it has one at
-// every offset, and the walk then indexes past the end: the caller skipping an
-// empty `Raw` was all that stood between that and a panic swallowed by the
-// recover in [main], which drops the whole nudge rather than one finding.
+// every offset, which is not a count of anything, and before the loop was
+// bounded it also walked past the end of the text — a panic the recover in
+// [main] swallows, dropping the whole nudge rather than one finding. Only the
+// caller's skip of an empty `Raw` stood between the two.
 func copies(text, run string) int {
 	if run == "" {
 		return 0

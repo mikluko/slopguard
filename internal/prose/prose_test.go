@@ -92,6 +92,13 @@ func TestIndented(t *testing.T) {
 		{"# ", ""},
 		{"#", ""},
 		{"  /* var x = 1 */", "var x = 1 "},
+		// A file written on the other convention ends the line with a carriage
+		// return, which stood between the trailing whitespace and the `*/` and
+		// kept the closer attached. A block comment's last line then read as
+		// code, and only on CRLF, so it went unseen until an enumeration ran
+		// both conventions side by side.
+		{"  /* var x = 1 */\r", "var x = 1 "},
+		{"\tcloseHandle(h) */\r", "closeHandle(h) "},
 	} {
 		if got := Indented(c.line); got != c.want {
 			t.Errorf("Indented(%q) = %q, want %q", c.line, got, c.want)

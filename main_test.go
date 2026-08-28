@@ -384,6 +384,19 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 			want: false,
 		},
 		{
+			// The same block, in a file written on the other line-ending
+			// convention. `prose.Indented` trimmed spaces and tabs off a line's
+			// end before stripping `*/`, so a carriage return kept the closer
+			// attached and the block's last line read as code. The LF twin of
+			// this payload yielded no finding at all, which is how it went
+			// unseen: the shape only exists on CRLF.
+			name: "a block comment became line comments on CRLF",
+			src:  "package p\r\n\r\nfunc a() {\r\n\t// /*\r\n\t// deleteTemp(path)\r\n\t// closeHandle(h) */\r\n\tfoo()\r\n}\r\n",
+			was:  "\t/*\r\n\tdeleteTemp(path)\r\n\tcloseHandle(h) */\r\n",
+			now:  "\t// /*\r\n\t// deleteTemp(path)\r\n\t// closeHandle(h) */\r\n",
+			want: false,
+		},
+		{
 			// The same two lines, this time genuinely live before the write.
 			// Nothing about the shape of the replacement distinguishes it, so
 			// only what enclosed them can.
@@ -406,8 +419,14 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 			in.ToolInput.NewString = c.now
 
 			findings := review(in)
+			// Saying nothing is a way of not making the claim, and on CRLF the
+			// repair that stops the closer reading as code also stops the rule
+			// firing. A row that wants the claim still needs a finding to make.
 			if len(findings) == 0 {
-				t.Fatal("the fixture yielded no finding, so this asserts nothing")
+				if c.want {
+					t.Fatal("the fixture yielded no finding, so this asserts nothing")
+				}
+				return
 			}
 			out := report(name, findings, in)
 			if got := strings.Contains(out, "This write commented out live code"); got != c.want {
@@ -430,6 +449,11 @@ func TestMarkedSeparatesACommentFromCodeThatOpensLikeOne(t *testing.T) {
 		{"// deleteTemp(path)", true},
 		{"# delete_temp(path)", true},
 		{"#", true},
+		// PHP spells a comment with no space, and headings double the marker.
+		// Requiring a space read both as code and reopened the doubled-marker
+		// claim that `marked` exists to refuse.
+		{"#deleteTemp($path);", true},
+		{"## deleteTemp($path);", true},
 		{"-- delete from t", true},
 		{"/* the fast path */", true},
 		{"/* unterminated", true},
@@ -446,6 +470,97 @@ func TestMarkedSeparatesACommentFromCodeThatOpensLikeOne(t *testing.T) {
 		t.Run(c.line, func(t *testing.T) {
 			if got := marked(c.line); got != c.want {
 				t.Fatalf("marked(%q) = %v, want %v", c.line, got, c.want)
+			}
+		})
+	}
+}
+
+// What a replaced fragment put inside a block, and what it only appears to.
+//
+// Six of this function's behaviours had nothing reaching them in the round that
+// added it: three of the four delimiter pairs, the same-line-close skip, the
+// reset, and whether the closing line itself counts. A delimiter read anywhere
+// on the line rather than at its start also made a stray backtick in a comment
+// enclose everything under it.
+func TestEnclosedReadsWhatAFragmentPutInsideABlock(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		text string
+		want []string
+	}{
+		{
+			// The line carrying the closer is the comment's too, and is marked.
+			name: "a block comment encloses its interior",
+			text: "/*\nfoo()\nbar()\n*/\nqux()",
+			want: []string{"foo()", "bar()", "*/"},
+		},
+		{
+			name: "the closing line carries content of its own",
+			text: "/*\nfoo()\nbar() */\nqux()",
+			want: []string{"foo()", "bar() */"},
+		},
+		{
+			name: "a docstring encloses its interior",
+			text: `"""` + "\nfoo()\nbar()\n" + `"""` + "\nqux()",
+			want: []string{"foo()", "bar()", `"""`},
+		},
+		{
+			name: "a single-quoted docstring encloses its interior",
+			text: "'''\nfoo()\nbar()\n'''\nqux()",
+			want: []string{"foo()", "bar()", "'''"},
+		},
+		{
+			name: "a raw string encloses its interior",
+			text: "`\nfoo()\nbar()\n`\nqux()",
+			want: []string{"foo()", "bar()", "`"},
+		},
+		{
+			// The block began above the replaced text, so its closer arrives
+			// with no opener. Everything up to it was inside it.
+			name: "the block was opened above the fragment",
+			text: "foo()\nbar()\n*/\nqux()",
+			want: []string{"foo()", "bar()", "*/"},
+		},
+		{
+			name: "a block that opens and closes on one line encloses nothing",
+			text: "/* note */\nfoo()\nbar()",
+			want: nil,
+		},
+		{
+			// A delimiter inside a line of code or prose is not a block. Read
+			// anywhere on the line, each of these swallowed the rest.
+			name: "a stray backtick in a comment is not a block",
+			text: "// a `name` is special\nfoo()\nbar()",
+			want: nil,
+		},
+		{
+			name: "a delimiter inside a string literal is not a block",
+			text: "char *s = \"/*\";\nfoo()\nbar()",
+			want: nil,
+		},
+		{
+			name: "the block closes and the lines after it are code again",
+			text: "/*\nfoo()\n*/\nbar()\nqux()",
+			want: []string{"foo()", "*/"},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := enclosed(c.text)
+			for _, line := range c.want {
+				if !got[line] {
+					t.Errorf("%q is inside the block and was not marked", line)
+				}
+			}
+			for line := range got {
+				found := false
+				for _, want := range c.want {
+					if line == want {
+						found = true
+					}
+				}
+				if !found {
+					t.Errorf("%q was marked and is not inside a block", line)
+				}
 			}
 		})
 	}

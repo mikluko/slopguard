@@ -185,8 +185,9 @@ func review(in payload) []rule.Finding {
 // line was code a moment ago is not a question about shape at all, and the
 // answer is already in the payload.
 //
-// Only an Edit carries one. A Write hands over the whole file with no before, so
-// this cannot speak for it and says no rather than guessing.
+// An Edit and a MultiEdit both carry one, per replacement. A Write hands over
+// the whole file with no before, so this cannot speak for it and says no rather
+// than guessing.
 //
 // Every line has to be found. A run that is half old code and half prose is
 // somebody writing a note next to what they disabled, and the part this can
@@ -215,8 +216,8 @@ type change struct{ was, now string }
 
 // edits returns every replacement in a payload, the single-Edit form and the
 // MultiEdit array alike, so no caller can disagree with another about what the
-// write did. [written] kept a duplicate of this list for three rounds, which is
-// the one that decides which comments are attributed to the write at all.
+// write did. [written] built its own copy of it until a review noticed, and that
+// is the one deciding which comments are attributed to the write at all.
 func edits(in payload) []change {
 	out := []change{{in.ToolInput.OldString, in.ToolInput.NewString}}
 	for _, e := range in.ToolInput.Edits {
@@ -288,9 +289,9 @@ func flat(text string) string {
 // comment must appear in what the edit inserted and not in what it replaced:
 // present on both sides it is a comment the edit carried through untouched, and
 // absent from the replacement it is not this edit's at all. The absence is asked
-// of every line as well as of the whole run, because deleting the live code
-// between two comments joins them into a run that stood nowhere before, so the
-// run is new while none of its lines is. Both sides are compared through [flat],
+// of every non-blank line as well as of the whole run, because deleting the live
+// code between two comments joins them into a run that stood nowhere before, so
+// the run is new while none of its lines is. Both sides are compared through [flat],
 // so "the comment" means its text with each line's own indentation removed —
 // which also means a comment is refused where an identical one at another
 // indentation stood in the replaced text, a miss in the safe direction. Two
@@ -331,8 +332,18 @@ func moved(f rule.Finding, was, now string) bool {
 	// code between two comments joins them into a run that never stood anywhere,
 	// so the whole-run test above passes while every line of it is older than the
 	// edit. A comment line the replacement already held is not this edit's.
+	//
+	// Blank lines are skipped because they are not part of the comment and stand
+	// in every replacement. tree-sitter-rust ends a `///` node at column zero of
+	// the row below, so every Rust doc comment's `Raw` ends in a newline and the
+	// split yields a trailing empty string; asking that of `before` withdrew the
+	// certain tier from a whole language, silently and with the suite green.
 	for _, line := range strings.Split(raw, "\n") {
-		if before[strings.TrimSpace(line)] {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if before[line] {
 			return false
 		}
 	}

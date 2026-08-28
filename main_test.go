@@ -228,6 +228,38 @@ func a() {
 	}
 }
 
+// The row in the table above is built by hand, so something has to check that a
+// real Rust doc comment has the shape it assumes.
+//
+// tree-sitter-rust ends a `///` node at column zero of the row below — the same
+// quirk that once made every line of a doc example its own finding — so `Raw`
+// ends in a newline and its flattened split carries a trailing empty string.
+// Round seventeen added a test for the blank line without checking that Rust
+// still produces one, which would have made both vacuous together.
+func TestARustDocCommentStillEndsOnTheRowBelow(t *testing.T) {
+	t.Setenv(session.MemoryEnv, t.TempDir())
+	const src = `fn a() {
+    /// delete_temp(path);
+    done();
+}
+`
+	in := payload{ToolName: "Edit"}
+	in.ToolInput.FilePath = file(t, "a.rs", src)
+	in.ToolInput.OldString = "    delete_temp(path);\n    done();\n"
+	in.ToolInput.NewString = "    /// delete_temp(path);\n    done();\n"
+
+	findings := review(in)
+	if len(findings) != 1 {
+		t.Fatalf("want one finding, got %d", len(findings))
+	}
+	if !strings.HasSuffix(findings[0].Raw, "\n") {
+		t.Fatalf("the grammar no longer ends the node on the row below, so the blank-line row above pins nothing: %q", findings[0].Raw)
+	}
+	if !switched(findings[0], in) {
+		t.Fatal("a Rust doc comment this write made lost its claim to certainty")
+	}
+}
+
 // The log has to answer how often the unhedged sentence fires.
 //
 // It is the tool's only claim made without hedging, and for sixteen rounds
@@ -760,6 +792,44 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 			in: edit(
 				"\ta()\n\t// foo()\n\tfoo()\n\tbar()\n",
 				"\tz()\n\t// foo()\n\tdefer foo()\n\tbar()\n",
+			),
+			want: false,
+		},
+		{
+			// tree-sitter-rust ends a `///` node at column zero of the row
+			// below, so `Raw` ends in a newline and its flattened split has a
+			// trailing empty string. Asking `before` about that line answers
+			// yes for any replacement that ends in one, which is nearly all of
+			// them: the round that added the line-wise test took the certain
+			// tier away from every Rust doc comment, and the suite stayed green.
+			name: "a doc comment whose node ends on the row below is still confirmed",
+			raw:  "/// foo()\n",
+			text: "foo()",
+			in:   edit("\tfoo()\n\tbar()\n", "\t/// foo()\n\tbar()\n"),
+			want: true,
+		},
+		{
+			// The comment stood at the end of a live line the edit deleted, so
+			// the run it now forms is text the replacement already held. Whether
+			// the write authored it or promoted a trailing comment to its own
+			// line cannot be told apart, and only the whole-run test refuses it:
+			// no line of the run was ever a whole line of what was replaced.
+			name: "the comment already stood at the end of a line the edit deleted",
+			in:   edit("\tfoo()\n\tbar() // foo()\n", "\t// foo()\n"),
+			want: false,
+		},
+		{
+			// The run stood in the replaced text too, differing only in the
+			// indentation between its lines, which is the miss the doc claims in
+			// the safe direction. Reached through neither other test: no line of
+			// the run is a whole line of what was replaced, so the line-wise
+			// test passes it, and only flattening the replaced text finds it.
+			name: "the run stood in the replaced text at another indentation",
+			raw:  "// foo()\n\t// bar()",
+			text: "foo()\nbar()",
+			in: edit(
+				"\tfoo()\n\tbar()\n\tqux() // foo()\n\t// bar() zap()\n",
+				"\tif cond {\n\t\t// foo()\n\t\t// bar()\n\t}\n",
 			),
 			want: false,
 		},

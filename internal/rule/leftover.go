@@ -9,14 +9,16 @@ import (
 )
 
 // parsedBytes bounds what the commented-out-code rule will hand to a parser.
-// The cost is worse than linear in the bytes — the grammar's error recovery over
-// prose runs at about four microseconds a byte at 4 KB and ninety-seven at
-// 1.75 MB — so the bound is what keeps a pathological comment from holding the
-// hook: 16 KB is 0.07 seconds where 1.75 MB is 169.
+// The cost is linear in the bytes: the grammar's error recovery over prose runs
+// at about three and a half microseconds a byte from 16 KB to 1.75 MB, and the
+// bound is what keeps a pathological comment from holding the hook. 16 KB is
+// 0.07 seconds where 1.75 MB is about six.
 //
-// Two figures for that second measurement stood in this file, 14.7 seconds and
-// 23, and both were low by around seven times. Quoting a rate from one point on
-// a superlinear curve is what produced them.
+// Four figures have stood here for that second measurement — 14.7 seconds, 23,
+// and a 169 that came with a claim the curve was superlinear. The last was
+// taken from a review and written down without being run; measuring the rule
+// over six sizes gives a flat rate and refutes it. The rate does climb on C++,
+// and the text that makes it climb cannot reach the C++ parser.
 const parsedBytes = 16 << 10
 
 // leftover reports whether a comment is commented-out code: text that parses
@@ -63,9 +65,9 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 	// require a line ending and report a MISSING node without one, which reads
 	// as a broken parse and stops this rule before it starts.
 	// Parsing prose as source runs the grammar's error recovery over every byte
-	// of it, at a rate that itself grows with the input, and a comment is not
+	// of it, at about three and a half microseconds a byte, and a comment is not
 	// bounded by anything the way a file is. A 1.75 MB run of them held the hook
-	// for 169 seconds. Nobody comments out this much in one run and then wants three
+	// for six seconds. Nobody comments out this much in one run and then wants three
 	// lines of nudge back, so past the bound the rule declines.
 	if len(c.Body) > parsedBytes {
 		return false

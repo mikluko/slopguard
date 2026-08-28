@@ -367,6 +367,29 @@ func marked(line string) bool {
 // the lines up to it are taken as enclosed; nothing else about what precedes the
 // replacement is visible here, so a block opened further up and closed further
 // down is invisible and reads as code.
+// opens returns where a line begins a block with delimiter, or -1.
+//
+// A line opens one where it starts with the delimiter, and where the delimiter
+// is what an assignment assigns: `const s = ` + a backtick, or `s = """`, are
+// how a raw string and a docstring are written far more often than at column
+// zero, and requiring the line to start with the delimiter missed both. What
+// this excludes is the delimiter appearing as content — inside a string, as in
+// `char *s = "/*";`, or inside prose, as in a comment mentioning a name in
+// backticks — where the character before it is neither nothing nor `=`.
+func opens(trimmed, delimiter string) int {
+	if strings.HasPrefix(trimmed, delimiter) {
+		return 0
+	}
+	at := strings.Index(trimmed, delimiter)
+	if at < 0 {
+		return -1
+	}
+	if strings.HasSuffix(strings.TrimRight(trimmed[:at], " \t"), "=") {
+		return at
+	}
+	return -1
+}
+
 func enclosed(text string) map[string]bool {
 	pairs := [][2]string{{"/*", "*/"}, {`"""`, `"""`}, {"'''", "'''"}, {"`", "`"}}
 	lines := strings.Split(text, "\n")
@@ -402,10 +425,11 @@ func enclosed(text string) map[string]bool {
 			continue
 		}
 		for _, pair := range pairs {
-			if !strings.HasPrefix(trimmed, pair[0]) {
+			at := opens(trimmed, pair[0])
+			if at < 0 {
 				continue
 			}
-			if strings.Contains(trimmed[len(pair[0]):], pair[1]) {
+			if strings.Contains(trimmed[at+len(pair[0]):], pair[1]) {
 				break
 			}
 			closer = pair[1]

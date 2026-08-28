@@ -41,7 +41,7 @@ slopguard's `echo` implements that relational test. `tautology` does not: it emb
 
 The one paper that measured how well an automated judge does at this class is not encouraging. Oztas, Torun and Tüzün put GPT-4 on Jabrayilzade's taxonomy: accuracy rises from **34% to 55% when the code is supplied alongside the comment**, and F1 on the "Obvious" class reaches only **0.39**; a Random Forest over engineered features beats it at 69% accuracy and F1 0.53 on that class. ([Towards Automated Detection of Inline Code Comment Smells, EASE 2025](https://arxiv.org/html/2504.18956v2))
 
-**Verdict: the class is real and well attested, but slopguard implements as a property of prose what every source defines as a property of a pair. `echo` is the faithful implementation; `tautology` is an approximation the literature does not endorse. On the standard library it supplies 249 of 1,034 findings against `echo`'s 623.**
+**Verdict: the class is real and well attested, but slopguard implements as a property of prose what every source defines as a property of a pair. `echo` is the faithful implementation; `tautology` is an approximation the literature does not endorse. On the standard library it supplies 249 of that build's 1,059 findings against `echo`'s 623.**
 
 ### `leftover`: supported, uncontroversial, with measured base rates
 

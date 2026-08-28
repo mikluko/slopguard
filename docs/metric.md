@@ -158,8 +158,10 @@ the exemptions and footed on 231 positives, beside a `leftover` row footed on
 227, and called the difference a comparison.
 
 One catch for nineteen false alarms. On the Go standard library the default gives
-130 findings over 4,065 files against 678 with everything on, and 1,034 before
-this cycle began. On one real file the default takes hundredths of a second of
+130 findings over 4,065 files against 678 with everything on, and 1,059 before
+this cycle began — a figure this document and two others carried as 1,034,
+which was the total of the five classes `docs/design.md` listed and not the
+total the tool printed. On one real file the default takes hundredths of a second of
 user time and the wider build takes about a second, because the semantic pass
 embeds every comment run the file holds. Loading the 90 MB of ONNX is the
 smaller part of that and does not scale: about a tenth of a second, which is

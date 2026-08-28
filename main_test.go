@@ -374,8 +374,11 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 			want: false,
 		},
 		{
-			// The `*` continuation form, which is how most block comments in
-			// the C family are actually written.
+			// The `*` continuation form, which never reached the defect and is
+			// refused a step earlier: the replaced lines carry `* `, so the
+			// reported line was never a whole line of what was replaced. Kept
+			// as the boundary of the shape, not as an instance of it — its
+			// comment claimed the latter, and it passes with [enclosed] gone.
 			name: "a starred block comment became line comments",
 			file: "a.c",
 			src:  "void a(void) {\n\t// deleteTemp(path);\n\t// closeHandle(h);\n\tfoo();\n}\n",
@@ -537,6 +540,20 @@ func TestEnclosedReadsWhatAFragmentPutInsideABlock(t *testing.T) {
 			name: "a delimiter inside a string literal is not a block",
 			text: "char *s = \"/*\";\nfoo()\nbar()",
 			want: nil,
+		},
+		{
+			// A raw string and a docstring are opened by an assignment far more
+			// often than at column zero, and requiring the line to start with
+			// the delimiter missed both — reinstating the false claim on two of
+			// the seven shapes the round before had closed.
+			name: "an assignment opens a raw string",
+			text: "const s = `\nfoo()\nbar()\n`\nqux()",
+			want: []string{"foo()", "bar()", "`"},
+		},
+		{
+			name: "an assignment opens a docstring",
+			text: `s = """` + "\nfoo()\nbar()\n" + `"""` + "\nqux()",
+			want: []string{"foo()", "bar()", `"""`},
 		},
 		{
 			name: "the block closes and the lines after it are code again",

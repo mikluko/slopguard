@@ -108,9 +108,8 @@ func documented(c comment.Comment, src []byte) bool {
 	return at.Row == above.EndPosition().Row+1 && at.Column >= above.StartPosition().Column
 }
 
-// unset reports whether a mapping pair names a setting without giving it one: a
-// key with no value, an empty collection, or an empty string are the four ways
-// a chart or a role writes that.
+// unset reports whether a mapping pair names a setting without giving it one:
+// no value at all, an empty collection, or an empty string.
 func unset(pair *tree_sitter.Node, src []byte) bool {
 	value := pair.ChildByFieldName("value")
 	if value == nil {

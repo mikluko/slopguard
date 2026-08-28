@@ -107,8 +107,15 @@ samples of real history comments gives two directions that barely agree:
 | --- | --- |
 | history | +0.317 |
 | narrative | +0.303 |
-| compat | +0.575 |
-| tautology | +0.647 |
+| compat | +0.592 |
+| tautology | +0.689 |
+
+The two shipped figures are what `go test ./internal/model -run TestStability` prints. This table
+carried +0.575 and +0.647 for several rounds, as did [limits.md](limits.md), which withdrew them:
+the test printed +0.592 and +0.689 in the commit that wrote the old pair, so it was never a
+measurement. Only one of the two copies was corrected, and the number is stated here again rather
+than pointed at, since a pointer is what let the pair diverge in the first place. `history` and
+`narrative` are dropped classes and cannot be re-measured.
 
 Cross-fitted both ways, the honest ceiling for history is precision 1.000 at
 recall 1/10 (mined to held-out) and 2/10 (held-out to mined), and those cuts are

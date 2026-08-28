@@ -2,6 +2,7 @@ package comment
 
 import (
 	"bytes"
+	"strings"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 
@@ -32,6 +33,106 @@ func Scan(src []byte, language *lang.Language, added []Span) (comments []Comment
 // the rules judge.
 func ScanAll(src []byte, language *lang.Language) (comments []Comment, release func()) {
 	return scan(src, language, []Span{{Start: 0, End: uint(len(src))}}, 0)
+}
+
+// Inert returns the lines of src that hold no code, trimmed, which is every line
+// covered end to end by comments and string literals.
+//
+// The question it answers is whether a line was code before a write touched it,
+// and the hook's caller answers that about text it reconstructs rather than a
+// file on disk. Reading it off the parse is the only way that holds across
+// fourteen grammars: four rounds of deciding it from delimiters — a marker at
+// the start of a line, a `/*` opening a block, a backtick after an `=` — each
+// closed one shape and reopened another, because a delimiter's meaning is a
+// question about the grammar and not about the characters.
+//
+// A file that does not parse yields what it can, for the reason given in [scan].
+func Inert(src []byte, language *lang.Language) map[string]bool {
+	parser := tree_sitter.NewParser()
+	defer parser.Close()
+	if err := parser.SetLanguage(tree_sitter.NewLanguage(language.Grammar())); err != nil {
+		return nil
+	}
+	tree := parser.Parse(src, nil)
+	if tree == nil {
+		return nil
+	}
+	defer tree.Close()
+
+	// A text that does not parse cannot be read for what held code, and the
+	// caller's question is whether it may say something without hedging. Every
+	// line is returned as holding none, which makes it say nothing: a write
+	// whose file did not parse before it loses the certain tier rather than
+	// earning it on a guess. [scan] takes the opposite view for findings, where
+	// the cost of a gate is silence about real defects rather than a false
+	// claim about one.
+	if tree.RootNode().HasError() {
+		return still(src, nil)
+	}
+
+	// Bytes covered by a comment or a string, marked so that a line can be asked
+	// whether anything of it was left over.
+	quiet := make([]bool, len(src))
+	cursor := tree.RootNode().Walk()
+	defer cursor.Close()
+	for {
+		node := cursor.Node()
+		kind := node.Kind()
+		if language.Comments[kind] || (language.Docstrings && docstring(node)) || quoted(kind) {
+			for i := node.StartByte(); i < node.EndByte() && i < uint(len(src)); i++ {
+				quiet[i] = true
+			}
+		} else if cursor.GotoFirstChild() {
+			continue
+		}
+		for !cursor.GotoNextSibling() {
+			if !cursor.GotoParent() {
+				return still(src, quiet)
+			}
+		}
+	}
+}
+
+// quoted reports whether a node kind names a string.
+//
+// By the kind's name, because no grammar agrees on it — `raw_string_literal`,
+// `interpreted_string_literal`, `template_string`, `string_content`,
+// `heredoc_body` — and a set per language would be one more table to fall out of
+// date. Asking the tree what kind of node covers a byte is the part that
+// matters; which spelling of "string" it answers with is not.
+func quoted(kind string) bool {
+	return strings.Contains(kind, "string") || strings.Contains(kind, "heredoc")
+}
+
+// still returns the trimmed lines of src whose every non-blank byte is quiet.
+// A nil quiet answers that no line held code, which is what a text nobody could
+// parse is worth.
+func still(src []byte, quiet []bool) map[string]bool {
+	out := map[string]bool{}
+	at := 0
+	for _, line := range bytes.Split(src, []byte("\n")) {
+		text := bytes.TrimSpace(line)
+		if len(text) == 0 {
+			at += len(line) + 1
+			continue
+		}
+		code := false
+		for i := at; i < at+len(line); i++ {
+			if i < len(quiet) && !quiet[i] && !isSpace(src[i]) {
+				code = true
+				break
+			}
+		}
+		if !code {
+			out[string(text)] = true
+		}
+		at += len(line) + 1
+	}
+	return out
+}
+
+func isSpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\r'
 }
 
 // scan returns the comments of src that fall inside added, stopping after most

@@ -126,6 +126,7 @@ func review(in payload) []rule.Finding {
 	if len(added) == 0 {
 		return nil
 	}
+	inert = quiet(src, language, in)
 	findings := rule.Judge(src, language, added)
 	said, before, remember := session.Spoken(in.SessionID, in.ToolInput.FilePath)
 	repeat = before
@@ -302,13 +303,17 @@ func flat(text string) string {
 // A bare prefix test is not enough, and reading one as sufficient cost the tier
 // four true transitions in as many languages: `--i;`, `#[cfg(feature = "x")]`,
 // `#define N {1, 2}` and `/* the fast path */ deleteTemp(path);` all open with a
-// marker and all are code. `#` and `--` have to be followed by a space to be
-// read as opening a comment, and a line opening a block has to have no code
-// after the block closes.
+// marker and all are code. `--` has to be followed by a space, `#` must not open
+// a Rust attribute or a preprocessor directive, and a line opening a block has
+// to have no code after the block closes.
 //
-// A round claimed here that only `//` was ever reached. Every one of the four
-// is, through PHP's `#`, C's `--i`, Rust's attributes and a leading block
-// comment in any C-family language.
+// This is the fallback and not the answer. [comment.Inert] reads the same
+// question off the grammar, and where the file before the write can be
+// reconstructed it settles every case this cannot: `#include 'header.php';` is a
+// PHP comment and a C directive spelled the same way, and no rule over the
+// characters tells them apart. What is left here is the case where the
+// reconstruction fails, where a marker doubled onto a line is still worth
+// refusing.
 func marked(line string) bool {
 	switch {
 	case strings.HasPrefix(line, "//"):
@@ -344,99 +349,6 @@ func marked(line string) bool {
 		return at < 0 || strings.TrimSpace(line[at+2:]) == ""
 	}
 	return false
-}
-
-// enclosed returns the lines of text that sit inside a block comment or a
-// multi-line string, where a line carries no marker of its own.
-//
-// [marked] reads one line at a time, so the interior of a `/* */` block, a
-// Python docstring or a Go raw string reads to it as live code. Converting such
-// a block to line comments — the most ordinary comment reformatting there is —
-// then satisfied every condition of the certain tier, and the tool said the
-// write had commented out live code when it had reformatted a comment. Only the
-// replaced side needs this: on the inserted side the same shape is a miss.
-//
-// The delimiters are not the language's, because a [rule.Finding] does not carry
-// one, and a delimiter counts only where the line opens with it. Reading one
-// anywhere on the line made a stray backtick in a Go comment, and a `"/*"`
-// string literal in C, enclose everything under them: an over-refusal that costs
-// true transitions rather than the free caution it was written as.
-//
-// The error runs both ways and neither direction is free. A closer with no
-// opener before it means the block began above the replaced text, which is why
-// the lines up to it are taken as enclosed; nothing else about what precedes the
-// replacement is visible here, so a block opened further up and closed further
-// down is invisible and reads as code.
-// opens returns where a line begins a block with delimiter, or -1.
-//
-// A line opens one where it starts with the delimiter, and where the delimiter
-// is what an assignment assigns: `const s = ` + a backtick, or `s = """`, are
-// how a raw string and a docstring are written far more often than at column
-// zero, and requiring the line to start with the delimiter missed both. What
-// this excludes is the delimiter appearing as content — inside a string, as in
-// `char *s = "/*";`, or inside prose, as in a comment mentioning a name in
-// backticks — where the character before it is neither nothing nor `=`.
-func opens(trimmed, delimiter string) int {
-	if strings.HasPrefix(trimmed, delimiter) {
-		return 0
-	}
-	at := strings.Index(trimmed, delimiter)
-	if at < 0 {
-		return -1
-	}
-	if strings.HasSuffix(strings.TrimRight(trimmed[:at], " \t"), "=") {
-		return at
-	}
-	return -1
-}
-
-func enclosed(text string) map[string]bool {
-	pairs := [][2]string{{"/*", "*/"}, {`"""`, `"""`}, {"'''", "'''"}, {"`", "`"}}
-	lines := strings.Split(text, "\n")
-	out := map[string]bool{}
-
-	// A block the replaced text closes but never opened started above it.
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "/*") {
-			break
-		}
-		if !strings.Contains(line, "*/") {
-			continue
-		}
-		for _, above := range lines[:i+1] {
-			out[strings.TrimSpace(above)] = true
-		}
-		break
-	}
-
-	closer := ""
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if closer != "" {
-			if strings.Contains(line, closer) {
-				closer = ""
-				// The line carrying the closer may carry content before it, and
-				// that content was inside the block too.
-				out[trimmed] = true
-				continue
-			}
-			out[trimmed] = true
-			continue
-		}
-		for _, pair := range pairs {
-			at := opens(trimmed, pair[0])
-			if at < 0 {
-				continue
-			}
-			if strings.Contains(trimmed[at+len(pair[0]):], pair[1]) {
-				break
-			}
-			closer = pair[1]
-			break
-		}
-	}
-	return out
 }
 
 // copies counts the occurrences of run in text, overlapping ones included.
@@ -568,7 +480,7 @@ func moved(f rule.Finding, was, now string) bool {
 			return false
 		}
 	}
-	live, inside := false, enclosed(was)
+	live := false
 	for _, line := range strings.Split(f.Source, "\n") {
 		line = strings.TrimSpace(line)
 		// A blank line and a stray delimiter are in every fragment and occur in
@@ -583,8 +495,10 @@ func moved(f rule.Finding, was, now string) bool {
 		// code. A line whose own body opens with a marker was already a comment
 		// before this write doubled it, and `// // note that the caller holds
 		// the lock` satisfies every other condition here. A line carrying no
-		// marker was still a comment if the replaced text put it inside a block.
-		if !marked(line) && !inside[line] {
+		// marker of its own was still a comment if the file put it inside a
+		// block, a docstring or a raw string, which [inert] answers from the
+		// grammar rather than from the shape of the text.
+		if !marked(line) && !inert[line] {
 			live = true
 		}
 	}
@@ -784,6 +698,31 @@ func shared(old, new string) (prefix, suffix int) {
 // repeat records whether this session has been nudged before, which is what
 // decides between the instruction and its short form.
 var repeat bool
+
+// inert holds the lines that carried no code in the file as this write found it,
+// set by [review] and read by [moved]. Empty is the safe answer here: it says
+// nothing was known to be a comment, which is what the tier assumed for its
+// first nineteen rounds.
+var inert map[string]bool
+
+// quiet returns the lines that held no code in the file as it stood before this
+// write, by undoing each replacement and asking the grammar.
+//
+// The reconstruction is exact where a replacement occurs once, which is what an
+// Edit requires of its `old_string` anyway. Where it does not occur, that edit is
+// skipped and the file keeps that much of its post-write shape: the answer is
+// then incomplete rather than wrong, since a line the walk never marks is read
+// as code, which is what the tier assumed before any of this existed.
+func quiet(src []byte, language *lang.Language, in payload) map[string]bool {
+	text := string(src)
+	for _, e := range edits(in) {
+		if e.now == "" || strings.Count(text, e.now) != 1 {
+			continue
+		}
+		text = strings.Replace(text, e.now, e.was, 1)
+	}
+	return comment.Inert([]byte(text), language)
+}
 
 // report is the work handed back to the agent: which lines, which rule, and
 // what to do about each. It names the tool and the file, because a nudge that

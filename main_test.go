@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mikluko/slopguard/internal/comment"
+	"github.com/mikluko/slopguard/internal/lang"
 	"github.com/mikluko/slopguard/internal/rule"
 	"github.com/mikluko/slopguard/internal/session"
 )
@@ -365,6 +367,9 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 		src      string
 		was, now string
 		want     bool
+		// silent marks the one fixture that yields no finding at all, which is
+		// its own way of not making the claim.
+		silent bool
 	}{
 		{
 			name: "a block comment became line comments",
@@ -393,11 +398,12 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 			// attached and the block's last line read as code. The LF twin of
 			// this payload yielded no finding at all, which is how it went
 			// unseen: the shape only exists on CRLF.
-			name: "a block comment became line comments on CRLF",
-			src:  "package p\r\n\r\nfunc a() {\r\n\t// /*\r\n\t// deleteTemp(path)\r\n\t// closeHandle(h) */\r\n\tfoo()\r\n}\r\n",
-			was:  "\t/*\r\n\tdeleteTemp(path)\r\n\tcloseHandle(h) */\r\n",
-			now:  "\t// /*\r\n\t// deleteTemp(path)\r\n\t// closeHandle(h) */\r\n",
-			want: false,
+			name:   "a block comment became line comments on CRLF",
+			src:    "package p\r\n\r\nfunc a() {\r\n\t// /*\r\n\t// deleteTemp(path)\r\n\t// closeHandle(h) */\r\n\tfoo()\r\n}\r\n",
+			was:    "\t/*\r\n\tdeleteTemp(path)\r\n\tcloseHandle(h) */\r\n",
+			now:    "\t// /*\r\n\t// deleteTemp(path)\r\n\t// closeHandle(h) */\r\n",
+			want:   false,
+			silent: true,
 		},
 		{
 			// The same two lines, this time genuinely live before the write.
@@ -424,12 +430,17 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 			findings := review(in)
 			// Saying nothing is a way of not making the claim, and on CRLF the
 			// repair that stops the closer reading as code also stops the rule
-			// firing. A row that wants the claim still needs a finding to make.
+			// firing. Only the row that says so may assert nothing: letting any
+			// row wanting silence pass on zero findings would excuse every
+			// future fixture that quietly stopped reaching the tier.
 			if len(findings) == 0 {
-				if c.want {
+				if !c.silent {
 					t.Fatal("the fixture yielded no finding, so this asserts nothing")
 				}
 				return
+			}
+			if c.silent {
+				t.Fatalf("this row is written for a fixture that yields nothing, and it yielded %d", len(findings))
 			}
 			out := report(name, findings, in)
 			if got := strings.Contains(out, "This write commented out live code"); got != c.want {
@@ -478,94 +489,180 @@ func TestMarkedSeparatesACommentFromCodeThatOpensLikeOne(t *testing.T) {
 	}
 }
 
-// What a replaced fragment put inside a block, and what it only appears to.
+// Text that was never code, in the shapes four rounds of delimiter rules missed.
 //
-// Six of this function's behaviours had nothing reaching them in the round that
-// added it: three of the four delimiter pairs, the same-line-close skip, the
-// reset, and whether the closing line itself counts. A delimiter read anywhere
-// on the line rather than at its start also made a stray backtick in a comment
-// enclose everything under it.
-func TestEnclosedReadsWhatAFragmentPutInsideABlock(t *testing.T) {
+// Each of these produced the unhedged sentence, and each is a different way a
+// language spells something that is not code: a raw string opened by a return, a
+// comment marker a preprocessor also uses, a docstring the replaced range starts
+// inside. They share no lexical feature, which is why the answer had to come
+// from the parse rather than from another rule about characters.
+func TestTheTierRefusesWhatWasNeverCode(t *testing.T) {
+	for _, c := range []struct {
+		name, file, src, was, now string
+		want                      bool
+	}{
+		{
+			name: "a raw string opened by a return",
+			file: "mk.go",
+			src:  "package p\n\nfunc mk() string {\n\t// y := 2\n`\n}\n",
+			was:  "\treturn `\n\ty := 2\n",
+			now:  "\t// y := 2\n",
+			want: false,
+		},
+		{
+			// `#include 'header.php';` is a PHP comment and a C preprocessor
+			// directive spelled alike, and the grammar is the only thing that
+			// knows which file it is in.
+			name: "a hash comment whose body names a directive",
+			file: "b.php",
+			src:  "<?php\nclass A {\n    // #include 'header.php';\n}\n",
+			was:  "    #include 'header.php';\n",
+			now:  "    // #include 'header.php';\n",
+			want: false,
+		},
+		{
+			name: "the replaced range begins inside a docstring",
+			file: "f.py",
+			src:  "def f(c):\n    \"\"\"\n    x = 1\n    doc = \"\"\"\n    # y = 2\n",
+			was:  "    \"\"\"\n    doc = \"\"\"\n    y = 2\n",
+			now:  "    doc = \"\"\"\n    # y = 2\n",
+			want: false,
+		},
+		{
+			name: "go: a real commenting-out still confirms",
+			file: "c.go",
+			src:  "package p\n\nfunc a() {\n\t// deleteTemp(path)\n\tdone()\n}\n",
+			was:  "\tdeleteTemp(path)\n\tdone()\n",
+			now:  "\t// deleteTemp(path)\n\tdone()\n",
+			want: true,
+		},
+		{
+			name: "python: a real commenting-out still confirms",
+			file: "c.py",
+			src:  "def a():\n    # delete_temp(path)\n    done()\n",
+			was:  "    delete_temp(path)\n    done()\n",
+			now:  "    # delete_temp(path)\n    done()\n",
+			want: true,
+		},
+		{
+			name: "php: a real commenting-out still confirms",
+			file: "c.php",
+			src:  "<?php\nfunction a() {\n    // delete_temp($path);\n    done();\n}\n",
+			was:  "    delete_temp($path);\n    done();\n",
+			now:  "    // delete_temp($path);\n    done();\n",
+			want: true,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(session.MemoryEnv, t.TempDir())
+			in := payload{ToolName: "Edit"}
+			in.ToolInput.FilePath = file(t, c.file, c.src)
+			in.ToolInput.OldString = c.was
+			in.ToolInput.NewString = c.now
+
+			findings := review(in)
+			if len(findings) == 0 {
+				if c.want {
+					t.Fatal("the fixture yielded no finding, so this asserts nothing")
+				}
+				return
+			}
+			out := report(c.file, findings, in)
+			if got := strings.Contains(out, "This write commented out live code"); got != c.want {
+				t.Fatalf("unhedged = %v, want %v\n%s", got, c.want, out)
+			}
+		})
+	}
+}
+
+// Which lines held no code, answered by the grammar.
+//
+// Four rounds decided this from delimiters — a marker at the start of a line, a
+// `/*` opening a block, a backtick after an `=` — and each closed one shape and
+// reopened another, because whether a delimiter opens anything is a question
+// about the grammar. The last of those rounds still missed a raw string opened
+// by `return`, by a call argument, by a struct field, and a Python f-string; a
+// parse answers all of them and needs no table of delimiters at all.
+func TestInertReadsWhichLinesHeldNoCode(t *testing.T) {
 	for _, c := range []struct {
 		name string
+		// Empty means Go.
+		file string
 		text string
 		want []string
 	}{
 		{
-			// The line carrying the closer is the comment's too, and is marked.
-			name: "a block comment encloses its interior",
-			text: "/*\nfoo()\nbar()\n*/\nqux()",
-			want: []string{"foo()", "bar()", "*/"},
+			name: "a block comment holds no code",
+			text: "package p\n\n/*\nfoo()\nbar()\n*/\nfunc a() { qux() }\n",
+			want: []string{"/*", "foo()", "bar()", "*/"},
 		},
 		{
 			name: "the closing line carries content of its own",
-			text: "/*\nfoo()\nbar() */\nqux()",
-			want: []string{"foo()", "bar() */"},
+			text: "package p\n\n/*\nfoo()\nbar() */\nfunc a() { qux() }\n",
+			want: []string{"/*", "foo()", "bar() */"},
 		},
 		{
-			name: "a docstring encloses its interior",
-			text: `"""` + "\nfoo()\nbar()\n" + `"""` + "\nqux()",
-			want: []string{"foo()", "bar()", `"""`},
-		},
-		{
-			name: "a single-quoted docstring encloses its interior",
-			text: "'''\nfoo()\nbar()\n'''\nqux()",
-			want: []string{"foo()", "bar()", "'''"},
-		},
-		{
-			name: "a raw string encloses its interior",
-			text: "`\nfoo()\nbar()\n`\nqux()",
+			// Every way a Go raw string is opened. Four rounds of delimiter
+			// rules reached the first of these and none of the rest.
+			name: "a raw string opened by an assignment",
+			text: "package p\n\nconst s = `\nfoo()\nbar()\n`\n",
 			want: []string{"foo()", "bar()", "`"},
 		},
 		{
-			// The block began above the replaced text, so its closer arrives
-			// with no opener. Everything up to it was inside it.
-			name: "the block was opened above the fragment",
-			text: "foo()\nbar()\n*/\nqux()",
-			want: []string{"foo()", "bar()", "*/"},
-		},
-		{
-			name: "a block that opens and closes on one line encloses nothing",
-			text: "/* note */\nfoo()\nbar()",
-			want: nil,
-		},
-		{
-			// A delimiter inside a line of code or prose is not a block. Read
-			// anywhere on the line, each of these swallowed the rest.
-			name: "a stray backtick in a comment is not a block",
-			text: "// a `name` is special\nfoo()\nbar()",
-			want: nil,
-		},
-		{
-			name: "a delimiter inside a string literal is not a block",
-			text: "char *s = \"/*\";\nfoo()\nbar()",
-			want: nil,
-		},
-		{
-			// A raw string and a docstring are opened by an assignment far more
-			// often than at column zero, and requiring the line to start with
-			// the delimiter missed both — reinstating the false claim on two of
-			// the seven shapes the round before had closed.
-			name: "an assignment opens a raw string",
-			text: "const s = `\nfoo()\nbar()\n`\nqux()",
+			name: "a raw string opened by a return",
+			text: "package p\n\nfunc a() string {\n\treturn `\nfoo()\nbar()\n`\n}\n",
 			want: []string{"foo()", "bar()", "`"},
 		},
 		{
-			name: "an assignment opens a docstring",
-			text: `s = """` + "\nfoo()\nbar()\n" + `"""` + "\nqux()",
+			name: "a raw string opened by a call argument",
+			text: "package p\n\nfunc a() {\n\trun(w, `\nfoo()\nbar()\n`)\n}\n",
+			want: []string{"foo()", "bar()"},
+		},
+		{
+			name: "a raw string opened by a struct field",
+			text: "package p\n\nvar v = T{\n\tDoc: `\nfoo()\nbar()\n`,\n}\n",
+			want: []string{"foo()", "bar()"},
+		},
+		{
+			name: "a docstring holds no code",
+			file: "a.py",
+			text: "def a():\n    \"\"\"\n    foo()\n    bar()\n    \"\"\"\n    qux()\n",
+			want: []string{`"""`, "foo()", "bar()"},
+		},
+		{
+			name: "a docstring bound to a name holds no code",
+			file: "a.py",
+			text: "doc = \"\"\"\nfoo()\nbar()\n\"\"\"\nqux()\n",
 			want: []string{"foo()", "bar()", `"""`},
 		},
 		{
-			name: "the block closes and the lines after it are code again",
-			text: "/*\nfoo()\n*/\nbar()\nqux()",
-			want: []string{"foo()", "*/"},
+			// A delimiter that is content rather than syntax. Read as syntax,
+			// each of these marked everything under it as comment.
+			name: "a backtick inside a comment is content",
+			text: "package p\n\n// a `name` is special\nfunc a() { foo() }\n",
+			want: []string{"// a `name` is special"},
+		},
+		{
+			name: "a block delimiter inside a string is content",
+			file: "a.c",
+			text: "void a(void) {\n\tchar *s = \"/*\";\n\tfoo();\n\tbar();\n}\n",
+			want: nil,
+		},
+		{
+			name: "a block that opens and closes on one line",
+			text: "package p\n\n/* note */\nfunc a() { foo() }\n",
+			want: []string{"/* note */"},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got := enclosed(c.text)
+			language := lang.Go
+			if c.file != "" {
+				language = lang.Lookup(c.file)
+			}
+			got := comment.Inert([]byte(c.text), language)
 			for _, line := range c.want {
 				if !got[line] {
-					t.Errorf("%q is inside the block and was not marked", line)
+					t.Errorf("%q held no code and was not marked", line)
 				}
 			}
 			for line := range got {
@@ -576,7 +673,7 @@ func TestEnclosedReadsWhatAFragmentPutInsideABlock(t *testing.T) {
 					}
 				}
 				if !found {
-					t.Errorf("%q was marked and is not inside a block", line)
+					t.Errorf("%q was marked and is code", line)
 				}
 			}
 		})
@@ -585,10 +682,11 @@ func TestEnclosedReadsWhatAFragmentPutInsideABlock(t *testing.T) {
 
 // An empty run has no copies, and counting it the other way walks off the end.
 //
-// The twin guard skips a finding with no `Raw` before it asks, so this was
-// reachable only by removing that skip — and the panic it caused would have been
-// swallowed by the recover in main, dropping the whole nudge rather than one
-// finding. A precondition nothing states is one the next caller breaks.
+// The twin guard skips a finding with no `Raw` before it asks, so this is
+// reachable only by removing that skip. Removing the guard returns four, not a
+// panic: the panic belonged to the unbounded walk the same commit replaced, and
+// [copies]'s own doc says so a hundred lines away. A precondition nothing states
+// is one the next caller breaks, whichever way it breaks.
 func TestCopiesOfAnEmptyRun(t *testing.T) {
 	if got := copies("abc", ""); got != 0 {
 		t.Fatalf("copies(%q, %q) = %d, want 0", "abc", "", got)

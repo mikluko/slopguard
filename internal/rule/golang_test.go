@@ -244,8 +244,11 @@ func TestPaddingSpares(t *testing.T) {
 }
 
 // Parsing prose as source runs the grammar's error recovery over every byte,
-// and a comment is bounded by nothing. A run of them held the hook for 23
-// seconds before the rule stopped reading past a bound.
+// and a comment is bounded by nothing. This is the only claim about that cost
+// the repository makes, because it is the only one that has held: five figures
+// for how long an unbounded run takes have been written down and four refuted,
+// and [rule.parsedBytes] records why none is quoted any more. What has to be
+// true is that this finishes.
 func TestHugeCommentRunIsBounded(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("package p\n\nfunc f() {\n")

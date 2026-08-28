@@ -8,17 +8,22 @@ import (
 	"github.com/mikluko/slopguard/internal/prose"
 )
 
-// parsedBytes bounds what the commented-out-code rule will hand to a parser.
-// The cost is linear in the bytes: the grammar's error recovery over prose runs
-// at about three and a half microseconds a byte from 16 KB to 1.75 MB, and the
-// bound is what keeps a pathological comment from holding the hook. 16 KB is
-// 0.07 seconds where 1.75 MB is about six.
+// parsedBytes bounds what the commented-out-code rule will hand to a parser,
+// because running a grammar's error recovery over prose is slow enough that an
+// unbounded comment can hold the hook for seconds. A comment is not bounded by
+// anything the way a file is, and nobody who comments out a megabyte in one run
+// then wants three lines of nudge back, so past the bound the rule declines.
 //
-// Four figures have stood here for that second measurement — 14.7 seconds, 23,
-// and a 169 that came with a claim the curve was superlinear. The last was
-// taken from a review and written down without being run; measuring the rule
-// over six sizes gives a flat rate and refutes it. The rate does climb on C++,
-// and the text that makes it climb cannot reach the C++ parser.
+// **No rate is quoted here, on purpose.** Five have been: 14.7 seconds for a
+// 1.75 MB run, then 23, then 169 with a claim the curve was superlinear, then
+// six with a claim it was flat. Four measurements across three reviews split two
+// against two, and they disagree by two orders of magnitude on fixtures that
+// differ only in details nobody has pinned down — whether the run sits in a
+// function body, whether its text passes the prefilter and reaches the parser at
+// all, which grammar recovers over it. Every figure written here has been
+// refuted by the next measurement of it. What justifies the bound is the shape,
+// which nobody disputes, and `TestHugeCommentRunIsBounded` asserts the only
+// thing that has to hold: that the scan of a 40,000-line run finishes.
 const parsedBytes = 16 << 10
 
 // leftover reports whether a comment is commented-out code: text that parses
@@ -65,10 +70,7 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 	// require a line ending and report a MISSING node without one, which reads
 	// as a broken parse and stops this rule before it starts.
 	// Parsing prose as source runs the grammar's error recovery over every byte
-	// of it, at about three and a half microseconds a byte, and a comment is not
-	// bounded by anything the way a file is. A 1.75 MB run of them held the hook
-	// for six seconds. Nobody comments out this much in one run and then wants three
-	// lines of nudge back, so past the bound the rule declines.
+	// of it, which is what [parsedBytes] bounds and why.
 	if len(c.Body) > parsedBytes {
 		return false
 	}

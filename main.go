@@ -374,7 +374,7 @@ func holds(text, run string) bool {
 // Where the write *replaces* one, the same shape was a false claim, and this doc
 // asserted the miss of both halves for several rounds. Converting a `/* */`
 // block to `//` lines authors every line it reports, and its interior carries no
-// marker for [marked] to read, so the tool called the most ordinary comment
+// marker of its own for a rule over characters to read, so the tool called the most ordinary comment
 // reformatting in the C family a commenting-out of live code. [quiet] rebuilds
 // the file as this write found it and [comment.Inert] reads the grammar for
 // which of its lines held code.

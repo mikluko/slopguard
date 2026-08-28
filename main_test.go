@@ -355,7 +355,7 @@ func TestTheGuardsUnderTheCertainTier(t *testing.T) {
 // Converting a `/* */` block to `//` lines is the most ordinary comment edit in
 // every C-family language, and it met every condition the tier tests: the write
 // authored the lines, they were whole lines of what it replaced and are not
-// whole lines of what it inserted, and [marked] reads one line at a time so a
+// whole lines of what it inserted, and the rule then in place read one line at a time so a
 // block's interior — which carries no marker of its own — read as live code.
 //
 // `moved`'s doc named this shape and drew the opposite conclusion, calling it a
@@ -383,7 +383,8 @@ func TestReformattingACommentIsNotCommentingOutCode(t *testing.T) {
 			// refused a step earlier: the replaced lines carry `* `, so the
 			// reported line was never a whole line of what was replaced. Kept
 			// as the boundary of the shape, not as an instance of it — its
-			// comment claimed the latter, and it passes with [enclosed] gone.
+			// comment claimed the latter, and it passed with the whole
+			// enclosure mechanism of the day deleted.
 			name: "a starred block comment became line comments",
 			file: "a.c",
 			src:  "void a(void) {\n\t// deleteTemp(path);\n\t// closeHandle(h);\n\tfoo();\n}\n",
@@ -473,6 +474,19 @@ func TestTheTierReadsAYamlBlockScalarAsWhatItIs(t *testing.T) {
 			src:  "config: |\n  auth_enabled: true\n#   cluster_name: prod\n  server:\n    http_listen_port: 3100\n",
 			was:  "  cluster_name: prod\n",
 			now:  "#   cluster_name: prod\n",
+			want: false,
+		},
+		{
+			// The scalar's last line ends in a template action. `blank` turns
+			// it to spaces, the scalar's node stops before the trailing space,
+			// and asking the *original* bytes there finds characters nothing
+			// marked — so a line of block-scalar body read as live code. The
+			// fix for one templated shape opened another in the same file.
+			name: "a block scalar whose last line ends in a template action",
+			file: "d.yaml",
+			src:  "config: |\n  auth_enabled: true\n#   cluster_name: prod\n#   http_listen_port: {{ .Values.port }}\nother: true\n",
+			was:  "  cluster_name: prod\n  http_listen_port: {{ .Values.port }}\n",
+			now:  "#   cluster_name: prod\n#   http_listen_port: {{ .Values.port }}\n",
 			want: false,
 		},
 		{

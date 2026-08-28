@@ -60,7 +60,8 @@ func Inert(src []byte, language *lang.Language) map[string]bool {
 	// corpus — 835 files that the finding path parses and this one did not,
 	// and a file this cannot parse loses the tier outright. `blank` preserves
 	// every byte's width, so the spans it yields still index the original.
-	tree := parser.Parse(blank(src, language), nil)
+	parsed := blank(src, language)
+	tree := parser.Parse(parsed, nil)
 	if tree == nil {
 		return nil
 	}
@@ -74,7 +75,7 @@ func Inert(src []byte, language *lang.Language) map[string]bool {
 	// the cost of a gate is silence about real defects rather than a false
 	// claim about one.
 	if tree.RootNode().HasError() {
-		return still(src, nil)
+		return still(src, parsed, nil)
 	}
 
 	// Bytes covered by a comment or a string, marked so that a line can be asked
@@ -95,8 +96,13 @@ func Inert(src []byte, language *lang.Language) map[string]bool {
 			// What a node spans past its last child, when that reaches another
 			// line, is text the grammar took in and never parsed. A YAML block
 			// scalar is exactly this: `block_scalar` has one child, the `|`, and
-			// its whole body is the tail. Ordinary code has no such tail — what
-			// follows a construct's last child is punctuation on that same line.
+			// its whole body is the tail.
+			//
+			// Almost only YAML has such a tail. Swept over the mined clones this
+			// marks 61,749 lines there and two everywhere else — both Makefile
+			// recipe continuations, which are code, and both a miss rather than
+			// a false claim. Go, C, C++, Python, JS, TS, Rust, Ruby, Java, Bash,
+			// HCL and Dockerfile contribute none.
 			if n := node.ChildCount(); n > 0 {
 				if last := node.Child(n - 1); node.EndPosition().Row > last.EndPosition().Row {
 					mark(last.EndByte(), node.EndByte())
@@ -108,7 +114,7 @@ func Inert(src []byte, language *lang.Language) map[string]bool {
 		}
 		for !cursor.GotoNextSibling() {
 			if !cursor.GotoParent() {
-				return still(src, quiet)
+				return still(src, parsed, quiet)
 			}
 		}
 	}
@@ -124,12 +130,18 @@ func Inert(src []byte, language *lang.Language) map[string]bool {
 // `run: |` blocks and Helm values among them — which is the same defect the
 // four rounds of delimiter rules were about, in the mechanism that replaced them.
 //
-// So a leaf spanning more than one line counts too, whatever it is called. Code
-// has structure: a construct the grammar parsed into a single token across
-// several lines is content it declined to read, which is what a raw string, a
-// heredoc body, a block scalar and Ruby's `__END__` section all are. A named
-// kind matching neither is not covered, and the caller loses nothing by it:
-// a line holding any code at all is code either way.
+// So a leaf spanning more than one line counts too, whatever it is called: a
+// construct the grammar parsed into a single token across several lines is
+// mostly content it declined to read — JSX text, PHP inline HTML, Ruby's
+// `__END__` section. Not always. A C `#define` continued with backslashes is a
+// childless `preproc_arg` spanning rows and is code, marked inert on 292 lines
+// of the mined clones, so a write commenting out a line inside a multi-line
+// macro loses the tier. That is a miss and the safe direction, and it is the
+// price of not keeping a table of kind names per grammar.
+//
+// A block scalar is caught by neither clause here — it has the `|` for a child.
+// The rule that catches it is in [Inert], over what a node spans past its last
+// child.
 func opaque(node *tree_sitter.Node) bool {
 	kind := node.Kind()
 	if strings.Contains(kind, "string") || strings.Contains(kind, "heredoc") {
@@ -141,7 +153,15 @@ func opaque(node *tree_sitter.Node) bool {
 // still returns the trimmed lines of src whose every non-blank byte is quiet.
 // A nil quiet answers that no line held code, which is what a text nobody could
 // parse is worth.
-func still(src []byte, quiet []bool) map[string]bool {
+//
+// Two texts, because the spans were computed over the blanked one and the keys
+// have to be the original's lines. Whether a byte is blank is asked of the text
+// that was parsed: a `{{ … }}` action at the end of a block scalar's last line
+// becomes trailing space, so the scalar's node stops before it, and asking the
+// original there finds bytes nothing marked and calls a line of block-scalar
+// body live code. The keys stay the original's because that is what a finding
+// quotes.
+func still(src, parsed []byte, quiet []bool) map[string]bool {
 	out := map[string]bool{}
 	at := 0
 	for _, line := range bytes.Split(src, []byte("\n")) {
@@ -152,7 +172,7 @@ func still(src []byte, quiet []bool) map[string]bool {
 		}
 		code := false
 		for i := at; i < at+len(line); i++ {
-			if i < len(quiet) && !quiet[i] && !isSpace(src[i]) {
+			if i < len(quiet) && !quiet[i] && i < len(parsed) && !isSpace(parsed[i]) {
 				code = true
 				break
 			}

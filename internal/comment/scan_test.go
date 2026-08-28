@@ -1,6 +1,7 @@
 package comment
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -108,5 +109,60 @@ func TestBlankSpares(t *testing.T) {
 		t.Errorf("a real action was left in place: %q", got)
 	} else if len(got) != len(action) {
 		t.Errorf("blanking changed the byte offsets: %d against %d", len(got), len(action))
+	}
+	// Widths alone are not enough: an action spanning lines must keep its
+	// newlines, or every row below it shifts up and a finding is reported
+	// against the wrong line.
+	spanning := []byte("key: {{ if .A }}\n  {{ end }}\n# replicas: 3\n")
+	if got := blank(spanning, lang.YAML); bytes.Count(got, []byte("\n")) != bytes.Count(spanning, []byte("\n")) {
+		t.Errorf("blanking swallowed a newline, so every row below it moves:\n%q", got)
+	}
+}
+
+// What a language holds that is not code, and is not a comment or a string
+// either. Each of these is the only thing one clause of [opaque] catches.
+func TestInertReadsWhatIsNeitherCodeNorComment(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		language *lang.Language
+		src      string
+		want     string
+	}{
+		{
+			// A childless node spanning rows. Nothing names it a string.
+			name:     "jsx text between tags",
+			language: lang.TSX,
+			src:      "const a = <p>\n  hello there\n  and again\n</p>;\n",
+			want:     "and again",
+		},
+		{
+			// A heredoc interpolates, so its body holds a `variable_name` node
+			// — real code by every other test here. Only the whole `heredoc`
+			// being named as one keeps the line it sits on from reading as code.
+			name:     "a php heredoc body around an interpolation",
+			language: lang.PHP,
+			src:      "<?php\n$t = <<<EOT\n  delete_temp($path);\n  done();\nEOT;\n",
+			want:     "delete_temp($path);",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := Inert([]byte(c.src), c.language); !got[c.want] {
+				t.Errorf("%q holds no code and was not marked; got %v", c.want, got)
+			}
+		})
+	}
+}
+
+// A carriage return is blank, and a line whose only unmarked byte is one is not
+// code. Without it a CRLF file loses the tier on every line a comment or a
+// string ends: the node stops before the `\r`, which then reads as code.
+func TestInertReadsACarriageReturnAsBlank(t *testing.T) {
+	src := []byte("server:\r\n  # http_listen_port: 3100\r\n  grpc: 9095\r\n")
+	got := Inert(src, lang.YAML)
+	if !got["# http_listen_port: 3100"] {
+		t.Errorf("a comment line on CRLF was not read as holding no code: %v", got)
+	}
+	if got["grpc: 9095"] {
+		t.Errorf("a line of code on CRLF was read as holding none: %v", got)
 	}
 }

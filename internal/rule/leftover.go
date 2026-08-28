@@ -142,15 +142,17 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // sibling is another *comment*; what row five separates is "preceded by a
 // comment" from "preceded by a label", which is a fact about run-splitting. The
 // tail comment this paragraph is actually about, `sched.go:372`, has
-// `expression_case` as its previous sibling — the same signature as all twenty
-// Vue label comments — so row five keeps it exempt too:
+// `expression_case` as its previous sibling, and all twenty Vue label comments
+// have `switch_case` as theirs: different kinds, but a case label either way,
+// which is all row five can see. So it keeps the tail comment exempt too:
 //
 //	sched.go:372         prev expression_case   parent switch statement   residue
 //	babelUtils.ts:387    prev switch_case       parent switch body        a label comment
 //
 // Row five also breaks five spec fixtures across Java, TypeScript and PHP, but
-// that is a second objection, not the reason. Two revisions of this paragraph
-// had the inseparability right and the seventh called them wrong.
+// that is a second objection, not the reason. Several revisions of this
+// paragraph had the inseparability right and later ones called them wrong, twice
+// explicitly and once by dropping the sentence.
 //
 // The two middle rows are not separations. Row three is byte-identical to
 // deleting this branch, and row two keeps exactly one of the twenty-six
@@ -161,10 +163,11 @@ func leftover(c comment.Comment, language *lang.Language, src []byte) bool {
 // it fired zero times across both corpora and confirms nothing either way.
 //
 // So the live choice is between keeping this branch and dropping it, at two true
-// positives against twenty-four false ones. Of eight revisions of this
-// paragraph, five have been wrong and each in its own way, every one refuted by
-// a measurement already in this file, and two of the five were corrections of a
-// version that had been right.
+// positives against twenty-four false ones. This paragraph has been wrong more
+// often than any other here, each time in its own way and each time refuted by a
+// measurement already in the file, and more than once the wrong version was a
+// correction of a right one. The counts it used to carry were themselves wrong
+// twice, so it no longer keeps one.
 //
 // This branch silences a `//dump(...)` at the tail of an arm in `staticinit` and
 // the continuation of a commented-out `case goimporterMagic:` arm at

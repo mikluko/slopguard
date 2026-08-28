@@ -457,13 +457,16 @@ func TestReportQuotesNoRate(t *testing.T) {
 	// This is an enumeration of joins rather than a test of shape, and it says so
 	// because a previous version of this comment claimed otherwise: a reviewer
 	// got eleven phrasings past it, "nine times out of ten" among them. The list
-	// below is what those eleven taught it. What still passes, digit check
-	// included: a denominator the list does not name ("nine in twelve"), a
-	// plural noun where the joins are singular ("nine cases in ten"), an article
-	// between the halves ("one in a hundred", "nine of the ten"), and "to" as
-	// the join ("nine to one"). Closing those properly wants a parser rather
-	// than a longer list, and a note claiming one hole where there are four is
-	// the failure this file keeps making one level up.
+	// below is what those eleven taught it.
+	//
+	// **It leaks, and no count of the leaks belongs here.** Two revisions of this
+	// note have named a closed set of remaining holes — one, then four — and a
+	// reviewer found more each time: unnamed numbers in either position, plural
+	// or unlisted nouns, an article between the halves, a hyphen or colon
+	// instead of a join word, "per cent" spelled apart, fractions past a tenth.
+	// The list catches what it has been taught and nothing else, and enumerating
+	// the rest is the same mistake at one remove. What would close it is parsing
+	// the sentence, not a longer list.
 	// The previous list dropped "one in" while the commit adding it claimed to
 	// have verified against "four in ten", which it passed — and "one in four on
 	// compilers" is the phrasing in `report`'s default branch and in AGENTS.md, so it

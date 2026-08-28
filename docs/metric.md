@@ -404,21 +404,27 @@ anything whose next node is a case label is spared wherever it sits: that takes
 other branch spares an arm's *first* line deliberately, and takes jq's and
 `reflectlite/value.go:296`. About 88% right, knowingly.
 
-Five revisions of this paragraph got that wrong in five different ways: the
-first offered a tree-shape argument for all four, the second said it covered one,
-and the fourth, fifth and seventh argued in turn about whether a previous-sibling
-test separates a between-arms comment from a label. **It does not, in either
-direction.** Keeping the exemption *unless* the previous sibling is a label is
-deletion minus a recovery; keeping it *only where* the previous sibling is a
-label looks like a separation and is not, because the one finding it recovers
-follows a blank line that split a commented-out arm in two, so its previous
-sibling is another comment. The tail comment the argument is actually about has a
-case label before it, exactly as the twenty Vue label comments do.
+This paragraph has been rewritten more times than any other here, and the
+ordinals it used to number those rewrites by were themselves wrong twice, so the
+failures are listed without them. It has, at various points: offered a tree-shape
+argument for all four findings; said that argument covered one of the four; put
+one variant's measurements under another variant's name; and argued in both
+directions about whether a previous-sibling test separates a between-arms comment
+from a label.
 
-Two of the seven revisions had that right and were corrected away. The table in
-`arm`'s own doc states all five variants as conditions for keeping the exemption,
-which removes the qualifier-versus-disqualifier ambiguity that produced four of
-the wrong versions but not this one.
+**It does not, in either direction.** Keeping the exemption *unless* the previous
+sibling is a label is deletion minus a recovery; keeping it *only where* the
+previous sibling is a label looks like a separation and is not, because the one
+finding it recovers follows a blank line that split a commented-out arm in two,
+so its previous sibling is another comment. The tail comment the argument is
+actually about has a case label before it, exactly as the twenty Vue label
+comments do.
+
+Several revisions had that right and were corrected away — twice explicitly, once
+by silent omission. The table in `arm`'s own doc states all five variants as
+conditions for keeping the exemption, which removes the
+qualifier-versus-disqualifier ambiguity behind most of the wrong versions, though
+not this one.
 
 The three that stand are the hard ones, and the first two may not be fixable at
 all: a pseudocode convention written in the host language's own syntax is not

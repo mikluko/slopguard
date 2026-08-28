@@ -252,7 +252,9 @@ func attributable(in payload) bool {
 	return real == 1
 }
 
-// flat strips each line's own indentation, leaving the line breaks.
+// flat trims each line, leaving the line breaks. Trailing whitespace and a
+// trailing carriage return go with the leading indentation, which is what makes
+// it agree with itself across a file written on either convention.
 //
 // It is what "the same comment" means to both [switched] and the twin guard in
 // [review], and it has to mean the same thing to both: for one commit `moved`

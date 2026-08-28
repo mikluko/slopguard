@@ -46,7 +46,8 @@ rediscovered by whoever hits it next.
   replaced by is the target class, not documentation — and it is keyed on the filename, so `ci/default-values.yaml` and
   `values.test.yaml` are not exempt at all. There are 188 such files across the 23 mined repositories with content. The shape the
   exemption is really after is a commented key with no live sibling of the same name at the same indent, which would
-  keep the modbus finding and still drop the other fifty-two. Not built.
+  keep the modbus finding. How much of the other fifty-two it would drop is unmeasured, and not all of them are
+  commented keys — `fluent-bit/values.yaml:51` is a commented list element. Not built.
 - A commented option under a key that already has values is reported. On a stock `helm create` scaffold that used to be
   two findings and is now none, because the scaffold writes them into `values.yaml`, which is exempt outright three
   bullets above; copy the same file to any other name and the two come back. A commented block indented under a key

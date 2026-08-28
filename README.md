@@ -124,7 +124,7 @@ carrying a sentence beside its structure is an option being documented rather th
 ## Languages
 
 Go, Python, JavaScript, TypeScript, TSX, Rust, C, C++, Java, Ruby, PHP, shell, YAML and Terraform, plus `Dockerfile`,
-`Containerfile` and `Makefile` by name rather than by extension. A file nothing here reads produces nothing.
+`Containerfile` and `Makefile` by name as well as by extension. A file nothing here reads produces nothing.
 
 A file that does not parse is still judged, and this document claimed the opposite for a long time. Declining a file whose
 tree carries an error was tried and reverted: an error node means tree-sitter could not parse the file, not that the file
@@ -214,8 +214,8 @@ A finding names the line and the rule, at most three per write, strongest first:
 ```json
 {
   "hookSpecificOutput": {
-    "hookEventName": "PostToolUse",
-    "additionalContext": "slopguard is a heuristic. Many of its findings are wrong, and in code that implements a specification or generates other code, most are. It parsed these comments in store.go as valid source:\n\n  store.go:42  commented-out code: delete it, or make it real\n\nPer line: if this write commented out live code, delete it — git has it. If it is spec or algebraic notation, a sketch of the code a pass emits, a label naming what a case arm handles, or a section heading, then it is right as written: leave it and carry on, no reply needed. Those four are the measured false positives. Do not reword a comment to satisfy this, and do not act on a comment this write did not author."
+    "additionalContext": "slopguard is a heuristic. Many of its findings are wrong, and in code that implements a specification or generates other code, most are. It parsed these comments in store.go as valid source:\n\n  store.go:42  commented-out code: delete it, or make it real\n\nPer line: if this write commented out live code, delete it — git has it. If it is spec or algebraic notation, a sketch of the code a pass emits, a label naming what a case arm handles, or a section heading, then it is right as written: leave it and carry on, no reply needed. Those four are the measured false positives. Do not reword a comment to satisfy this, and do not act on a comment this write did not author.",
+    "hookEventName": "PostToolUse"
   },
   "systemMessage": "slopguard: 1 comment to reconsider — store.go:42"
 }
@@ -233,7 +233,9 @@ learns that deleting it is cheaper. The `systemMessage` carries the lines rather
 only party who can tell a true finding from a false one.
 
 A write is judged in single-digit to low-teens milliseconds. Under `SLOPGUARD_WIDER=1` one that reaches the model pays
-about a second on the first call, most of it opening the ONNX session, and 115 to 145 ms after that.
+enough more to notice — the exact figures are machine-dependent and vary several-fold with how many comments the file
+holds, so `docs/metric.md` gives them as an order rather than a pair. Most of the first call is opening the ONNX
+session.
 
 ## Limits
 

@@ -136,7 +136,7 @@ func weigh(candidates []comment.Comment, language *lang.Language, src []byte, of
 		pending = nil
 	}
 	// The model is loaded lazily, so skipping the pass skips the 90 MB and the
-	// second it costs. `only` naming a semantic class overrides the default,
+	// tenth of a second it costs. `only` naming a semantic class overrides the default,
 	// which is what lets the scorer measure them without the hook running them.
 	if !wider && only != "tautology" && only != "compat" {
 		pending = nil
@@ -224,8 +224,9 @@ const widerEnv = "SLOPGUARD_WIDER"
 // they kept; `leftover` alone catches 20 and nudges 1. So the other four classes
 // buy one catch for nineteen false alarms, and lift goes from 8.25 to 15.33 when
 // they go. On the Go standard library they are four fifths of everything the
-// tool says, 548 of 678. And the semantic half of them costs a second on the
-// first call and 90 MB of embedded model.
+// tool says, 548 of 678. And the semantic half of them costs 90 MB of embedded
+// model and about a tenth of a second to load it, on every write that reaches
+// it: the hook is a fresh process per write, so nothing amortises.
 //
 // Those figures were four generations stale here — 21 and 25, 20 and 5, a lift
 // pair matching no corpus on record — while the README and docs/metric.md
@@ -239,7 +240,7 @@ const widerEnv = "SLOPGUARD_WIDER"
 //
 // The value is parsed as a boolean, so `SLOPGUARD_WIDER=0` is off. Read as mere
 // presence, the one documented way to turn this on read its own negation as a
-// yes, and took the second of model load with it.
+// yes, and took the model load with it.
 func Wider() bool {
 	on, err := strconv.ParseBool(os.Getenv(widerEnv))
 	return err == nil && on

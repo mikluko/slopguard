@@ -191,7 +191,11 @@ func review(in payload) []rule.Finding {
 //
 // Every line has to be found. A run that is half old code and half prose is
 // somebody writing a note next to what they disabled, and the part this can
-// vouch for is not the part being reported.
+// vouch for is not the part being reported. The run is looked for from the
+// start of a line: matched anywhere, a trailing comment on a line the write
+// kept supplies the run's first line, and the claim then covered a second line
+// that was already a comment. Lines that are byte-identical cannot be told
+// apart by any test here, so that shape had to be refused rather than judged.
 //
 // One edit at a time, and the line has to be gone from that edit's replacement.
 // Present-in-the-before is not the claim: a comment quoting a line that is still
@@ -282,6 +286,27 @@ func flat(text string) string {
 	return strings.Join(lines, "\n")
 }
 
+// holds reports whether text contains run beginning at the start of a line.
+//
+// A plain substring test lets a trailing comment supply the run's first line: in
+// `qux() // deleteTemp(path)` followed by a fresh `// deleteTemp(path)`, the two
+// spell a run the replacement never wrote as a run, and the unhedged sentence
+// then covers a second line the write did not author.
+func holds(text, run string) bool {
+	for i := 0; i < len(text); {
+		at := strings.Index(text[i:], run)
+		if at < 0 {
+			return false
+		}
+		at += i
+		if at == 0 || text[at-1] == '\n' {
+			return true
+		}
+		i = at + 1
+	}
+	return false
+}
+
 // moved reports whether one edit both wrote this comment and stopped its lines
 // being code.
 //
@@ -317,7 +342,7 @@ func moved(f rule.Finding, was, now string) bool {
 	// passes it as new. Deleting the live lines it quotes in the same edit is
 	// then enough for the unhedged claim.
 	raw, was, now := flat(f.Raw), flat(was), flat(now)
-	if raw == "" || !strings.Contains(now, raw) || strings.Contains(was, raw) {
+	if raw == "" || !holds(now, raw) || strings.Contains(was, raw) {
 		return false
 	}
 	lines := func(text string) map[string]bool {
@@ -509,10 +534,16 @@ func written(src []byte, in payload) []comment.Span {
 // exactly as it was, and claiming all of it would attribute untouched comments
 // to this write. It reports false when nothing changed inside the occurrence,
 // which is what a pure deletion looks like from here.
+//
+// The span is the replacement's own length, and [shared] never counts past it,
+// so the trimmed span can be empty but never inverted. Rejecting it is therefore
+// belt to the empty span's braces: an empty span spells no comment either way,
+// and no test distinguishes the two. Two conditions stood here that were the
+// same inequality written twice.
 func narrow(s comment.Span, prefix, suffix int) (comment.Span, bool) {
 	start := s.Start + uint(prefix)
 	end := s.End - uint(suffix)
-	if prefix+suffix >= int(s.End-s.Start) || start >= end {
+	if start >= end {
 		return comment.Span{}, false
 	}
 	return comment.Span{Start: start, End: end}, true

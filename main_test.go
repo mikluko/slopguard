@@ -331,6 +331,76 @@ func TestTheLogSaysWhetherTheFindingWasConfirmed(t *testing.T) {
 	}
 }
 
+// The log accumulates, and stays absent when there is nothing to say.
+//
+// README calls it "a file every finding is appended to". Nothing tested that:
+// `O_APPEND` could become `O_TRUNC` with the suite green, leaving a log holding
+// only the last write — the shape that makes a week of real use unreadable, and
+// unreadable in a way nobody notices until they come to read it.
+func TestTheLogAccumulatesAcrossWrites(t *testing.T) {
+	t.Setenv(session.MemoryEnv, t.TempDir())
+	log := filepath.Join(t.TempDir(), "findings.jsonl")
+	t.Setenv(logEnv, log)
+
+	write := func(name, call string) payload {
+		in := payload{ToolName: "Edit"}
+		in.ToolInput.FilePath = file(t, name, "package p\n\nfunc a() {\n\t// "+call+"\n\tdone()\n}\n")
+		in.ToolInput.OldString = "\t" + call + "\n\tdone()\n"
+		in.ToolInput.NewString = "\t// " + call + "\n\tdone()\n"
+		return in
+	}
+
+	// A write with nothing to report must not leave a row, nor create the file
+	// where it does not exist: an empty log and no log say different things.
+	quiet := payload{ToolName: "Edit"}
+	quiet.ToolInput.FilePath = file(t, "quiet.go", "package p\n\nfunc a() {\n\tdone()\n}\n")
+	quiet.ToolInput.OldString = "\tstart()\n"
+	quiet.ToolInput.NewString = "\tdone()\n"
+	record(quiet.ToolInput.FilePath, review(quiet), quiet)
+	if _, err := os.Stat(log); err == nil {
+		t.Error("a write with no findings created the log")
+	}
+
+	for _, c := range []struct{ name, call string }{
+		{"one.go", "deleteTemp(path)"},
+		{"two.go", "closeHandle(h)"},
+	} {
+		in := write(c.name, c.call)
+		findings := review(in)
+		if len(findings) != 1 {
+			t.Fatalf("%s: want one finding, got %d", c.name, len(findings))
+		}
+		record(in.ToolInput.FilePath, findings, in)
+	}
+
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("the log was not written: %v", err)
+	}
+	rows := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(rows) != 2 {
+		t.Fatalf("want a row per write, got %d:\n%s", len(rows), raw)
+	}
+	for i, row := range rows {
+		var got struct {
+			At    string  `json:"at"`
+			File  string  `json:"file"`
+			Line  int     `json:"line"`
+			Class string  `json:"class"`
+			Score float64 `json:"score"`
+		}
+		if err := json.Unmarshal([]byte(row), &got); err != nil {
+			t.Fatalf("row %d does not decode: %v", i, err)
+		}
+		if got.At == "" || got.File == "" || got.Line == 0 || got.Class == "" {
+			t.Errorf("row %d is missing a field the log is read by: %s", i, row)
+		}
+	}
+	if rows[0] == rows[1] {
+		t.Error("both rows are the same write, so the second did not append")
+	}
+}
+
 // The certain tier is a property of the payload, not of the tool that sent it.
 //
 // Two documents and a doc comment said a MultiEdit never earns the unhedged
@@ -378,6 +448,96 @@ func a() {
 				t.Fatalf("unhedged = %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+// An edit is credited with the bytes it changed, not with the whole text it
+// replaced. [written] is what decides which comments are attributed to a write
+// at all, and the trimming that does it had no test reaching its purpose: the
+// shared prefix and suffix could each be dropped, and the rejection removed,
+// with the suite green. What survived was one test whose replacement is equal
+// on both sides, so its comments sit outside the changed bytes either way.
+//
+// Every row here is a write that leaves the comment exactly where it was and
+// touches only the code around it. The write authored none of them.
+func TestAWriteIsNotCreditedWithWhatItCarriedThrough(t *testing.T) {
+	const src = `package p
+
+func a() {
+	// deleteTemp(path)
+	setup()
+	done()
+}
+`
+	for _, c := range []struct {
+		name     string
+		was, now string
+	}{
+		{
+			// The comment is the shared prefix: dropping it from the trim makes
+			// the span reach back over a line the write only carried along.
+			name: "the write appended below a comment it carried through",
+			was:  "\t// deleteTemp(path)\n\tsetup()\n",
+			now:  "\t// deleteTemp(path)\n\tsetup()\n\tdone()\n",
+		},
+		{
+			// The mirrored case: the comment is the shared suffix.
+			name: "the write inserted above a comment it carried through",
+			was:  "func a() {\n\t// deleteTemp(path)\n",
+			now:  "func a() {\n\tstart()\n\t// deleteTemp(path)\n",
+		},
+		{
+			// A pure deletion, whose replacement is entirely shared prefix. With
+			// no rejection the span is the whole occurrence, comment included.
+			name: "the write deleted the line under a comment it carried through",
+			was:  "\t// deleteTemp(path)\n\tsetup()\n",
+			now:  "\t// deleteTemp(path)\n",
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(session.MemoryEnv, t.TempDir())
+			in := payload{ToolName: "Edit"}
+			// The file as the write leaves it, which is what the hook reads.
+			in.ToolInput.FilePath = file(t, "a.go", strings.Replace(src, c.was, c.now, 1))
+			in.ToolInput.OldString = c.was
+			in.ToolInput.NewString = c.now
+
+			if findings := review(in); len(findings) != 0 {
+				t.Fatalf("a comment the write only carried through is credited to it: %d findings, first at line %d", len(findings), findings[0].Line)
+			}
+		})
+	}
+}
+
+// A write is credited with every copy of what it changed, because nothing in
+// the payload tells the copies apart. `replace_all` is the shape that makes it
+// real rather than theoretical, and [locate] could return the first occurrence
+// alone with the suite green.
+func TestAWriteClaimsEveryCopyOfWhatItChanged(t *testing.T) {
+	t.Setenv(session.MemoryEnv, t.TempDir())
+	const both = `package p
+
+func first() {
+	// deleteTemp(path)
+	done()
+}
+
+func second() {
+	// deleteTemp(path)
+	done()
+}
+`
+	in := payload{ToolName: "Edit"}
+	in.ToolInput.FilePath = file(t, "both.go", both)
+	in.ToolInput.OldString = "\tdeleteTemp(path)\n"
+	in.ToolInput.NewString = "\t// deleteTemp(path)\n"
+
+	findings := review(in)
+	if len(findings) != 2 {
+		t.Fatalf("want a finding for each copy the write could have changed, got %d", len(findings))
+	}
+	if findings[0].Line == findings[1].Line {
+		t.Fatalf("both findings name line %d, so only one copy was claimed", findings[0].Line)
 	}
 }
 
@@ -832,6 +992,35 @@ func TestSwitchedPairsTheEditThatDeletedWithTheEditThatCommented(t *testing.T) {
 				"\tif cond {\n\t\t// foo()\n\t\t// bar()\n\t}\n",
 			),
 			want: false,
+		},
+		{
+			// A trailing comment on a line the write kept supplies the run's
+			// first line, so a plain substring test finds in the replacement a
+			// run the replacement never wrote as one. The second line stood
+			// before the write, and the unhedged sentence covered it.
+			name: "a trailing comment supplies the first line of the run",
+			raw:  "// foo()\n\t// foo()",
+			text: "foo()\nfoo()",
+			in: edit(
+				"\tqux() // foo()\n\tfoo()\n",
+				"\tqux() // foo()\n\t// foo()\n",
+			),
+			want: false,
+		},
+		{
+			// The quoted lines include a bare `}`, which the file still holds
+			// live below the block. Skipping lines too short to be evidence is
+			// what keeps a commented-out block confirmed; without it the brace
+			// is found in the replacement and the tier goes, which is the Rust
+			// failure in another costume.
+			name: "a commented-out block whose closing brace the file still holds",
+			raw:  "// if cond {\n\t// \tfoo()\n\t// }",
+			text: "if cond {\nfoo()\n}",
+			in: edit(
+				"\tif cond {\n\t\tfoo()\n\t}\n}\n",
+				"\t// if cond {\n\t// \tfoo()\n\t// }\n}\n",
+			),
+			want: true,
 		},
 		{
 			// Two comments that were already comments, made adjacent for the

@@ -45,8 +45,11 @@ ninety days against 0.058 beyond it, z = 3.60.
 
 **"The semantic classes buy 0.005 of recall for 0.003 of FPR."** That
 differenced two threshold tilts rather than turning the model off. Measured
-properly with `SLOPGUARD_NO_MODEL=1`, the semantic pass buys 6 catches for 38
-nudges: +0.013 recall for +0.003 FPR.
+properly with `SLOPGUARD_NO_MODEL=1`, the semantic pass bought 6 catches for 38
+nudges on the corpus of the day. On the ninth it buys **0 catches for 4 nudges**:
+`SLOPGUARD_WIDER=1` gives 21 caught and 20 nudged, and adding
+`SLOPGUARD_NO_MODEL=1` gives 21 caught and 16 nudged. The correction to the
+method stands; the figures it produced were of their corpus.
 
 **"`leftover` has more than twice `echo`'s recall."** The ratio interval is
 [1.31, 4.64], and pooling `echo` with `tautology` as one defect, which
@@ -166,8 +169,10 @@ here and disagreed with the pair in `internal/rule`'s own doc.
 **It does not shrink the binary, and an earlier version of this document implied
 it did.** The model is embedded at compile time and `internal/rule` imports
 `internal/model` for its reason strings, so the artifact is 116 MB either way.
-What the default buys is the load, which is most of a second on every write, and
-nineteen of the twenty false alarms. Dropping the 90 MB as well needs build
+What the default buys is the load, about a tenth of a second on every write that
+reaches it, and nineteen of the twenty false alarms. The load is not where the
+figure of about a second comes from: that is a comment-heavy file paying to
+embed each sentence, and it scales with the file. Dropping the 90 MB as well needs build
 tags and a package split, which is a separate change.
 
 **This is a default rather than a deletion, and the reason matters.** The corpus
@@ -187,8 +192,8 @@ makes. A faithful port of Steidl to the population his metric was validated on,
 documentation against the signature, scores below chance.
 
 So the value is unmeasurable and will stay so on this instrument, and the cost is
-90 MB, most of a second per write, and four fifths of everything the tool
-says. That asymmetry is the whole argument, and it was answerable from the first
+90 MB, a tenth of a second per write to load it and more to embed with it, and
+four fifths of everything the tool says. That asymmetry is the whole argument, and it was answerable from the first
 round.
 
 ## The full pipeline, for comparison

@@ -42,7 +42,9 @@ rule fired, not about how many are right. On that particular library, most are n
 **What ships is `leftover` alone.** `echo`, `hollow`, `tautology` and `compat` are behind `SLOPGUARD_WIDER=1`, off by
 default. On a corpus of comments other people deleted or kept, `leftover` catches 20 and nudges 1 where the whole set
 catches 21 and nudges 20: one extra catch for nineteen extra false alarms. The two semantic classes are also what loads
-the 90 MB model, which is a second on the first write that reaches it. The binary is the same size either way, since the
+the 90 MB model, about a tenth of a second, paid by every write that reaches it — the hook is a fresh process per write,
+so there is no first call to amortise it against. A file with many comments pays that again several times over in
+embedding, which is where the figure of about a second comes from. The binary is the same size either way, since the
 model is embedded at compile time. `docs/metric.md` carries the measurement and the argument for why this is a default
 rather than a deletion.
 

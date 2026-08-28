@@ -149,10 +149,9 @@ func goAssignable(left *tree_sitter.Node) bool {
 //
 // An equation with a bare identifier on the left is legal Go and structurally a
 // real assignment, so what separates `EM = 0x00 || 0x02 || PS || 0x00 || M` from
-// a line somebody switched off is whose namespace the names belong to. The
-// shape is the whole gate, and it is a narrow one on purpose: dead code often
-// names symbols deleted alongside it, which is the case the rule most wants to
-// catch, so the veto is kept off every fragment that is not this one.
+// a line somebody switched off is whose namespace the names belong to. The gate
+// is that shape and nothing else: dead code often names symbols deleted
+// alongside it, which is the case the rule most wants to catch.
 func goCited(node *tree_sitter.Node, body []byte, spelled *namespace) bool {
 	if !goBare(node.ChildByFieldName("left")) {
 		return false

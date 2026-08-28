@@ -77,9 +77,12 @@ rediscovered by whoever hits it next.
 
 Change-event comments — `// we now use the pooled client` — were the original point of the tool and are not in it. The
 distinction is present in the embedding but does not survive averaging: directions fitted from two disjoint halves agree
-at cos +0.32, against +0.592 and +0.689 for the two classes that shipped. Those two are what
-`go test ./internal/model -run TestStability` prints today; they were +0.575 and +0.647 before a fix to how a sentence
-is terminated changed every embedding, and the gap they are quoted for is what did not move. What the direction learns is *is about change*,
+at cos +0.32, against +0.592 and +0.689 for the two classes that shipped, which is what
+`go test ./internal/model -run TestStability` prints. This line carried +0.575 and +0.647 for several rounds. The test
+printed +0.592 and +0.689 in the commit that wrote those figures too, and `corpus.go` and `fit.go` have not changed a
+byte since, so the pair was never a measurement of anything and no later change moved it. A round then explained the
+discrepancy by an embedding fix that postdates the commit and alters neither number: an invented cause, which is worse
+than the wrong pair it was covering for. What the direction learns is *is about change*,
 not *its truth condition is in the past*, and every false positive is a contract about state that changes over time. A
 phrase list is worse: `// returns every durable the consumer no longer runs` is a contract that spells a marker, and
 across 33 files of a production service every one of the seven findings a phrase list produced was that shape. The full

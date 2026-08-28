@@ -263,7 +263,7 @@ func TestARustDocCommentStillEndsOnTheRowBelow(t *testing.T) {
 // Guards that hold the tier up and that nothing reached.
 //
 // Each was free: revert it and the whole suite stayed green, while a real
-// payload changed its answer. Two cost a true transition and one grants a false
+// payload changed its answer. Two grant a false transition and one costs a true
 // one, so they fail in both directions.
 func TestTheGuardsUnderTheCertainTier(t *testing.T) {
 	t.Run("a pure insertion counts as a replacement", func(t *testing.T) {
@@ -402,7 +402,9 @@ func a() {
 // authorship clause every earlier round had been about.
 func TestTheCertainTierNeedsALineThatWasCode(t *testing.T) {
 	for _, c := range []struct {
-		name     string
+		name string
+		// Empty means Go, which most rows here are.
+		file     string
 		src      string
 		was, now string
 		want     bool
@@ -434,8 +436,12 @@ func TestTheCertainTierNeedsALineThatWasCode(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv(session.MemoryEnv, t.TempDir())
+			name := c.file
+			if name == "" {
+				name = "a.go"
+			}
 			in := payload{ToolName: "Edit"}
-			in.ToolInput.FilePath = file(t, "a.go", c.src)
+			in.ToolInput.FilePath = file(t, name, c.src)
 			in.ToolInput.OldString = c.was
 			in.ToolInput.NewString = c.now
 
@@ -453,7 +459,7 @@ func TestTheCertainTierNeedsALineThatWasCode(t *testing.T) {
 
 // The log has to answer how often the unhedged sentence fires.
 //
-// It is the tool's only claim made without hedging, and for sixteen rounds
+// It is the tool's only claim made without hedging, and until this test
 // nothing wrote down whether it happened — so every argument about whether the
 // tier is worth its risk was an argument about a number nobody had. `record`
 // itself had no test, so the log's shape was free to change unnoticed too.

@@ -6,9 +6,11 @@ Thirteen style guides were fetched directly (Google C++/Python/Java/Shell, Googl
 
 Not reached, and therefore not claimed: the Oracle Javadoc page returns 403 and was read through a text-extraction proxy (wording consistent across three passes, but not diff-verified against raw HTML); Fluri 2007/2009 and Ibrahim 2012 exist here only as quoted inside Wen 2019 and are marked secondhand throughout; the iComment paper body was not opened, only its abstract and the authors' page; McConnell's chapter-32 prose was not opened, only his checklist, so his six-way "kinds of comments" taxonomy is reported below from the checklist plus secondary reproductions and is flagged where it matters. One external note on method: a PDF summarizer fabricated an entire numeric table for the GitClear report during this review; every number below was read off a page, not off a summary.
 
-Claims about slopguard's own behaviour are measured, not inferred. slopguard was built at `3f3f5c0` with ONNX Runtime present and run over the Go standard library (4,065 files, reproducing the repo's own figure of 1,034 findings exactly) and over probe files quoting the literature verbatim. Where a statement is an inference rather than a measurement or a quotation, the sentence says so.
+Claims about slopguard's own behaviour are measured, not inferred. slopguard was built at `3f3f5c0` with ONNX Runtime present and run over the Go standard library (4,065 files) and over probe files quoting the literature verbatim. Where a statement is an inference rather than a measurement or a quotation, the sentence says so.
 
-**Every figure below is that build's and is not restated when the tool changes.** The file set is still 4,065, but the tool now reports 130 there rather than 1,034, and 678 with every class on; `leftover` is 130 rather than 142. Exemptions added since account for the fall, and the argument this document makes about where the redundancy defect lives does not turn on the size of any of these. Source lines cited by number are `3f3f5c0`'s and several have moved.
+**That build emitted 1,059 findings, not the 1,034 this document and `docs/design.md` both claimed.** The five classes named below each reproduce to the unit; the missing 25 are a sixth, `history`, which `3f3f5c0` had just added and which `design.md` had not counted in its own commit. So the figure was checked against a stale document rather than against the tool, by that round and by the two that restated it.
+
+**Every figure below is that build's and is not restated when the tool changes.** The file set is still 4,065, but the tool now reports 130 there and 678 with every class on; `leftover` is 130 rather than 142, and `history` was tried and dropped. Exemptions added since account for the fall, and the argument this document makes about where the redundancy defect lives does not turn on the size of any of these. Source lines cited by number are `3f3f5c0`'s and several have moved.
 
 ---
 
@@ -183,7 +185,7 @@ Here the measurement is kinder to the tool than the argument predicted. A file c
 
 | Probe | Result |
 |---|---|
-| Go standard library, 4,065 files | 1,034 findings: `echo` 623, `tautology` 249, `leftover` 142, `compat` 20, `hollow` 0. Reproduced `docs/design.md` exactly at `3f3f5c0`; that document now carries 678, and the split has moved with it. |
+| Go standard library, 4,065 files | 1,059 findings: `echo` 623, `tautology` 249, `leftover` 142, `compat` 20, `hollow` 0, `history` 25. Matched `docs/design.md`'s 1,034 only because that document omitted `history`; the tool's own total was 1,059. `design.md` now carries 678, and the split has moved with it. |
 | 7 comments Ousterhout prescribes (verbatim) | 0 findings |
 | 7 comments Ousterhout condemns (verbatim) | 2 findings, both `echo`; the 3 doc-comment cases and the vague-initialiser case missed |
 | PEP 257-shaped docstrings of the README's own 3 `tautology` examples | 0 findings |

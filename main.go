@@ -298,8 +298,15 @@ func flat(text string) string {
 // `*` is not a marker here, though [continues] treats it as one: inside a block
 // comment it continues the run, but a line of code may open with it — `*p = 0`
 // in C — and reading that as a comment would cost the tier a true transition.
-// `--` is kept despite `--i`, because the languages that spell a comment that
-// way are the ones whose lines are likelier to begin with it.
+//
+// Only `//` is reached by any payload that gets this far. A doubled `//` in Go
+// produces a finding because `// deleteTemp(path)` is legal Go on its own;
+// Python's `# deleteTemp(path)` is not evidence of code, so `leftover` never
+// fires on the doubled form and `#` is never asked about. `--` names no
+// grammar the tool wires at all, and no `/*` shape found reaches here either.
+// The three are kept as the guard against a language that later makes them
+// reachable, and are noted as untested rather than given a test that would
+// assert nothing.
 func marked(line string) bool {
 	for _, marker := range []string{"//", "#", "--", "/*"} {
 		if strings.HasPrefix(line, marker) {
@@ -377,7 +384,8 @@ func holds(text, run string) bool {
 // second condition rejects them. That is a miss rather than a false claim.
 //
 // One of the quoted lines has to have been code, which is the other half of the
-// sentence and went unchecked for nineteen rounds. Doubling a marker —
+// sentence and went unchecked while every round attacked the first. Doubling a
+// marker —
 // `// note` becoming `// // note` — meets every condition above, and the tool
 // said the write had commented out live code when it had commented out a
 // comment. Nothing in the parse separates them: tree-sitter emits `comment` as
